@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     AI_AUTO_TRADE: bool = True
     # Capital asignado al AI Agent (0 = usar todo el saldo disponible)
     AI_ALLOCATED_CAPITAL: float = 0.0
+    # Auth & Security
+    JWT_SECRET: str = "change-me-in-production"
+    ENCRYPTION_KEY: str = ""  # Fernet key for encrypting user API keys
     # Live trading safety
     LIVE_MAX_ORDER_USD: float = Field(default=500.0, gt=0.0)
     LIVE_DAILY_LOSS_LIMIT_USD: float = Field(default=100.0, gt=0.0)

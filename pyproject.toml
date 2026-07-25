@@ -30,6 +30,7 @@ dependencies = [
     "uvicorn>=0.29",
     "pyjwt>=2.8",
     "passlib[bcrypt]>=1.7",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]

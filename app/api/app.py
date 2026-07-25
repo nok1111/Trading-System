@@ -146,6 +146,65 @@ def auth_me(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# User Settings
+# ---------------------------------------------------------------------------
+from app.services.crypto import decrypt, encrypt
+
+
+class UpdateSettingsRequest(BaseModel):
+    binance_api_key: str | None = None
+    binance_api_secret: str | None = None
+    risk_profile: str | None = None
+    default_symbols: str | None = None
+
+
+@app.get("/api/user/settings")
+def get_user_settings(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
+    """Obtiene la configuración del usuario actual."""
+    has_api_key = bool(current_user.binance_api_key_enc)
+    return {
+        "email": current_user.email,
+        "username": current_user.username,
+        "subscription": current_user.subscription,
+        "risk_profile": current_user.risk_profile,
+        "has_binance_api_key": has_api_key,
+        "binance_api_key_preview": decrypt(current_user.binance_api_key_enc)[:8] + "..." if has_api_key else None,
+    }
+
+
+@app.patch("/api/user/settings")
+def update_user_settings(
+    req: UpdateSettingsRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Actualiza la configuración del usuario."""
+    db = SessionLocal()
+    try:
+        user = db.get(User, current_user.id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        if req.binance_api_key is not None:
+            user.binance_api_key_enc = encrypt(req.binance_api_key)
+        if req.binance_api_secret is not None:
+            user.binance_api_secret_enc = encrypt(req.binance_api_secret)
+        if req.risk_profile is not None:
+            if req.risk_profile not in ("conservative", "moderate", "aggressive"):
+                raise HTTPException(status_code=400, detail="risk_profile inválido")
+            user.risk_profile = req.risk_profile
+        db.commit()
+        db.refresh(user)
+        return {
+            "email": user.email,
+            "username": user.username,
+            "subscription": user.subscription,
+            "risk_profile": user.risk_profile,
+            "has_binance_api_key": bool(user.binance_api_key_enc),
+        }
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # ML training status (in-memory, single-instance)
 # ---------------------------------------------------------------------------
 import threading as _threading

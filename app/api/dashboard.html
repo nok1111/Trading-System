@@ -120,6 +120,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <button class="tab" data-tab="ml">Machine Learning</button>
 <button class="tab" data-tab="ai">AI Agent</button>
 <button class="tab" data-tab="ailive">AI Live</button>
+<button class="tab" data-tab="settings">Settings</button>
 </div>
 <div class="content">
 <div id="overview" class="panel active">
@@ -553,6 +554,61 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 
 </div>
+
+<!-- Settings Panel -->
+<div id="settings" class="panel">
+<div class="card" style="margin-bottom:1rem;padding:1.2rem">
+  <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Cuenta</h3>
+  <div class="cards" style="gap:.5rem">
+    <div class="card" style="padding:.7rem .9rem"><div class="label">Email</div><div class="value" id="settingsEmail" style="font-size:.9rem">--</div></div>
+    <div class="card" style="padding:.7rem .9rem"><div class="label">Usuario</div><div class="value" id="settingsUsername" style="font-size:.9rem">--</div></div>
+    <div class="card" style="padding:.7rem .9rem"><div class="label">Plan</div><div class="value" id="settingsPlan" style="font-size:.9rem">FREE</div></div>
+    <div class="card" style="padding:.7rem .9rem"><div class="label">Miembro desde</div><div class="value" id="settingsCreated" style="font-size:.9rem">--</div></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1rem;padding:1.2rem">
+  <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Binance API Keys</h3>
+  <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Tus API keys se almacenan encriptadas. Nunca se muestran después de guardarlas.</p>
+  <div id="settingsApiKeyStatus" style="margin-bottom:1rem"></div>
+  <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem">
+    <div style="display:flex;flex-direction:column;gap:.2rem">
+      <label style="font-size:.75rem;color:#94a3b8;font-weight:600">API Key</label>
+      <input id="settingsApiKey" type="password" placeholder="Nueva API Key" style="width:300px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.2rem">
+      <label style="font-size:.75rem;color:#94a3b8;font-weight:600">API Secret</label>
+      <input id="settingsApiSecret" type="password" placeholder="Nuevo API Secret" style="width:300px">
+    </div>
+  </div>
+  <button class="btn btn-blue" onclick="saveApiKeys()">Guardar API Keys</button>
+</div>
+
+<div class="card" style="margin-bottom:1rem;padding:1.2rem">
+  <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Perfil de Riesgo</h3>
+  <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Determina los parámetros de trading automático (stop-loss, take-profit, posiciones máximas).</p>
+  <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem">
+    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.6rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem"><input type="radio" name="riskProfile" value="conservative" style="accent-color:#34d399"><div><div style="font-weight:600;color:#34d399">Conservador</div><div style="font-size:.7rem;color:#94a3b8">SL 2% / TP 4% / 3 posiciones</div></div></label>
+    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.6rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem"><input type="radio" name="riskProfile" value="moderate" style="accent-color:#38bdf8"><div><div style="font-weight:600;color:#38bdf8">Moderado</div><div style="font-size:.7rem;color:#94a3b8">SL 3% / TP 8% / 5 posiciones</div></div></label>
+    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.6rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem"><input type="radio" name="riskProfile" value="aggressive" style="accent-color:#f87171"><div><div style="font-weight:600;color:#f87171">Agresivo</div><div style="font-size:.7rem;color:#94a3b8">SL 5% / TP 15% / 10 posiciones</div></div></label>
+  </div>
+  <button class="btn btn-blue" onclick="saveRiskProfile()">Guardar Perfil</button>
+</div>
+
+<div class="card" style="padding:1.2rem">
+  <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Plan de Suscripción</h3>
+  <div class="cards" style="gap:.5rem">
+    <div class="card" style="padding:.7rem .9rem;border:1px solid #334155"><div class="label">Plan Actual</div><div class="value" id="settingsCurrentPlan" style="font-size:1rem">FREE</div></div>
+    <div class="card" style="padding:.7rem .9rem"><div class="label">Pares permitidos</div><div class="value" id="settingsMaxPairs" style="font-size:.9rem">3</div></div>
+    <div class="card" style="padding:.7rem .9rem"><div class="label">Posiciones máx</div><div class="value" id="settingsMaxPositions" style="font-size:.9rem">3</div></div>
+    <div class="card" style="padding:.7rem .9rem"><div class="label">IA requests/día</div><div class="value" id="settingsMaxAIRequests" style="font-size:.9rem">50</div></div>
+  </div>
+  <div id="settingsUpgradeBtn" style="margin-top:1rem;display:none">
+    <button class="btn btn-blue" onclick="showUpgradeModal()">Mejorar Plan</button>
+  </div>
+</div>
+</div>
+
 <div id="toast" class="toast"></div>
 <script>
 const API='';
@@ -672,6 +728,7 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   if(t.dataset.tab==='positions'){_lastOpenPositionSymbols=[];loadPositions();}
   if(t.dataset.tab==='performance')loadPerformance();
   if(t.dataset.tab==='market')loadMovers();
+  if(t.dataset.tab==='settings')loadUserSettings();
 });
 
 async function loadHealth(){try{const[h,tm]=await Promise.all([api('/health'),api('/api/trading-mode')]);const b=document.getElementById('healthBadge');b.textContent=h.status+' | '+h.trading_mode;b.className='status '+(h.status==='ok'?'running':'stopped');
@@ -2055,6 +2112,72 @@ function addAILiveEntry(entry,time){
 
   // Keep max 100 entries
   while(liveFeed.children.length>100){liveFeed.removeChild(liveFeed.lastChild)}
+}
+
+// Settings functions
+const PLAN_LIMITS={
+  free:{pairs:3,positions:3,ai_requests:50,label:'FREE'},
+  pro:{pairs:10,positions:10,ai_requests:500,label:'PRO'},
+  premium:{pairs:999,positions:999,ai_requests:99999,label:'PREMIUM'}
+};
+
+async function loadUserSettings(){
+  try{
+    const s=await api('/api/user/settings');
+    document.getElementById('settingsEmail').textContent=s.email;
+    document.getElementById('settingsUsername').textContent=s.username;
+    document.getElementById('settingsPlan').textContent=s.subscription.toUpperCase();
+    document.getElementById('settingsCurrentPlan').textContent=s.subscription.toUpperCase();
+    // Set risk profile radio
+    document.querySelectorAll('input[name="riskProfile"]').forEach(r=>{if(r.value===s.risk_profile)r.checked=true});
+    // API key status
+    const statusEl=document.getElementById('settingsApiKeyStatus');
+    if(s.has_binance_api_key){
+      statusEl.innerHTML='<span style="color:#34d399;font-size:.85rem">✓ API Key configurada ('+s.binance_api_key_preview+')</span>';
+    }else{
+      statusEl.innerHTML='<span style="color:#fbbf24;font-size:.85rem">⚠ Sin API Key configurada</span>';
+    }
+    // Plan limits
+    const limits=PLAN_LIMITS[s.subscription]||PLAN_LIMITS.free;
+    document.getElementById('settingsMaxPairs').textContent=limits.pairs>=999?'Ilimitados':limits.pairs;
+    document.getElementById('settingsMaxPositions').textContent=limits.positions>=999?'Ilimitadas':limits.positions;
+    document.getElementById('settingsMaxAIRequests').textContent=limits.ai_requests>=99999?'Ilimitados':limits.ai_requests;
+    // Show upgrade button if not premium
+    document.getElementById('settingsUpgradeBtn').style.display=s.subscription!=='premium'?'block':'none';
+    // Account info from currentUser
+    if(currentUser){
+      document.getElementById('settingsCreated').textContent=currentUser.created_at?new Date(currentUser.created_at).toLocaleDateString('es-ES'):'--';
+    }
+  }catch(e){toast(e.message,false)}
+}
+
+async function saveApiKeys(){
+  const apiKey=document.getElementById('settingsApiKey').value.trim();
+  const apiSecret=document.getElementById('settingsApiSecret').value.trim();
+  if(!apiKey&&!apiSecret){toast('Ingresa al menos un valor',false);return}
+  try{
+    const body={};
+    if(apiKey)body.binance_api_key=apiKey;
+    if(apiSecret)body.binance_api_secret=apiSecret;
+    await api('/api/user/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    toast('API Keys guardadas correctamente');
+    document.getElementById('settingsApiKey').value='';
+    document.getElementById('settingsApiSecret').value='';
+    loadUserSettings();
+  }catch(e){toast(e.message,false)}
+}
+
+async function saveRiskProfile(){
+  const profile=document.querySelector('input[name="riskProfile"]:checked');
+  if(!profile){toast('Selecciona un perfil',false);return}
+  try{
+    await api('/api/user/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({risk_profile:profile.value})});
+    toast('Perfil de riesgo guardado: '+profile.value);
+  }catch(e){toast(e.message,false)}
+}
+
+function showUpgradeModal(){
+  toast('Próximamente: integración con Stripe',false);
 }
 
 // Check auth on page load - dashboard requires login
