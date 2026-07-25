@@ -506,6 +506,28 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 
 <div class="card" style="margin-bottom:1rem;padding:1.2rem">
+  <h3 style="color:#a78bfa;font-size:1.1rem;margin-bottom:1rem">AI Provider Keys (Opcional)</h3>
+  <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Trae tus propias API keys de Groq o Gemini para usarlas con el AI Agent. Se almacenan encriptadas. Si no las configuras, se usarán las del servidor.</p>
+  <div id="aiKeyStatus" style="margin-bottom:1rem"></div>
+  <div id="aiKeysSection" style="display:none">
+    <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem">
+      <div style="display:flex;flex-direction:column;gap:.2rem">
+        <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(console.groq.com/keys)</span></label>
+        <input id="settingsAiGroqKey" type="password" placeholder="gsk_..." style="width:300px">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.2rem">
+        <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(aistudio.google.com)</span></label>
+        <input id="settingsAiGeminiKey" type="password" placeholder="AIza..." style="width:300px">
+      </div>
+    </div>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="saveAiKeys()">Guardar AI Keys</button>
+      <button id="deleteAiKeysBtn" class="btn" style="background:#7f1d1d;color:#fca5a5;display:none" onclick="deleteAiKeys()">Eliminar AI Keys</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1rem;padding:1.2rem">
   <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Perfil de Riesgo</h3>
   <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Determina los parámetros de trading automático (stop-loss, take-profit, posiciones máximas).</p>
   <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem">
@@ -1854,7 +1876,13 @@ async function aiStart(){
   const groqKey=document.getElementById('aiGroqKey').value.trim();
   const geminiKey=document.getElementById('aiGeminiKey').value.trim();
   const model=document.getElementById('aiModel').value.trim();
-  const interval=parseInt(document.getElementById('aiInterval').value)||30;
+  const minInterval=window._minAIInterval||120;
+  let interval=parseInt(document.getElementById('aiInterval').value)||minInterval;
+  if(interval<minInterval){
+    interval=minInterval;
+    document.getElementById('aiInterval').value=minInterval;
+    toast('Intervalo ajustado al mínimo de tu plan: '+minInterval+'s');
+  }
   const autoTrade=document.getElementById('aiAutoTrade').checked;
   const tradeMode=document.querySelector('input[name="aiTradeMode"]:checked')?.value||'paper';
 
@@ -1865,11 +1893,12 @@ async function aiStart(){
 
   try{
     const body={provider:provider,interval_seconds:interval,auto_trade:autoTrade};
-    if(provider==='groq'){if(groqKey)body.groq_api_key=groqKey;body.model=model}
-    else if(provider==='gemini'){if(geminiKey)body.gemini_api_key=geminiKey;body.model=model}
-    else{body.model=model}
+    // Only send keys if user entered them in the UI (they'll override stored/server keys)
+    if(provider==='groq'&&groqKey)body.groq_api_key=groqKey;
+    else if(provider==='gemini'&&geminiKey)body.gemini_api_key=geminiKey;
+    body.model=model;
     const r=await api('/api/ai-agent/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    toast('Agente IA activado ['+provider+'] '+(autoTrade?'(auto-trade ON)':'(solo análisis)'));
+    toast('Agente IA activado ['+provider+'] '+(autoTrade?'(auto-trade ON)':'(solo análisis)')+' ['+interval+'s]');
     aiLastLogCount=0;
     updateAIUI(r);
     startAIPolling();
@@ -2162,6 +2191,28 @@ async function loadUserSettings(){
       statusEl.innerHTML='<span style="color:#fbbf24;font-size:.85rem">⚠ Sin API Key configurada. Abre la guía abajo para obtenerla.</span>';
       document.getElementById('deleteApiKeysBtn').style.display='none';
     }
+    // AI provider keys status
+    const aiKeyStatusEl=document.getElementById('aiKeyStatus');
+    if(aiKeyStatusEl){
+      if(s.can_use_own_ai_keys){
+        let html='<div style="margin-bottom:.5rem">';
+        html+='<span style="color:#34d399;font-size:.85rem">Groq: '+(s.has_groq_key?'✓ Configurada':'✗ Sin configurar')+'</span><br>';
+        html+='<span style="color:#34d399;font-size:.85rem">Gemini: '+(s.has_gemini_key?'✓ Configurada':'✗ Sin configurar')+'</span>';
+        html+='</div>';
+        html+='<p style="color:#64748b;font-size:.75rem">Si no configuras tus propias keys, se usarán las del servidor con intervalo mínimo de '+s.min_ai_interval+'s.</p>';
+        aiKeyStatusEl.innerHTML=html;
+        document.getElementById('aiKeysSection').style.display='block';
+        const delAiBtn=document.getElementById('deleteAiKeysBtn');
+        if(delAiBtn)delAiBtn.style.display=(s.has_groq_key||s.has_gemini_key)?'inline-block':'none';
+      }else{
+        aiKeyStatusEl.innerHTML='<p style="color:#fbbf24;font-size:.85rem">Tu plan FREE usa las API keys del servidor. Mejora a PRO para usar tus propias keys y menores intervalos.</p>';
+        document.getElementById('aiKeysSection').style.display='none';
+      }
+    }
+    // Store min interval for AI Agent tab
+    window._minAIInterval=s.min_ai_interval||120;
+    const aiIntervalInput=document.getElementById('aiInterval');
+    if(aiIntervalInput){aiIntervalInput.min=window._minAIInterval}
     // Plan limits from API
     document.getElementById('settingsMaxPairs').textContent=plan.max_pairs===-1?'Ilimitados':plan.max_pairs;
     document.getElementById('settingsMaxPositions').textContent=plan.max_positions===-1?'Ilimitadas':plan.max_positions;
@@ -2173,8 +2224,8 @@ async function loadUserSettings(){
         paper_trading:'Paper Trading',
         ai_agent_analysis:'Análisis IA',
         ai_agent_autotrade:'Auto-trade IA',
-        ml_training:'Entrenamiento ML',
         telegram_notifications:'Notificaciones Telegram',
+        ai_provider_keys:'API Keys IA Propias',
         priority_support:'Soporte Prioritario',
         custom_strategies:'Estrategias Custom'
       };
@@ -2240,6 +2291,31 @@ async function deleteApiKeys(){
   }catch(e){toast(e.message,false)}
 }
 
+async function saveAiKeys(){
+  const groqKey=document.getElementById('settingsAiGroqKey').value.trim();
+  const geminiKey=document.getElementById('settingsAiGeminiKey').value.trim();
+  if(!groqKey&&!geminiKey){toast('Ingresa al menos una key',false);return}
+  try{
+    const body={};
+    if(groqKey)body.ai_groq_key=groqKey;
+    if(geminiKey)body.ai_gemini_key=geminiKey;
+    await api('/api/user/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    toast('AI Keys guardadas correctamente');
+    document.getElementById('settingsAiGroqKey').value='';
+    document.getElementById('settingsAiGeminiKey').value='';
+    loadUserSettings();
+  }catch(e){toast(e.message,false)}
+}
+
+async function deleteAiKeys(){
+  if(!confirm('¿Eliminar tus API Keys de IA? Se usarán las del servidor.'))return;
+  try{
+    await api('/api/user/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({ai_groq_key:'',ai_gemini_key:''})});
+    toast('AI Keys eliminadas');
+    loadUserSettings();
+  }catch(e){toast(e.message,false)}
+}
+
 async function saveRiskProfile(){
   const profile=document.querySelector('input[name="riskProfile"]:checked');
   if(!profile){toast('Selecciona un perfil',false);return}
@@ -2252,7 +2328,7 @@ async function saveRiskProfile(){
 function showUpgradeModal(){
   const overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:200';
-  overlay.innerHTML='<div style="background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem;max-width:450px;width:90%"><h2 style="color:#38bdf8;font-size:1.3rem;margin-bottom:1rem">Mejorar Plan</h2><p style="color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem">Selecciona el plan al que quieres upgrade. Pago mensual vía Binance Pay (USDT).</p><div style="display:flex;flex-direction:column;gap:.8rem"><button onclick="startPayment(\'pro\')" style="padding:1rem;border:1px solid #334155;border-radius:.5rem;background:#0f172a;color:#e2e8f0;cursor:pointer;text-align:left"><div style="font-weight:700;color:#38bdf8;font-size:1rem">Pro — $29 USDT/mes</div><div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem">10 pares, 10 posiciones, 500 IA requests/día, auto-trade, ML, Telegram</div></button><button onclick="startPayment(\'premium\')" style="padding:1rem;border:1px solid #334155;border-radius:.5rem;background:#0f172a;color:#e2e8f0;cursor:pointer;text-align:left"><div style="font-weight:700;color:#f59e0b;font-size:1rem">Premium — $99 USDT/mes</div><div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem">Ilimitado, soporte prioritario, estrategias custom</div></button></div><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="margin-top:1rem;width:100%;padding:.6rem;border:none;border-radius:.5rem;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600">Cancelar</button></div>';
+  overlay.innerHTML='<div style="background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem;max-width:450px;width:90%"><h2 style="color:#38bdf8;font-size:1.3rem;margin-bottom:1rem">Mejorar Plan</h2><p style="color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem">Selecciona el plan al que quieres upgrade. Pago mensual vía Binance Pay (USDT).</p><div style="display:flex;flex-direction:column;gap:.8rem"><button onclick="startPayment(\'pro\')" style="padding:1rem;border:1px solid #334155;border-radius:.5rem;background:#0f172a;color:#e2e8f0;cursor:pointer;text-align:left"><div style="font-weight:700;color:#38bdf8;font-size:1rem">Pro — $29 USDT/mes</div><div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem">10 pares, 10 posiciones, 500 IA requests/día, auto-trade, API keys IA propias, Telegram</div></button><button onclick="startPayment(\'premium\')" style="padding:1rem;border:1px solid #334155;border-radius:.5rem;background:#0f172a;color:#e2e8f0;cursor:pointer;text-align:left"><div style="font-weight:700;color:#f59e0b;font-size:1rem">Premium — $99 USDT/mes</div><div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem">Ilimitado, soporte prioritario, estrategias custom</div></button></div><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="margin-top:1rem;width:100%;padding:.6rem;border:none;border-radius:.5rem;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600">Cancelar</button></div>';
   document.body.appendChild(overlay);
 }
 

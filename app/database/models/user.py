@@ -31,6 +31,9 @@ class User(Base):
     # Encrypted API keys (stored encrypted at rest)
     binance_api_key_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
     binance_api_secret_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # AI provider keys (encrypted)
+    ai_groq_key_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ai_gemini_key_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # User preferences
     risk_profile: Mapped[str] = mapped_column(String(20), nullable=False, default="moderate")
     # Telegram notifications

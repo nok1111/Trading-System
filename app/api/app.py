@@ -167,12 +167,18 @@ class UpdateSettingsRequest(BaseModel):
     default_symbols: str | None = None
     telegram_chat_id: str | None = None
     telegram_alerts: bool | None = None
+    ai_groq_key: str | None = None
+    ai_gemini_key: str | None = None
 
 
 @app.get("/api/user/settings")
 def get_user_settings(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
     """Obtiene la configuración del usuario actual."""
     has_api_key = bool(current_user.binance_api_key_enc)
+    has_groq_key = bool(current_user.ai_groq_key_enc)
+    has_gemini_key = bool(current_user.ai_gemini_key_enc)
+    limits = get_plan_limits(current_user.subscription)
+    can_use_own_keys = "ai_provider_keys" in limits["features"]
     return {
         "email": current_user.email,
         "username": current_user.username,
@@ -182,6 +188,10 @@ def get_user_settings(current_user: Annotated[User, Depends(get_current_user)]) 
         "binance_api_key_preview": decrypt(current_user.binance_api_key_enc)[:8] + "..." if has_api_key else None,
         "telegram_chat_id": current_user.telegram_chat_id,
         "telegram_alerts": current_user.telegram_alerts,
+        "has_groq_key": has_groq_key,
+        "has_gemini_key": has_gemini_key,
+        "can_use_own_ai_keys": can_use_own_keys,
+        "min_ai_interval": limits["max_ai_interval_seconds"],
     }
 
 
@@ -208,6 +218,16 @@ def update_user_settings(
             user.telegram_chat_id = req.telegram_chat_id
         if req.telegram_alerts is not None:
             user.telegram_alerts = req.telegram_alerts
+        if req.ai_groq_key is not None:
+            limits = get_plan_limits(user.subscription)
+            if "ai_provider_keys" not in limits["features"]:
+                raise HTTPException(status_code=403, detail="Tu plan no permite configurar API keys propias de IA. Mejora a PRO o PREMIUM.")
+            user.ai_groq_key_enc = encrypt(req.ai_groq_key) if req.ai_groq_key else None
+        if req.ai_gemini_key is not None:
+            limits = get_plan_limits(user.subscription)
+            if "ai_provider_keys" not in limits["features"]:
+                raise HTTPException(status_code=403, detail="Tu plan no permite configurar API keys propias de IA. Mejora a PRO o PREMIUM.")
+            user.ai_gemini_key_enc = encrypt(req.ai_gemini_key) if req.ai_gemini_key else None
         db.commit()
         db.refresh(user)
         return {
@@ -218,6 +238,8 @@ def update_user_settings(
             "has_binance_api_key": bool(user.binance_api_key_enc),
             "telegram_chat_id": user.telegram_chat_id,
             "telegram_alerts": user.telegram_alerts,
+            "has_groq_key": bool(user.ai_groq_key_enc),
+            "has_gemini_key": bool(user.ai_gemini_key_enc),
         }
     finally:
         db.close()
@@ -1691,26 +1713,78 @@ class AIStartRequest(BaseModel):
 
 
 @app.post("/api/ai-agent/start")
-def ai_agent_start(req: AIStartRequest = AIStartRequest()) -> dict:
-    """Inicia el agente de IA autónomo."""
+def ai_agent_start(
+    req: AIStartRequest = AIStartRequest(),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> dict:
+    """Inicia el agente de IA autónomo.
+
+    Key resolution order:
+    1. User-provided keys in request body (from UI input)
+    2. User's stored encrypted keys (from settings)
+    3. Server .env keys (fallback for FREE users)
+
+    Interval is enforced based on plan:
+    - FREE: min 120s
+    - PRO: min 15s
+    - PREMIUM: min 10s
+    """
     agent = _get_or_create_agent()
-    if req.provider:
-        agent.provider = req.provider
-    if req.groq_api_key:
-        agent.groq_api_key = req.groq_api_key
-    if req.gemini_api_key:
-        agent.gemini_api_key = req.gemini_api_key
+    settings = get_settings()
+
+    # Resolve provider
+    provider = req.provider or getattr(settings, "AI_PROVIDER", "groq")
+    agent.provider = provider
+
+    # Resolve API keys: request > user stored > .env
+    groq_key = req.groq_api_key
+    gemini_key = req.gemini_api_key
+
+    if not groq_key and current_user and current_user.ai_groq_key_enc:
+        try:
+            groq_key = decrypt(current_user.ai_groq_key_enc)
+        except Exception:
+            pass
+    if not gemini_key and current_user and current_user.ai_gemini_key_enc:
+        try:
+            gemini_key = decrypt(current_user.ai_gemini_key_enc)
+        except Exception:
+            pass
+
+    if not groq_key:
+        groq_key = getattr(settings, "GROQ_API_KEY", None)
+    if not gemini_key:
+        gemini_key = getattr(settings, "GEMINI_API_KEY", None)
+
+    if groq_key:
+        agent.groq_api_key = groq_key
+    if gemini_key:
+        agent.gemini_api_key = gemini_key
+
+    # Resolve model
     if req.model:
-        if agent.provider == "groq":
+        if provider == "groq":
             agent.groq_model = req.model
-        elif agent.provider == "gemini":
+        elif provider == "gemini":
             agent.gemini_model = req.model
         else:
             agent.ollama_model = req.model
-    if req.interval_seconds is not None and req.interval_seconds >= 10:
-        agent.interval = req.interval_seconds
+
+    # Enforce plan-based interval minimum
+    if current_user:
+        limits = get_plan_limits(current_user.subscription)
+        min_interval = limits["max_ai_interval_seconds"]
+    else:
+        min_interval = 10
+
+    requested_interval = req.interval_seconds if req.interval_seconds is not None else agent.interval
+    if requested_interval < min_interval:
+        requested_interval = min_interval
+    agent.interval = requested_interval
+
     if req.auto_trade is not None:
         agent.auto_trade = req.auto_trade
+
     agent.start()
     # Create initial snapshot so overview tab shows data
     try:
