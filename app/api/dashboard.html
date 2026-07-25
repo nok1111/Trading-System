@@ -481,7 +481,9 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 </div>
 <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;margin-top:1.4rem"><input type="checkbox" id="aiAutoTrade" checked style="width:18px;height:18px;accent-color:#a78bfa;cursor:pointer"><span style="color:#a78bfa">Auto-trade (ejecutar compras/ventas)</span></label>
+<button class="btn" id="aiTestKeyBtn" onclick="testAiKey()" style="margin-top:1.4rem;padding:.4rem .8rem;font-size:.8rem;background:#1e293b;border:1px solid #a78bfa;color:#a78bfa;border-radius:.5rem;cursor:pointer">🔑 Probar API Key</button>
 </div>
+<div id="aiTestKeyResult" style="display:none;margin-bottom:1rem;padding:.6rem .8rem;border-radius:.5rem;font-size:.8rem"></div>
 <div id="aiLiveWarning" style="display:none;margin-bottom:1rem;padding:.6rem .8rem;background:#7f1d1d;border-radius:.5rem;border:1px solid #fca5a5">
 <p style="color:#fca5a5;font-size:.75rem">⚠️ <b>Live Trading:</b> Las órdenes se ejecutarán con dinero real en tu cuenta de Binance. Asegúrate de tener API keys configuradas y revisar tu perfil de riesgo.</p>
 </div>
@@ -2593,6 +2595,46 @@ function aiTradeModeChanged(){
     label.textContent='PAPER';
     label.style.color='#34d399';
   }
+}
+
+async function testAiKey(){
+  const resultDiv=document.getElementById('aiTestKeyResult');
+  const btn=document.getElementById('aiTestKeyBtn');
+  const provider=document.getElementById('aiProvider').value;
+  const model=document.getElementById('aiModel').value;
+  const groqKey=document.getElementById('aiGroqKey').value.trim();
+  const geminiKey=document.getElementById('aiGeminiKey').value.trim();
+  const premiumKey=document.getElementById('aiPremiumKey').value.trim();
+  resultDiv.style.display='block';
+  resultDiv.style.background='#1e293b';
+  resultDiv.style.border='1px solid #334155';
+  resultDiv.style.color='#94a3b8';
+  resultDiv.innerHTML='⏳ Probando API Key de '+provider+'...';
+  btn.disabled=true;btn.style.opacity='0.5';
+  try{
+    const body={provider,model};
+    if(groqKey)body.groq_api_key=groqKey;
+    if(geminiKey)body.gemini_api_key=geminiKey;
+    if(premiumKey)body.premium_api_key=premiumKey;
+    const r=await api('/api/ai-agent/test-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){
+      resultDiv.style.background='#064e3b';
+      resultDiv.style.border='1px solid #34d399';
+      resultDiv.style.color='#34d399';
+      resultDiv.innerHTML='✅ <b>'+r.provider+'</b> responde correctamente. Modelo: <b>'+r.model+'</b>';
+    }else{
+      resultDiv.style.background='#7f1d1d';
+      resultDiv.style.border='1px solid #f87171';
+      resultDiv.style.color='#fca5a5';
+      resultDiv.innerHTML='❌ <b>Error:</b> '+(r.error||'Error desconocido');
+    }
+  }catch(e){
+    resultDiv.style.background='#7f1d1d';
+    resultDiv.style.border='1px solid #f87171';
+    resultDiv.style.color='#fca5a5';
+    resultDiv.innerHTML='❌ <b>Error:</b> '+(e.message||'No se pudo conectar');
+  }
+  btn.disabled=false;btn.style.opacity='1';
 }
 
 async function aiStart(){

@@ -1857,6 +1857,115 @@ def ai_agent_stop() -> dict:
     return agent.get_status()
 
 
+@app.post("/api/ai-agent/test-key")
+def ai_agent_test_key(
+    req: AIStartRequest = AIStartRequest(),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> dict:
+    """Test if the selected AI provider's API key is valid by sending a minimal request."""
+    import requests as req_lib
+
+    settings = get_settings()
+    provider = req.provider or getattr(settings, "AI_PROVIDER", "groq")
+
+    # Resolve keys: request > user stored > .env
+    groq_key = req.groq_api_key
+    gemini_key = req.gemini_api_key
+    if not groq_key and current_user and current_user.ai_groq_key_enc:
+        try:
+            groq_key = decrypt(current_user.ai_groq_key_enc)
+        except Exception:
+            pass
+    if not gemini_key and current_user and current_user.ai_gemini_key_enc:
+        try:
+            gemini_key = decrypt(current_user.ai_gemini_key_enc)
+        except Exception:
+            pass
+    if not groq_key:
+        groq_key = getattr(settings, "GROQ_API_KEY", None)
+    if not gemini_key:
+        gemini_key = getattr(settings, "GEMINI_API_KEY", None)
+
+    model = req.model or getattr(settings, "AI_MODEL", "")
+
+    try:
+        if provider == "groq":
+            if not groq_key:
+                return {"ok": False, "error": "GROQ_API_KEY no configurada"}
+            resp = req_lib.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={"model": model or "llama-3.1-8b-instant", "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "provider": "Groq", "model": model or "llama-3.1-8b-instant"}
+            return {"ok": False, "error": f"Groq API error {resp.status_code}: {resp.text[:200]}"}
+
+        elif provider == "gemini":
+            if not gemini_key:
+                return {"ok": False, "error": "GEMINI_API_KEY no configurada"}
+            gemini_model = model or "gemini-2.0-flash"
+            resp = req_lib.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}",
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": "Hi"}]}], "generationConfig": {"maxOutputTokens": 5}},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "provider": "Gemini", "model": gemini_model}
+            return {"ok": False, "error": f"Gemini API error {resp.status_code}: {resp.text[:200]}"}
+
+        elif provider == "ollama":
+            ollama_url = getattr(settings, "OLLAMA_URL", "http://localhost:11434")
+            ollama_model = model or getattr(settings, "OLLAMA_MODEL", "qwen2.5:14b")
+            try:
+                resp = req_lib.post(
+                    f"{ollama_url}/api/chat",
+                    json={"model": ollama_model, "messages": [{"role": "user", "content": "Hi"}], "stream": False},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    return {"ok": True, "provider": "Ollama", "model": ollama_model}
+                return {"ok": False, "error": f"Ollama error {resp.status_code}: {resp.text[:200]}"}
+            except Exception as exc:
+                return {"ok": False, "error": f"Ollama no disponible: {exc}"}
+
+        elif provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            PREMIUM_BASE_URLS = {
+                "openai": "https://api.openai.com/v1",
+                "deepseek": "https://api.deepseek.com/v1",
+                "mistral": "https://api.mistral.ai/v1",
+                "together": "https://api.together.xyz/v1",
+                "perplexity": "https://api.perplexity.ai",
+                "grok": "https://api.x.ai/v1",
+            }
+            premium_key = req.premium_api_key
+            if not premium_key and current_user and current_user.ai_premium_key_enc:
+                try:
+                    premium_key = decrypt(current_user.ai_premium_key_enc)
+                except Exception:
+                    pass
+            if not premium_key:
+                return {"ok": False, "error": f"{provider.upper()}_API_KEY no configurada"}
+            base_url = req.premium_base_url or (current_user.ai_premium_base_url if current_user else None) or PREMIUM_BASE_URLS[provider]
+            resp = req_lib.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {premium_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "provider": provider, "model": model}
+            return {"ok": False, "error": f"{provider} API error {resp.status_code}: {resp.text[:200]}"}
+
+        else:
+            return {"ok": False, "error": f"Provider '{provider}' no soportado"}
+
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @app.get("/api/ai-agent/status")
 def ai_agent_status() -> dict:
     """Obtiene el estado del agente de IA."""
