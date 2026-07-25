@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy import case
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -30,6 +30,7 @@ from app.database.models import (
     Signal,
     StrategyRun,
     Trade,
+    User,
 )
 from app.database.session import SessionLocal
 
@@ -40,6 +41,109 @@ app = FastAPI(
 )
 
 _DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
+
+# ---------------------------------------------------------------------------
+# Authentication (JWT)
+# ---------------------------------------------------------------------------
+from app.services.auth import (
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    hash_password,
+)
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    username: str
+    subscription: str
+    risk_profile: str
+    is_active: bool
+    created_at: str
+
+
+@app.post("/api/auth/register")
+def auth_register(req: RegisterRequest) -> dict:
+    """Registra un nuevo usuario (plan free por defecto)."""
+    db = SessionLocal()
+    try:
+        existing = db.execute(select(User).where(User.email == req.email)).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email ya registrado")
+        existing_user = db.execute(select(User).where(User.username == req.username)).scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Username ya registrado")
+        user = User(
+            email=req.email,
+            username=req.username,
+            hashed_password=hash_password(req.password),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        token = create_access_token(user.id)
+        return {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "subscription": user.subscription,
+                "risk_profile": user.risk_profile,
+            },
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest) -> dict:
+    """Login con email y password, retorna JWT."""
+    db = SessionLocal()
+    try:
+        user = authenticate_user(db, req.email, req.password)
+        if not user:
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        token = create_access_token(user.id)
+        return {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "subscription": user.subscription,
+                "risk_profile": user.risk_profile,
+            },
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/auth/me")
+def auth_me(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
+    """Retorna el usuario autenticado actual."""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "subscription": current_user.subscription,
+        "risk_profile": current_user.risk_profile,
+        "is_active": current_user.is_active,
+        "created_at": str(current_user.created_at),
+    }
+
 
 # ---------------------------------------------------------------------------
 # ML training status (in-memory, single-instance)

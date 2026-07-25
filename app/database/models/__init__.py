@@ -12,6 +12,7 @@ from app.database.models.signal import Signal
 from app.database.models.strategy_run import StrategyRun
 from app.database.models.system_event import SystemEvent
 from app.database.models.trade import Trade
+from app.database.models.user import SubscriptionPlan, User
 
 __all__ = [
     "AccountSnapshot",
@@ -26,4 +27,6 @@ __all__ = [
     "StrategyRun",
     "SystemEvent",
     "Trade",
+    "SubscriptionPlan",
+    "User",
 ]
