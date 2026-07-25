@@ -137,7 +137,6 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <button class="tab" data-tab="performance">Performance</button>
 <button class="tab" data-tab="market">Mercado</button>
 <button class="tab" data-tab="ai">AI Agent</button>
-<button class="tab" data-tab="ailive">AI Live</button>
 <button class="tab" data-tab="settings">Settings</button>
 </div>
 <div class="content">
@@ -382,7 +381,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 
 <div style="margin-bottom:1rem;padding:.6rem .8rem;background:#0f172a;border-radius:.5rem;border:1px solid #334155">
-<p style="color:#64748b;font-size:.75rem;line-height:1.5"><b style="color:#a78bfa">AI Agent</b> = configura y controla el agente (provider, modelo, modo). <b style="color:#38bdf8">AI Live</b> = monitorea el agente en tiempo real (qué ve, qué analiza, qué decide).</p>
+<p style="color:#64748b;font-size:.75rem;line-height:1.5">Configura el provider, modelo y modo de trading. El agente analizará el mercado y ejecutará trades automáticamente. El feed en tiempo real muestra qué ve, qué analiza y qué decide en cada ciclo.</p>
 </div>
 
 <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:flex-start">
@@ -493,53 +492,19 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <div class="card"><div class="label">Provider</div><div class="value" id="aiProviderLabel">--</div></div>
 <div class="card"><div class="label">Modelo</div><div class="value" id="aiModelLabel" style="font-size:1rem">--</div></div>
 <div class="card"><div class="label">Ciclos</div><div class="value blue" id="aiCycles">0</div></div>
+<div class="card"><div class="label">Fase</div><div class="value" id="aiLivePhase">--</div></div>
+<div class="card"><div class="label">Acciones Ciclo</div><div class="value" id="aiLiveActions">0</div></div>
+<div class="card"><div class="label">Total Decisiones</div><div class="value" id="aiLiveTotalDecisions">0</div></div>
 <div class="card"><div class="label">Auto-trade</div><div class="value" id="aiAutoTradeLabel">--</div></div>
 <div class="card"><div class="label">Modo</div><div class="value" id="aiTradeModeLabel" style="color:#34d399">PAPER</div></div>
 </div>
 
 <div style="margin-top:1.5rem">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Log de Decisiones del Agente IA</h3>
-<div class="log-box" id="aiLog" style="max-height:450px"><div class="log-entry" style="color:#64748b">Activa el agente IA para ver sus decisiones en tiempo real.</div></div>
-</div>
-</div>
-
-<!-- AI Live Panel — Real-time Monitor -->
-<div id="ailive" class="panel">
-<div class="card" style="margin-bottom:1rem;padding:1.2rem;border-left:3px solid #38bdf8">
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">
-<div>
-<h3 style="color:#38bdf8;font-size:1.2rem">AI Live — Monitor en Tiempo Real</h3>
-<p style="color:#94a3b8;font-size:.8rem;margin-top:.3rem">Observa lo que el agente IA ve, analiza y decide en cada ciclo. Comunicación completa con el LLM en vivo.</p>
-</div>
-<div style="display:flex;gap:.6rem;align-items:center">
-<span id="aiLiveStatus" style="padding:.4rem .9rem;border-radius:999px;font-size:.8rem;font-weight:700;background:#334155;color:#94a3b8">INACTIVO</span>
-<button class="btn btn-green" id="aiLiveStartBtn" onclick="aiStart()">Activar IA</button>
-<button class="btn btn-red" id="aiLiveStopBtn" onclick="aiStop()" disabled>Desactivar IA</button>
-</div>
-</div>
-
-<div style="margin-bottom:1rem;padding:.6rem .8rem;background:#0f172a;border-radius:.5rem;border:1px solid #334155">
-<p style="color:#64748b;font-size:.75rem;line-height:1.5">Este tab es de <b style="color:#38bdf8">solo lectura</b> — muestra el feed en vivo del agente. Para cambiar configuración, ve a <b style="color:#a78bfa">AI Agent</b>.</p>
-</div>
-</div>
-
-<div class="cards" style="margin-bottom:1rem">
-<div class="card"><div class="label">Ciclo Actual</div><div class="value blue" id="aiLiveCycle">0</div></div>
-<div class="card"><div class="label">Fase</div><div class="value" id="aiLivePhase">--</div></div>
-<div class="card"><div class="label">Provider</div><div class="value" id="aiLiveProvider">--</div></div>
-<div class="card"><div class="label">Modelo Activo</div><div class="value" id="aiLiveModel" style="font-size:.9rem">--</div></div>
-<div class="card"><div class="label">Acciones Ciclo</div><div class="value" id="aiLiveActions">0</div></div>
-<div class="card"><div class="label">Total Decisiones</div><div class="value" id="aiLiveTotalDecisions">0</div></div>
-</div>
-
-<div style="margin-top:1rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem"><span class="live-dot" id="aiLiveDot" style="display:none"></span>Feed del Agente IA — Comunicación Completa</h3>
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem"><span class="live-dot" id="aiLiveDot" style="display:none"></span>Feed del Agente IA — Tiempo Real</h3>
 <div id="aiLiveFeed" style="background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:1rem;max-height:600px;overflow-y:auto;font-family:'Consolas',monospace;font-size:.82rem;line-height:1.6">
-<div style="color:#64748b;text-align:center;padding:2rem">Activa el agente IA desde <b style="color:#a78bfa">AI Agent</b> para ver su comunicación en tiempo real.</div>
+<div style="color:#64748b;text-align:center;padding:2rem">Activa el agente IA para ver su comunicación en tiempo real.</div>
 </div>
 </div>
-</div>
-
 </div>
 
 <!-- Settings Panel -->
@@ -738,7 +703,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <p>Tu cuenta está configurada. Ya puedes empezar a usar Alvora.</p>
 <div style="text-align:center;padding:1rem 0">
 <div style="font-size:3rem;margin-bottom:1rem">✅</div>
-<p style="color:#cbd5e1;font-size:.9rem">Dirígete a la pestaña <b style="color:#a78bfa">AI Agent</b> para configurar el modelo de IA y activar el trading automático, o a <b style="color:#38bdf8">AI Live</b> para monitorear el agente en tiempo real.</p>
+<p style="color:#cbd5e1;font-size:.9rem">Dirígete a la pestaña <b style="color:#a78bfa">AI Agent</b> para configurar el modelo de IA, activar el trading automático y monitorear el agente en tiempo real.</p>
 </div>
 </div>
 <div class="onb-dots">
@@ -851,7 +816,7 @@ function initDashboard(){
   refreshTimer=setInterval(()=>{loadHealth();loadPaperStatus();loadPaperStats()},2000);
   setInterval(()=>{loadLivePrices()},1000);
   setInterval(()=>{updateCountdown()},1000);
-  (async()=>{try{await checkAIStatus();await checkAILiveStatus()}catch{}})();
+  (async()=>{try{await checkAIStatus()}catch{}})();
   initAIPreferences();
 }
 
@@ -2719,14 +2684,15 @@ function updateAIUI(status){
   stateEl.className='value '+(running?'green':'');
   document.getElementById('aiStartBtn').disabled=running;
   document.getElementById('aiStopBtn').disabled=!running;
-  document.getElementById('aiLiveStartBtn').disabled=running;
-  document.getElementById('aiLiveStopBtn').disabled=!running;
   document.getElementById('aiProviderLabel').textContent=status.provider||'--';
   document.getElementById('aiModelLabel').textContent=status.model||'--';
   document.getElementById('aiCycles').textContent=status.cycles||0;
   const atEl=document.getElementById('aiAutoTradeLabel');
   atEl.textContent=status.auto_trade?'ON':'OFF';
   atEl.className='value '+(status.auto_trade?'green':'red');
+  // Update live dot
+  const liveDot=document.getElementById('aiLiveDot');
+  if(liveDot){liveDot.style.display=running?'inline-block':'none'}
   // Update trade mode label
   const tmLabel=document.getElementById('aiTradeModeLabel');
   if(tmLabel){
@@ -2750,59 +2716,20 @@ async function checkAIStatus(){
   try{
     const status=await api('/api/ai-agent/status');
     updateAIUI(status);
-  }catch{}
-}
-
-async function checkAILiveStatus(){
-  try{
-    const status=await api('/api/ai-agent/status');
-    const liveStatus=document.getElementById('aiLiveStatus');
-    const liveDot=document.getElementById('aiLiveDot');
     if(status.is_running){
-      liveStatus.textContent='ACTIVO';
-      liveStatus.style.background='#064e3b';
-      liveStatus.style.color='#34d399';
-      liveDot.style.display='inline-block';
-      document.getElementById('aiLiveStartBtn').disabled=true;
-      document.getElementById('aiLiveStopBtn').disabled=false;
       const logs=await api('/api/ai-agent/log?limit=20');
       const liveFeed=document.getElementById('aiLiveFeed');
-      const aiLogBox=document.getElementById('aiLog');
       if(logs&&logs.length>0){
         liveFeed.innerHTML='';
-        if(aiLogBox)aiLogBox.innerHTML='';
         logs.reverse().forEach(entry=>{
           const time=entry.timestamp?new Date(entry.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
           addAILiveEntry(entry,time);
-          if(aiLogBox){
-            const div=document.createElement('div');
-            div.className='log-entry';
-            let color='#38bdf8';
-            if(entry.level==='error')color='#f87171';
-            else if(entry.level==='warn')color='#fbbf24';
-            else if(entry.message&&entry.message.includes('Comprando'))color='#34d399';
-            else if(entry.message&&entry.message.includes('Vendiendo'))color='#f87171';
-            else if(entry.message&&entry.message.includes('Sin acciones'))color='#94a3b8';
-            div.innerHTML='<span class="log-time">'+time+'</span> <span style="color:'+color+'">['+entry.level.toUpperCase()+']</span> '+entry.message;
-            if(entry.analysis){div.innerHTML+='<div style="color:#a78bfa;font-size:.78rem;margin-left:1rem;margin-top:.2rem">Análisis: '+entry.analysis+'</div>'}
-            if(entry.risk_assessment){div.innerHTML+='<div style="color:#fbbf24;font-size:.78rem;margin-left:1rem">Riesgo: '+entry.risk_assessment+'</div>'}
-            aiLogBox.insertBefore(div,aiLogBox.firstChild);
-          }
         });
         const allLogs=await api('/api/ai-agent/log?limit=500');
         aiLastLogCount=allLogs?allLogs.length:0;
       }
       startAIPolling();
-    }else{
-      liveStatus.textContent='INACTIVO';
-      liveStatus.style.background='#334155';
-      liveStatus.style.color='#94a3b8';
-      liveDot.style.display='none';
-      document.getElementById('aiLiveStartBtn').disabled=false;
-      document.getElementById('aiLiveStopBtn').disabled=true;
     }
-    document.getElementById('aiLiveProvider').textContent=status.provider||'--';
-    document.getElementById('aiLiveCycle').textContent=status.cycles||0;
   }catch{}
 }
 
@@ -2811,54 +2738,16 @@ async function pollAI(){
     const status=await api('/api/ai-agent/status');
     updateAIUI(status);
 
-    // Update AI Live status cards
-    const liveStatus=document.getElementById('aiLiveStatus');
-    const liveDot=document.getElementById('aiLiveDot');
-    if(status.is_running){
-      liveStatus.textContent='ACTIVO';
-      liveStatus.style.background='#064e3b';
-      liveStatus.style.color='#34d399';
-      liveDot.style.display='inline-block';
-      document.getElementById('aiLiveStartBtn').disabled=true;
-      document.getElementById('aiLiveStopBtn').disabled=false;
-    }else{
-      liveStatus.textContent='INACTIVO';
-      liveStatus.style.background='#334155';
-      liveStatus.style.color='#94a3b8';
-      liveDot.style.display='none';
-      document.getElementById('aiLiveStartBtn').disabled=false;
-      document.getElementById('aiLiveStopBtn').disabled=true;
-    }
-    document.getElementById('aiLiveProvider').textContent=status.provider||'--';
-    document.getElementById('aiLiveCycle').textContent=status.cycles||0;
-
     if(status.is_running){
       const logs=await api('/api/ai-agent/log?limit=100');
       if(logs&&logs.length>aiLastLogCount){
         const newLogs=logs.slice(0,logs.length-aiLastLogCount);
         aiLastLogCount=logs.length;
-        const box=document.getElementById('aiLog');
         const liveFeed=document.getElementById('aiLiveFeed');
-        if(aiLastLogCount===logs.length&&box.children.length===1&&box.children[0].style.color==='rgb(100, 116, 139)'){box.innerHTML=''}
         if(liveFeed.children.length===1&&liveFeed.children[0].style.color==='rgb(100, 116, 139)'){liveFeed.innerHTML=''}
 
         for(const entry of newLogs){
-          // Add to AI Agent log (compact)
-          const div=document.createElement('div');
-          div.className='log-entry';
           const time=entry.timestamp?new Date(entry.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
-          let color='#38bdf8';
-          if(entry.level==='error')color='#f87171';
-          else if(entry.level==='warn')color='#fbbf24';
-          else if(entry.message&&entry.message.includes('Comprando'))color='#34d399';
-          else if(entry.message&&entry.message.includes('Vendiendo'))color='#f87171';
-          else if(entry.message&&entry.message.includes('Sin acciones'))color='#94a3b8';
-          div.innerHTML='<span class="log-time">'+time+'</span> <span style="color:'+color+'">['+entry.level.toUpperCase()+']</span> '+entry.message;
-          if(entry.analysis){div.innerHTML+='<div style="color:#a78bfa;font-size:.78rem;margin-left:1rem;margin-top:.2rem">Análisis: '+entry.analysis+'</div>'}
-          if(entry.risk_assessment){div.innerHTML+='<div style="color:#fbbf24;font-size:.78rem;margin-left:1rem">Riesgo: '+entry.risk_assessment+'</div>'}
-          box.insertBefore(div,box.firstChild);
-
-          // Add to AI Live feed (detailed, chat-style)
           addAILiveEntry(entry,time);
         }
       }
