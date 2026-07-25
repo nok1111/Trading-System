@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
@@ -43,6 +44,11 @@ app = FastAPI(
 
 _DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 _LANDING_HTML = (Path(__file__).parent / "landing.html").read_text(encoding="utf-8")
+
+# Serve static files (images, etc.) from project root /images
+_static_path = Path(__file__).resolve().parent.parent.parent / "images"
+if _static_path.exists():
+    app.mount("/images", StaticFiles(directory=str(_static_path)), name="images")
 
 # ---------------------------------------------------------------------------
 # Authentication (JWT)
