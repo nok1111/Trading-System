@@ -34,6 +34,11 @@ class User(Base):
     # AI provider keys (encrypted)
     ai_groq_key_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
     ai_gemini_key_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Premium AI provider (OpenAI-compatible: OpenAI, DeepSeek, Mistral, Together, Perplexity, Grok)
+    ai_premium_key_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ai_premium_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ai_premium_base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ai_premium_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # User preferences
     risk_profile: Mapped[str] = mapped_column(String(20), nullable=False, default="moderate")
     # Telegram notifications

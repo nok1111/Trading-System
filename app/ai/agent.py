@@ -49,6 +49,9 @@ class AITradingAgent:
         gemini_model: str = "gemini-2.0-flash",
         ollama_url: str = "http://localhost:11434",
         ollama_model: str = "qwen2.5:14b",
+        openai_api_key: str | None = None,
+        openai_base_url: str = "https://api.openai.com/v1",
+        openai_model: str = "gpt-4o-mini",
         api_base: str = "http://127.0.0.1:8080",
         interval_seconds: int = 30,
         auto_trade: bool = True,
@@ -60,6 +63,9 @@ class AITradingAgent:
         self.gemini_model = gemini_model
         self.ollama_url = ollama_url.rstrip("/")
         self.ollama_model = ollama_model
+        self.openai_api_key = openai_api_key
+        self.openai_base_url = openai_base_url.rstrip("/")
+        self.openai_model = openai_model
         self.api_base = api_base
         self.interval = interval_seconds
         self.auto_trade = auto_trade
@@ -85,7 +91,7 @@ class AITradingAgent:
         return {
             "is_running": self.is_running,
             "provider": self.provider,
-            "model": self.groq_model if self.provider == "groq" else (self.gemini_model if self.provider == "gemini" else self.ollama_model),
+            "model": self.groq_model if self.provider == "groq" else (self.gemini_model if self.provider == "gemini" else (self.openai_model if self.provider in ("openai","deepseek","mistral","together","perplexity","grok") else self.ollama_model)),
             "interval_seconds": self.interval,
             "current_interval": self._current_interval,
             "hold_streak": self._hold_streak,
@@ -542,6 +548,17 @@ class AITradingAgent:
             if result is None:
                 self._add_log("error", "Ni Gemini, Groq ni Ollama disponibles.")
             return result
+        elif self.provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            result = self._ask_openai_compat(user_msg)
+            if result is None and self.groq_api_key:
+                self._add_log("warn", f"{self.provider} no disponible, intentando con Groq...")
+                result = self._ask_groq(user_msg)
+            if result is None:
+                self._add_log("warn", f"{self.provider} no disponible, intentando con Ollama local...")
+                result = self._ask_ollama(user_msg)
+            if result is None:
+                self._add_log("error", f"Ni {self.provider}, Groq ni Ollama disponibles.")
+            return result
         elif self.provider == "ollama":
             return self._ask_ollama(user_msg)
         else:
@@ -611,6 +628,40 @@ class AITradingAgent:
             return None
         except Exception as exc:
             self._add_log("error", f"Error consultando Gemini: {exc}")
+            return None
+
+    def _ask_openai_compat(self, user_msg: str) -> dict | None:
+        """Consulta a cualquier API compatible con OpenAI (OpenAI, DeepSeek, Mistral, Together, Perplexity, Grok)."""
+        if not self.openai_api_key:
+            self._add_log("error", f"API Key para {self.provider} no configurada")
+            return None
+        try:
+            resp = httpx.post(
+                f"{self.openai_base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.openai_model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 1000,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=45.0,
+            )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            return self._parse_response(content)
+        except httpx.HTTPStatusError as exc:
+            self._add_log("error", f"{self.provider} API error {exc.response.status_code}: {exc.response.text[:200]}")
+            return None
+        except Exception as exc:
+            self._add_log("error", f"Error consultando {self.provider}: {exc}")
             return None
 
     def _ask_ollama(self, user_msg: str) -> dict | None:

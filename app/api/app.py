@@ -169,6 +169,10 @@ class UpdateSettingsRequest(BaseModel):
     telegram_alerts: bool | None = None
     ai_groq_key: str | None = None
     ai_gemini_key: str | None = None
+    ai_premium_key: str | None = None
+    ai_premium_provider: str | None = None
+    ai_premium_base_url: str | None = None
+    ai_premium_model: str | None = None
 
 
 @app.get("/api/user/settings")
@@ -177,8 +181,10 @@ def get_user_settings(current_user: Annotated[User, Depends(get_current_user)]) 
     has_api_key = bool(current_user.binance_api_key_enc)
     has_groq_key = bool(current_user.ai_groq_key_enc)
     has_gemini_key = bool(current_user.ai_gemini_key_enc)
+    has_premium_key = bool(current_user.ai_premium_key_enc)
     limits = get_plan_limits(current_user.subscription)
     can_use_own_keys = "ai_provider_keys" in limits["features"]
+    can_use_premium = "ai_premium_providers" in limits["features"]
     return {
         "email": current_user.email,
         "username": current_user.username,
@@ -190,7 +196,11 @@ def get_user_settings(current_user: Annotated[User, Depends(get_current_user)]) 
         "telegram_alerts": current_user.telegram_alerts,
         "has_groq_key": has_groq_key,
         "has_gemini_key": has_gemini_key,
+        "has_premium_key": has_premium_key,
+        "premium_provider": current_user.ai_premium_provider,
+        "premium_model": current_user.ai_premium_model,
         "can_use_own_ai_keys": can_use_own_keys,
+        "can_use_premium_ai": can_use_premium,
         "min_ai_interval": limits["max_ai_interval_seconds"],
     }
 
@@ -228,6 +238,18 @@ def update_user_settings(
             if "ai_provider_keys" not in limits["features"]:
                 raise HTTPException(status_code=403, detail="Tu plan no permite configurar API keys propias de IA. Mejora a PRO o PREMIUM.")
             user.ai_gemini_key_enc = encrypt(req.ai_gemini_key) if req.ai_gemini_key else None
+        if req.ai_premium_key is not None or req.ai_premium_provider is not None:
+            limits = get_plan_limits(user.subscription)
+            if "ai_premium_providers" not in limits["features"]:
+                raise HTTPException(status_code=403, detail="Tu plan no permite usar providers de IA premium. Mejora a PRO o PREMIUM.")
+            if req.ai_premium_key is not None:
+                user.ai_premium_key_enc = encrypt(req.ai_premium_key) if req.ai_premium_key else None
+            if req.ai_premium_provider is not None:
+                user.ai_premium_provider = req.ai_premium_provider or None
+            if req.ai_premium_base_url is not None:
+                user.ai_premium_base_url = req.ai_premium_base_url or None
+            if req.ai_premium_model is not None:
+                user.ai_premium_model = req.ai_premium_model or None
         db.commit()
         db.refresh(user)
         return {
@@ -240,6 +262,9 @@ def update_user_settings(
             "telegram_alerts": user.telegram_alerts,
             "has_groq_key": bool(user.ai_groq_key_enc),
             "has_gemini_key": bool(user.ai_gemini_key_enc),
+            "has_premium_key": bool(user.ai_premium_key_enc),
+            "premium_provider": user.ai_premium_provider,
+            "premium_model": user.ai_premium_model,
         }
     finally:
         db.close()
@@ -1707,6 +1732,8 @@ class AIStartRequest(BaseModel):
     provider: str | None = None
     groq_api_key: str | None = None
     gemini_api_key: str | None = None
+    premium_api_key: str | None = None
+    premium_base_url: str | None = None
     model: str | None = None
     interval_seconds: int | None = None
     auto_trade: bool | None = None
@@ -1767,8 +1794,35 @@ def ai_agent_start(
             agent.groq_model = req.model
         elif provider == "gemini":
             agent.gemini_model = req.model
+        elif provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            agent.openai_model = req.model
         else:
             agent.ollama_model = req.model
+
+    # Resolve premium provider key + base URL: request > user stored
+    PREMIUM_BASE_URLS = {
+        "openai": "https://api.openai.com/v1",
+        "deepseek": "https://api.deepseek.com/v1",
+        "mistral": "https://api.mistral.ai/v1",
+        "together": "https://api.together.xyz/v1",
+        "perplexity": "https://api.perplexity.ai",
+        "grok": "https://api.x.ai/v1",
+    }
+    if provider in PREMIUM_BASE_URLS:
+        premium_key = req.premium_api_key
+        if not premium_key and current_user and current_user.ai_premium_key_enc:
+            try:
+                premium_key = decrypt(current_user.ai_premium_key_enc)
+            except Exception:
+                pass
+        if premium_key:
+            agent.openai_api_key = premium_key
+        base_url = req.premium_base_url or (current_user.ai_premium_base_url if current_user else None) or PREMIUM_BASE_URLS[provider]
+        agent.openai_base_url = base_url
+        if req.model:
+            agent.openai_model = req.model
+        elif current_user and current_user.ai_premium_model:
+            agent.openai_model = current_user.ai_premium_model
 
     # Enforce plan-based interval minimum
     if current_user:

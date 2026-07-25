@@ -26,14 +26,14 @@ PLAN_LIMITS: dict[str, dict] = {
         "max_positions": 10,
         "max_ai_requests_per_day": 500,
         "max_ai_interval_seconds": 15,
-        "features": ["paper_trading", "ai_agent_analysis", "ai_agent_autotrade", "telegram_notifications", "ai_provider_keys"],
+        "features": ["paper_trading", "ai_agent_analysis", "ai_agent_autotrade", "telegram_notifications", "ai_provider_keys", "ai_premium_providers"],
     },
     "premium": {
         "max_pairs": 999,
         "max_positions": 999,
         "max_ai_requests_per_day": 99999,
         "max_ai_interval_seconds": 10,
-        "features": ["paper_trading", "ai_agent_analysis", "ai_agent_autotrade", "telegram_notifications", "ai_provider_keys", "priority_support", "custom_strategies"],
+        "features": ["paper_trading", "ai_agent_analysis", "ai_agent_autotrade", "telegram_notifications", "ai_provider_keys", "ai_premium_providers", "priority_support", "custom_strategies"],
     },
 }
 
