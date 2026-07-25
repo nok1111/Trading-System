@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading System Dashboard</title>
+<title>Alvora — AI Trading System</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -73,7 +73,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </head>
 <body>
 <div class="header">
-<h1>Trading System</h1>
+<h1>Alvora</h1>
 <div style="display:flex;gap:1rem;align-items:center">
 <span id="autoRefreshBadge" style="display:none;font-size:.75rem;color:#34d399"><span class="live-dot"></span>Auto-refresh 3s</span>
 <div id="healthBadge" class="status stopped">Cargando...</div>
@@ -91,7 +91,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 
 <div id="authOverlay" class="auth-overlay">
 <div class="auth-box">
-  <h2>Trading System</h2>
+  <h2>Alvora</h2>
   <p>Sistema de trading algorítmico con IA</p>
   <div id="loginForm">
     <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
@@ -602,6 +602,10 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
     <div class="card" style="padding:.7rem .9rem"><div class="label">Pares permitidos</div><div class="value" id="settingsMaxPairs" style="font-size:.9rem">3</div></div>
     <div class="card" style="padding:.7rem .9rem"><div class="label">Posiciones máx</div><div class="value" id="settingsMaxPositions" style="font-size:.9rem">3</div></div>
     <div class="card" style="padding:.7rem .9rem"><div class="label">IA requests/día</div><div class="value" id="settingsMaxAIRequests" style="font-size:.9rem">50</div></div>
+  </div>
+  <div style="margin-top:1rem">
+    <div class="label" style="margin-bottom:.5rem">Funciones incluidas</div>
+    <div id="settingsFeatures"></div>
   </div>
   <div id="settingsUpgradeBtn" style="margin-top:1rem;display:none">
     <button class="btn btn-blue" onclick="showUpgradeModal()">Mejorar Plan</button>
@@ -2118,33 +2122,45 @@ function addAILiveEntry(entry,time){
 const PLAN_LIMITS={
   free:{pairs:3,positions:3,ai_requests:50,label:'FREE'},
   pro:{pairs:10,positions:10,ai_requests:500,label:'PRO'},
-  premium:{pairs:999,positions:999,ai_requests:99999,label:'PREMIUM'}
+  premium:{pairs:-1,positions:-1,ai_requests:-1,label:'PREMIUM'}
 };
 
 async function loadUserSettings(){
   try{
-    const s=await api('/api/user/settings');
+    const[s,plan]=await Promise.all([api('/api/user/settings'),api('/api/user/plan')]);
     document.getElementById('settingsEmail').textContent=s.email;
     document.getElementById('settingsUsername').textContent=s.username;
     document.getElementById('settingsPlan').textContent=s.subscription.toUpperCase();
     document.getElementById('settingsCurrentPlan').textContent=s.subscription.toUpperCase();
-    // Set risk profile radio
     document.querySelectorAll('input[name="riskProfile"]').forEach(r=>{if(r.value===s.risk_profile)r.checked=true});
-    // API key status
     const statusEl=document.getElementById('settingsApiKeyStatus');
     if(s.has_binance_api_key){
       statusEl.innerHTML='<span style="color:#34d399;font-size:.85rem">✓ API Key configurada ('+s.binance_api_key_preview+')</span>';
     }else{
       statusEl.innerHTML='<span style="color:#fbbf24;font-size:.85rem">⚠ Sin API Key configurada</span>';
     }
-    // Plan limits
-    const limits=PLAN_LIMITS[s.subscription]||PLAN_LIMITS.free;
-    document.getElementById('settingsMaxPairs').textContent=limits.pairs>=999?'Ilimitados':limits.pairs;
-    document.getElementById('settingsMaxPositions').textContent=limits.positions>=999?'Ilimitadas':limits.positions;
-    document.getElementById('settingsMaxAIRequests').textContent=limits.ai_requests>=99999?'Ilimitados':limits.ai_requests;
-    // Show upgrade button if not premium
+    // Plan limits from API
+    document.getElementById('settingsMaxPairs').textContent=plan.max_pairs===-1?'Ilimitados':plan.max_pairs;
+    document.getElementById('settingsMaxPositions').textContent=plan.max_positions===-1?'Ilimitadas':plan.max_positions;
+    document.getElementById('settingsMaxAIRequests').textContent=plan.max_ai_requests_per_day===-1?'Ilimitados':plan.max_ai_requests_per_day;
+    // Features list
+    const featuresEl=document.getElementById('settingsFeatures');
+    if(featuresEl){
+      const featureLabels={
+        paper_trading:'Paper Trading',
+        ai_agent_analysis:'Análisis IA',
+        ai_agent_autotrade:'Auto-trade IA',
+        ml_training:'Entrenamiento ML',
+        telegram_notifications:'Notificaciones Telegram',
+        priority_support:'Soporte Prioritario',
+        custom_strategies:'Estrategias Custom'
+      };
+      featuresEl.innerHTML=plan.features.map(f=>{
+        const label=featureLabels[f]||f;
+        return '<span style="display:inline-block;padding:.3rem .7rem;margin:.2rem;border-radius:6px;background:#064e3b;color:#34d399;font-size:.75rem;font-weight:600">✓ '+label+'</span>';
+      }).join('');
+    }
     document.getElementById('settingsUpgradeBtn').style.display=s.subscription!=='premium'?'block':'none';
-    // Account info from currentUser
     if(currentUser){
       document.getElementById('settingsCreated').textContent=currentUser.created_at?new Date(currentUser.created_at).toLocaleDateString('es-ES'):'--';
     }

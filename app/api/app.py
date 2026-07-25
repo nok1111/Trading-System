@@ -35,9 +35,9 @@ from app.database.models import (
 from app.database.session import SessionLocal
 
 app = FastAPI(
-    title="Trading System API",
-    description="API REST para consulta y supervisión del sistema de trading algorítmico.",
-    version="0.1.0",
+    title="Alvora — AI Trading System",
+    description="API REST para consulta y supervisión del sistema de trading algorítmico Alvora.",
+    version="0.2.0",
 )
 
 _DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
@@ -149,6 +149,7 @@ def auth_me(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
 # User Settings
 # ---------------------------------------------------------------------------
 from app.services.crypto import decrypt, encrypt
+from app.services.rate_limit import get_plan_limits, has_feature
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -202,6 +203,20 @@ def update_user_settings(
         }
     finally:
         db.close()
+
+
+@app.get("/api/user/plan")
+def get_user_plan(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
+    """Retorna los límites y features del plan del usuario."""
+    limits = get_plan_limits(current_user.subscription)
+    return {
+        "plan": current_user.subscription,
+        "max_pairs": limits["max_pairs"] if limits["max_pairs"] < 999 else -1,
+        "max_positions": limits["max_positions"] if limits["max_positions"] < 999 else -1,
+        "max_ai_requests_per_day": limits["max_ai_requests_per_day"] if limits["max_ai_requests_per_day"] < 99999 else -1,
+        "max_ai_interval_seconds": limits["max_ai_interval_seconds"],
+        "features": limits["features"],
+    }
 
 
 # ---------------------------------------------------------------------------
