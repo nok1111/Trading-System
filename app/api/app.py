@@ -792,8 +792,25 @@ class SellRequest(BaseModel):
 
 _paper_trading_state: dict = {"schedulers": [], "run_ids": []}
 _ai_shared_broker = None
+_ai_shared_broker_keys: tuple | None = None
 # Initialize from config so it persists across server restarts
 _ai_allocated_capital: float = float(get_settings().AI_ALLOCATED_CAPITAL) if get_settings().AI_ALLOCATED_CAPITAL else 0.0
+
+
+def _resolve_binance_keys(current_user=None) -> tuple[str, str] | None:
+    """Resolve Binance API keys: user stored > .env fallback. Returns (key, secret) or None."""
+    if current_user and current_user.binance_api_key_enc:
+        try:
+            key = decrypt(current_user.binance_api_key_enc)
+            secret = decrypt(current_user.binance_api_secret_enc)
+            if key and secret:
+                return (key, secret)
+        except Exception:
+            pass
+    settings = get_settings()
+    if settings.BROKER_API_KEY and settings.BROKER_API_SECRET:
+        return (settings.BROKER_API_KEY, settings.BROKER_API_SECRET)
+    return None
 
 
 def _build_strategy(name: str, settings):
@@ -1842,7 +1859,8 @@ def ai_agent_start(
     agent.start()
     # Create initial snapshot so overview tab shows data
     try:
-        broker = _get_shared_broker()
+        keys = _resolve_binance_keys(current_user)
+        broker = _get_shared_broker(keys)
         _create_ai_snapshot(broker)
     except Exception:
         pass
@@ -1989,23 +2007,29 @@ def ai_agent_set_interval(interval_seconds: int = Query(30, ge=10)) -> dict:
 
 
 @app.get("/api/binance/balance")
-def get_binance_balance() -> dict:
+def get_binance_balance(
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> dict:
     """Consulta el saldo real de Binance en tiempo real.
 
     Retorna todos los activos con balance > 0, valor en USD y MXN.
-    Solo funciona si BROKER_PROVIDER=binance con API keys configuradas.
+    Usa las API keys del usuario logueado (o .env como fallback).
     """
     import httpx as _httpx
 
     settings = get_settings()
-    if settings.BROKER_PROVIDER != "binance" or not settings.BROKER_API_KEY:
+    if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado", "assets": [], "total_usd": 0, "total_mxn": 0}
+
+    keys = _resolve_binance_keys(current_user)
+    if not keys:
+        return {"error": "No tienes API keys de Binance configuradas. Ve a Settings para ingresarlas.", "assets": [], "total_usd": 0, "total_mxn": 0}
 
     from app.brokers.binance_broker import BinanceBroker
 
     broker = BinanceBroker(
-        api_key=settings.BROKER_API_KEY,
-        api_secret=settings.BROKER_API_SECRET,
+        api_key=keys[0],
+        api_secret=keys[1],
         testnet=settings.BINANCE_TESTNET,
     )
 
@@ -2103,12 +2127,15 @@ def ai_agent_set_auto_trade(enabled: bool = Query(True)) -> dict:
 
 
 @app.get("/api/trading-mode")
-def get_trading_mode() -> dict:
+def get_trading_mode(
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> dict:
     """Retorna el modo de trading actual y configuración de safety."""
     global _ai_allocated_capital
     settings = get_settings()
     is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
-    is_binance = settings.BROKER_PROVIDER == "binance" and bool(settings.BROKER_API_KEY)
+    keys = _resolve_binance_keys(current_user)
+    is_binance = settings.BROKER_PROVIDER == "binance" and bool(keys)
     # Use runtime override if set, otherwise use config value
     allocated = _ai_allocated_capital if _ai_allocated_capital > 0 else settings.AI_ALLOCATED_CAPITAL
     return {
@@ -2185,7 +2212,10 @@ class AIExecuteRequest(BaseModel):
 
 
 @app.post("/api/ai-agent/execute")
-def ai_agent_execute(req: AIExecuteRequest) -> dict:
+def ai_agent_execute(
+    req: AIExecuteRequest,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> dict:
     """Ejecuta una operación de trading directamente desde el agente IA.
 
     No requiere paper trading activo. Usa el broker compartido y el risk manager.
@@ -2205,14 +2235,15 @@ def ai_agent_execute(req: AIExecuteRequest) -> dict:
 
     # Determinar si estamos en modo live
     is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
-    is_binance_broker = settings.BROKER_PROVIDER == "binance" and bool(settings.BROKER_API_KEY)
+    keys = _resolve_binance_keys(current_user)
+    is_binance_broker = settings.BROKER_PROVIDER == "binance" and bool(keys)
 
     # Safety: Kill switch (blocks buys, allows sells to close positions)
     if is_live and settings.LIVE_KILL_SWITCH and action == "buy":
         return {"status": "rejected", "action": action, "symbol": symbol, "reason": "KILL SWITCH activado. Compras bloqueadas. Sells permitidos para cerrar posiciones."}
 
     # Obtener o crear broker compartido
-    broker = _get_shared_broker()
+    broker = _get_shared_broker(keys)
 
     # Safety: Check daily loss limit for live mode
     if is_live and action == "buy":
@@ -2444,20 +2475,21 @@ def ai_agent_execute(req: AIExecuteRequest) -> dict:
         session.close()
 
 
-def _get_shared_broker():
+def _get_shared_broker(binance_keys: tuple[str, str] | None = None):
     """Obtiene el broker compartido del paper trading o usa/crea uno persistente para AI agent.
 
     En modo live con BROKER_PROVIDER=binance y API keys configuradas,
     retorna un BinanceBroker real que ejecuta órdenes en Binance.
+    Si se pasan binance_keys, se usan esas keys en lugar de las del .env.
     """
-    global _ai_shared_broker
+    global _ai_shared_broker, _ai_shared_broker_keys
 
     schedulers = _paper_trading_state.get("schedulers", [])
     if schedulers:
         return schedulers[0].broker
 
-    # Reusar broker persistente del AI agent
-    if _ai_shared_broker is not None:
+    # Si cambian las keys, recrear el broker
+    if _ai_shared_broker is not None and _ai_shared_broker_keys == binance_keys:
         return _ai_shared_broker
 
     # Crear broker usando la factory (MockBroker o BinanceBroker según config)
@@ -2465,7 +2497,14 @@ def _get_shared_broker():
     from app.factories import create_broker
 
     settings = get_settings()
-    broker = create_broker(settings)
+
+    if binance_keys:
+        # Override settings with user keys
+        from app.config import Settings
+        override = settings.model_copy(update={"BROKER_API_KEY": binance_keys[0], "BROKER_API_SECRET": binance_keys[1]})
+        broker = create_broker(override)
+    else:
+        broker = create_broker(settings)
 
     # Si es MockBroker, sincronizar desde BD para mantener estado
     if hasattr(broker, "sync_from_db"):
@@ -2478,6 +2517,7 @@ def _get_shared_broker():
             session.close()
 
     _ai_shared_broker = broker
+    _ai_shared_broker_keys = binance_keys
     return broker
 
 

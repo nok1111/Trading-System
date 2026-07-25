@@ -32,7 +32,8 @@ def create_broker(settings: Settings) -> Broker:
 
     if provider == "binance" and is_live:
         if not settings.BROKER_API_KEY or not settings.BROKER_API_SECRET:
-            raise ValueError("Live mode con binance requiere BROKER_API_KEY y BROKER_API_SECRET")
+            # No keys in .env — fall back to MockBroker (user keys resolved at API layer)
+            return MockBroker(initial_cash=settings.PAPER_TRADING_INITIAL_CASH)
         return BinanceBroker(
             api_key=settings.BROKER_API_KEY,
             api_secret=settings.BROKER_API_SECRET,

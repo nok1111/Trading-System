@@ -90,8 +90,6 @@ class Settings(BaseSettings):
         if self.TRADING_MODE == "live":
             if not self.LIVE_TRADING_ENABLED:
                 raise ValueError("TRADING_MODE='live' requiere LIVE_TRADING_ENABLED=true")
-            if not self.BROKER_API_KEY:
-                raise ValueError("TRADING_MODE='live' requiere BROKER_API_KEY")
         return self
 
     @property
