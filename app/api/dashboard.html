@@ -2284,7 +2284,51 @@ async function saveRiskProfile(){
 }
 
 function showUpgradeModal(){
-  toast('Próximamente: integración con Stripe',false);
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:200';
+  overlay.innerHTML='<div style="background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem;max-width:450px;width:90%"><h2 style="color:#38bdf8;font-size:1.3rem;margin-bottom:1rem">Mejorar Plan</h2><p style="color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem">Selecciona el plan al que quieres upgrade. Pago mensual vía Binance Pay (USDT).</p><div style="display:flex;flex-direction:column;gap:.8rem"><button onclick="startPayment(\'pro\')" style="padding:1rem;border:1px solid #334155;border-radius:.5rem;background:#0f172a;color:#e2e8f0;cursor:pointer;text-align:left"><div style="font-weight:700;color:#38bdf8;font-size:1rem">Pro — $29 USDT/mes</div><div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem">10 pares, 10 posiciones, 500 IA requests/día, auto-trade, ML, Telegram</div></button><button onclick="startPayment(\'premium\')" style="padding:1rem;border:1px solid #334155;border-radius:.5rem;background:#0f172a;color:#e2e8f0;cursor:pointer;text-align:left"><div style="font-weight:700;color:#f59e0b;font-size:1rem">Premium — $99 USDT/mes</div><div style="font-size:.75rem;color:#94a3b8;margin-top:.3rem">Ilimitado, soporte prioritario, estrategias custom</div></button></div><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="margin-top:1rem;width:100%;padding:.6rem;border:none;border-radius:.5rem;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600">Cancelar</button></div>';
+  document.body.appendChild(overlay);
+}
+
+async function startPayment(plan){
+  try{
+    toast('Creando orden de pago...');
+    const r=await api('/api/payments/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan})});
+    // Remove existing modal
+    document.querySelectorAll('div[style*="fixed"]').forEach(el=>{if(el.textContent.includes('Mejorar Plan'))el.remove()});
+    // Show payment modal with QR/checkout URL
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:200';
+    let paymentHtml='';
+    if(r.checkout_url){
+      paymentHtml='<div style="text-align:center"><div style="font-size:2rem;margin-bottom:1rem">📡</div><p style="color:#94a3b8;margin-bottom:1rem">Escanea el QR o abre el link para pagar con Binance Pay</p><a href="'+r.checkout_url+'" target="_blank" style="display:inline-block;padding:.8rem 1.5rem;background:#f0b90b;color:#000;border-radius:.5rem;font-weight:700;text-decoration:none;margin-bottom:1rem">Pagar con Binance Pay</a>';
+      if(r.qr_code){
+        paymentHtml+='<div style="margin:1rem 0"><img src="'+r.qr_code+'" alt="QR Code" style="border-radius:.5rem;max-width:200px"></div>';
+      }
+    }else if(r.deeplink){
+      paymentHtml='<a href="'+r.deeplink+'" target="_blank" style="display:inline-block;padding:.8rem 1.5rem;background:#f0b90b;color:#000;border-radius:.5rem;font-weight:700;text-decoration:none">Pagar con Binance Pay</a>';
+    }else{
+      paymentHtml='<p style="color:#f87171">No se pudo generar el link de pago.</p>';
+    }
+    paymentHtml+='<div style="margin-top:1rem;font-size:.75rem;color:#64748b">Orden: '+r.order_id+'</div><button onclick="checkPayment(\''+r.order_id+'\')" style="margin-top:1rem;padding:.6rem 1.2rem;background:#2563eb;color:#fff;border:none;border-radius:.5rem;cursor:pointer;font-weight:600">Verificar Pago</button>';
+    overlay.innerHTML='<div style="background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:2rem;max-width:400px;width:90%;text-align:center"><h2 style="color:#f0b90b;font-size:1.2rem;margin-bottom:1rem">Pago Binance Pay</h2><p style="color:#94a3b8;font-size:.85rem;margin-bottom:1rem">Plan: <b style="color:#38bdf8">'+plan.toUpperCase()+'</b> — '+r.amount+' '+r.currency+'</p>'+paymentHtml+'<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="margin-top:1rem;width:100%;padding:.6rem;border:none;border-radius:.5rem;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600">Cerrar</button></div>';
+    document.body.appendChild(overlay);
+  }catch(e){toast(e.message,false)}
+}
+
+async function checkPayment(orderId){
+  try{
+    const r=await api('/api/payments/status/'+orderId);
+    if(r.status==='PAID'){
+      toast('¡Pago confirmado! Plan actualizado a '+r.new_plan);
+      document.querySelectorAll('div[style*="fixed"]').forEach(el=>{if(el.textContent.includes('Pago Binance'))el.remove()});
+      // Reload user info
+      const meResp=await fetch(API+'/api/auth/me',{headers:{'Authorization':'Bearer '+authToken}});
+      if(meResp.ok){currentUser=await meResp.json();onAuthSuccess(false)}
+    }else{
+      toast('Pago pendiente. Estado: '+r.status,false);
+    }
+  }catch(e){toast(e.message,false)}
 }
 
 async function saveTelegramSettings(){

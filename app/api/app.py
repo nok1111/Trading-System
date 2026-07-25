@@ -1,10 +1,11 @@
 """Aplicación FastAPI para consulta y supervisión (FASE 6)."""
 
+import json
 from collections.abc import Generator
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import case, select
@@ -245,6 +246,122 @@ def test_telegram(current_user: Annotated[User, Depends(get_current_user)]) -> d
     if not ok:
         raise HTTPException(status_code=500, detail="No se pudo enviar el mensaje. Verifica el Bot Token y Chat ID.")
     return {"ok": True, "message": "Mensaje de prueba enviado"}
+
+
+# ---------------------------------------------------------------------------
+# Binance Pay — Subscription payments
+# ---------------------------------------------------------------------------
+from app.services.binance_pay import PLAN_PRICES, create_payment_order, query_order_status
+
+
+class PaymentRequest(BaseModel):
+    plan: str  # "pro" or "premium"
+
+
+@app.post("/api/payments/create")
+def create_payment(
+    req: PaymentRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Crea una orden de pago en Binance Pay para upgrade de plan."""
+    if req.plan not in ("pro", "premium"):
+        raise HTTPException(status_code=400, detail="Plan inválido. Opciones: pro, premium")
+    if current_user.subscription == req.plan:
+        raise HTTPException(status_code=400, detail=f"Ya tienes el plan {req.plan}")
+
+    result = create_payment_order(req.plan, current_user.id, current_user.email)
+    if not result:
+        raise HTTPException(
+            status_code=503,
+            detail="Binance Pay no configurado. Contacta al administrador.",
+        )
+    return result
+
+
+@app.get("/api/payments/status/{order_id}")
+def check_payment_status(
+    order_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Verifica el estado de una orden de pago."""
+    result = query_order_status(order_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    # If paid, upgrade the user's plan
+    if result.get("status") == "PAID":
+        db = SessionLocal()
+        try:
+            user = db.get(User, current_user.id)
+            if user and user.subscription != result.get("plan"):
+                # Extract plan from order_id: ALVORA-PRO-123-...
+                parts = order_id.split("-")
+                if len(parts) >= 2:
+                    plan = parts[1].lower()
+                    if plan in ("pro", "premium"):
+                        user.subscription = plan
+                        db.commit()
+                        result["upgraded"] = True
+                        result["new_plan"] = plan
+        finally:
+            db.close()
+    return result
+
+
+@app.get("/api/payments/plans")
+def get_payment_plans() -> dict:
+    """Retorna los planes disponibles con precios."""
+    return {
+        "plans": {
+            key: {
+                "label": val["label"],
+                "price": val["amount"],
+                "currency": val["currency"],
+                "duration": val["duration"],
+            }
+            for key, val in PLAN_PRICES.items()
+        },
+        "payment_method": "binance_pay",
+        "enabled": bool(get_settings().BINANCE_PAY_API_KEY),
+    }
+
+
+@app.post("/api/payments/webhook")
+async def binance_pay_webhook(request: Request) -> dict:
+    """Webhook para recibir notificaciones de pago de Binance Pay."""
+    body = await request.body()
+    payload = body.decode()
+
+    # Verify signature
+    timestamp = request.headers.get("BinancePay-Timestamp", "")
+    nonce = request.headers.get("BinancePay-Nonce", "")
+    signature = request.headers.get("BinancePay-Signature", "")
+
+    from app.services.binance_pay import verify_webhook_signature
+    if not verify_webhook_signature(timestamp, nonce, payload, signature):
+        raise HTTPException(status_code=401, detail="Signature verification failed")
+
+    data = json.loads(payload)
+    merchant_trade_no = data.get("merchantTradeNo", "")
+    status = data.get("status", "")
+    plan = data.get("goods", {}).get("referenceGoodsId", "").replace("alvora-", "").replace("-monthly", "")
+
+    if status == "PAID" and plan in ("pro", "premium"):
+        db = SessionLocal()
+        try:
+            # Extract user_id from order: ALVORA-PRO-123-1690293...
+            parts = merchant_trade_no.split("-")
+            if len(parts) >= 3:
+                user_id = int(parts[2])
+                user = db.get(User, user_id)
+                if user:
+                    user.subscription = plan
+                    db.commit()
+        except Exception:
+            pass
+        finally:
+            db.close()
+
+    return {"returnCode": "SUCCESS", "returnMessage": "OK"}
 
 
 # ---------------------------------------------------------------------------

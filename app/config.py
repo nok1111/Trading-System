@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = ""  # Fernet key for encrypting user API keys
     # Telegram bot
     TELEGRAM_BOT_TOKEN: str | None = None
+    # Binance Pay (merchant)
+    BINANCE_PAY_API_KEY: str | None = None
+    BINANCE_PAY_API_SECRET: str | None = None
+    BINANCE_PAY_MERCHANT_ID: str | None = None
     # Live trading safety
     LIVE_MAX_ORDER_USD: float = Field(default=500.0, gt=0.0)
     LIVE_DAILY_LOSS_LIMIT_USD: float = Field(default=100.0, gt=0.0)
