@@ -197,9 +197,9 @@ def update_user_settings(
         if not user:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         if req.binance_api_key is not None:
-            user.binance_api_key_enc = encrypt(req.binance_api_key)
+            user.binance_api_key_enc = encrypt(req.binance_api_key) if req.binance_api_key else None
         if req.binance_api_secret is not None:
-            user.binance_api_secret_enc = encrypt(req.binance_api_secret)
+            user.binance_api_secret_enc = encrypt(req.binance_api_secret) if req.binance_api_secret else None
         if req.risk_profile is not None:
             if req.risk_profile not in ("conservative", "moderate", "aggressive"):
                 raise HTTPException(status_code=400, detail="risk_profile inválido")

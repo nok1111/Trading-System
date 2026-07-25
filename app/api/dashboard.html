@@ -589,19 +589,47 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 
 <div class="card" style="margin-bottom:1rem;padding:1.2rem">
   <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Binance API Keys</h3>
-  <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Tus API keys se almacenan encriptadas. Nunca se muestran después de guardarlas.</p>
+  <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Tus API keys se almacenan encriptadas (Fernet AES-128). Nunca se muestran después de guardarlas.</p>
   <div id="settingsApiKeyStatus" style="margin-bottom:1rem"></div>
+
+  <details style="margin-bottom:1rem;background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:.8rem 1rem">
+    <summary style="cursor:pointer;font-weight:600;color:#38bdf8;font-size:.85rem">📖 Cómo obtener tus API Keys de Binance (paso a paso)</summary>
+    <div style="margin-top:.8rem;color:#94a3b8;font-size:.8rem;line-height:1.7">
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">1.</b> Inicia sesión en <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" style="color:#f0b90b;text-decoration:underline">Binance API Management</a></p>
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">2.</b> Click en <b style="color:#f0b90b">"Create API"</b> y selecciona <b>System generated</b></p>
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">3.</b> Etiqueta la API (ej: "Alvora Trading")</p>
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">4.</b> Completa la verificación de seguridad (email + SMS/Google Authenticator)</p>
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">5.</b> En permisos, selecciona:</p>
+      <ul style="margin:.3rem 0 .5rem 1.5rem;list-style:none">
+        <li style="margin-bottom:.2rem">✅ <b style="color:#34d399">Enable Reading</b> — necesario para ver saldo y posiciones</li>
+        <li style="margin-bottom:.2rem">✅ <b style="color:#34d399">Enable Spot & Margin Trading</b> — para ejecutar trades</li>
+        <li style="margin-bottom:.2rem">✅ <b style="color:#34d399">Enable Futures</b> — si usas futures (opcional)</li>
+        <li style="margin-bottom:.2rem">❌ <b style="color:#f87171">NUNCA habilites "Enable Withdrawals"</b></li>
+      </ul>
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">6.</b> En <b>IP Access Restrictions</b>, idealmente restringe a la IP del servidor (opcional pero recomendado)</p>
+      <p style="margin-bottom:.5rem"><b style="color:#cbd5e1">7.</b> Copia el <b>API Key</b> y <b>API Secret</b> y pégalos abajo</p>
+      <div style="margin-top:.8rem;padding:.6rem .8rem;background:#7f1d1d;border-radius:.4rem;border:1px solid #fca5a5">
+        <p style="color:#fca5a5;font-size:.75rem;font-weight:600">⚠️ IMPORTANTE: Guarda tu API Secret en un lugar seguro. Binance solo lo muestra una vez. Si lo pierdes, tendrás que crear una API nueva.</p>
+      </div>
+    </div>
+  </details>
+
   <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem">
     <div style="display:flex;flex-direction:column;gap:.2rem">
       <label style="font-size:.75rem;color:#94a3b8;font-weight:600">API Key</label>
-      <input id="settingsApiKey" type="password" placeholder="Nueva API Key" style="width:300px">
+      <input id="settingsApiKey" type="password" placeholder="Pega tu API Key aquí" style="width:300px">
     </div>
     <div style="display:flex;flex-direction:column;gap:.2rem">
       <label style="font-size:.75rem;color:#94a3b8;font-weight:600">API Secret</label>
-      <input id="settingsApiSecret" type="password" placeholder="Nuevo API Secret" style="width:300px">
+      <input id="settingsApiSecret" type="password" placeholder="Pega tu API Secret aquí" style="width:300px">
     </div>
   </div>
-  <button class="btn btn-blue" onclick="saveApiKeys()">Guardar API Keys</button>
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+    <button class="btn btn-blue" onclick="saveApiKeys()">Guardar API Keys</button>
+    <button class="btn btn-green" onclick="testApiKeys()">Probar Conexión</button>
+    <button id="deleteApiKeysBtn" class="btn" style="background:#7f1d1d;color:#fca5a5;display:none" onclick="deleteApiKeys()">Eliminar API Keys</button>
+  </div>
+  <div id="apiTestResult" style="margin-top:.8rem"></div>
 </div>
 
 <div class="card" style="margin-bottom:1rem;padding:1.2rem">
@@ -672,6 +700,13 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <div class="onb-step" id="onbStep3">
 <h2>Binance API Keys</h2>
 <p>Opcional: conecta tu cuenta de Binance para trading en vivo. Puedes saltar esto y usar paper trading.</p>
+<div style="margin-bottom:.8rem;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:.5rem;font-size:.75rem;color:#94a3b8;line-height:1.5">
+  <b style="color:#38bdf8">¿Cómo obtenerlas?</b><br>
+  1. Ve a <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" style="color:#f0b90b">Binance API Management</a><br>
+  2. Click "Create API" → System generated<br>
+  3. Permisos: ✅ Reading + ✅ Spot Trading ❌ NO Withdrawals<br>
+  4. Copia API Key y API Secret aquí abajo
+</div>
 <div class="onb-choice">
 <div style="display:flex;flex-direction:column;gap:.3rem">
 <label style="font-size:.75rem;color:#94a3b8;font-weight:600">API Key</label>
@@ -2227,8 +2262,10 @@ async function loadUserSettings(){
     const statusEl=document.getElementById('settingsApiKeyStatus');
     if(s.has_binance_api_key){
       statusEl.innerHTML='<span style="color:#34d399;font-size:.85rem">✓ API Key configurada ('+s.binance_api_key_preview+')</span>';
+      document.getElementById('deleteApiKeysBtn').style.display='inline-block';
     }else{
-      statusEl.innerHTML='<span style="color:#fbbf24;font-size:.85rem">⚠ Sin API Key configurada</span>';
+      statusEl.innerHTML='<span style="color:#fbbf24;font-size:.85rem">⚠ Sin API Key configurada. Abre la guía abajo para obtenerla.</span>';
+      document.getElementById('deleteApiKeysBtn').style.display='none';
     }
     // Plan limits from API
     document.getElementById('settingsMaxPairs').textContent=plan.max_pairs===-1?'Ilimitados':plan.max_pairs;
@@ -2273,6 +2310,37 @@ async function saveApiKeys(){
     toast('API Keys guardadas correctamente');
     document.getElementById('settingsApiKey').value='';
     document.getElementById('settingsApiSecret').value='';
+    loadUserSettings();
+  }catch(e){toast(e.message,false)}
+}
+
+async function testApiKeys(){
+  const resultEl=document.getElementById('apiTestResult');
+  resultEl.innerHTML='<span style="color:#94a3b8;font-size:.85rem">Probando conexión con Binance...</span>';
+  try{
+    const r=await api('/api/binance-balance');
+    if(r && r.balances){
+      const usdt=r.balances.find(b=>b.asset==='USDT');
+      const btc=r.balances.find(b=>b.asset==='BTC');
+      let html='<span style="color:#34d399;font-size:.85rem">✓ Conexión exitosa</span><div style="margin-top:.4rem;font-size:.8rem;color:#94a3b8">';
+      if(usdt)html+='USDT: '+usdt.free+'<br>';
+      if(btc)html+='BTC: '+btc.free+'<br>';
+      html+='Total de activos: '+r.balances.length+'</div>';
+      resultEl.innerHTML=html;
+    }else{
+      resultEl.innerHTML='<span style="color:#fbbf24;font-size:.85rem">⚠ Conexión establecida pero sin balances</span>';
+    }
+  }catch(e){
+    resultEl.innerHTML='<span style="color:#f87171;font-size:.85rem">✗ Error: '+e.message+'</span>';
+  }
+}
+
+async function deleteApiKeys(){
+  if(!confirm('¿Estás seguro de eliminar tus API Keys de Binance? Tendrás que volver a configurarlas para usar trading en vivo.'))return;
+  try{
+    await api('/api/user/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({binance_api_key:'',binance_api_secret:''})});
+    toast('API Keys eliminadas');
+    document.getElementById('apiTestResult').innerHTML='';
     loadUserSettings();
   }catch(e){toast(e.message,false)}
 }
