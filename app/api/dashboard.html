@@ -33,7 +33,7 @@ tr:hover td{background:#1e293b}
 tr.new-row{animation:flash 1.5s ease-out}
 @keyframes flash{0%{background:#064e3b}100%{background:transparent}}
 .badge{padding:.15rem .5rem;border-radius:4px;font-size:.75rem;font-weight:600}
-.badge.BUY{background:#064e3b;color:#34d399}.badge.SELL{background:#7f1d1d;color:#fca5a5}.badge.HOLD{background:#334155;color:#94a3b8}
+.badge.BUY,.badge.buy{background:#064e3b;color:#34d399}.badge.SELL,.badge.sell{background:#7f1d1d;color:#fca5a5}.badge.HOLD,.badge.hold{background:#334155;color:#94a3b8}
 .btn{padding:.6rem 1.2rem;border:none;border-radius:.5rem;cursor:pointer;font-size:.9rem;font-weight:600}
 .btn-green{background:#059669;color:#fff}.btn-red{background:#dc2626;color:#fff}
 .btn-blue{background:#2563eb;color:#fff}.btn:disabled{opacity:.5;cursor:not-allowed}
@@ -226,9 +226,20 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 </div>
 <div id="positions" class="panel">
-<div class="controls"><select id="posStatus"><option value="">Todos</option><option value="open">Abiertas</option><option value="closed">Cerradas</option></select><button class="btn btn-blue" onclick="loadPositions()">Filtrar</button></div>
-<div id="positionCharts" style="margin-bottom:1.5rem"></div>
-<table><thead><tr><th>ID</th><th>Símbolo</th><th>Lado</th><th>Cant.</th><th>Entry</th><th>Live</th><th>PnL</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="positionsBody"></tbody></table>
+<!-- Position Summary Stats -->
+<div class="cards" id="positionStatsCards" style="margin-bottom:1.5rem"></div>
+
+<!-- Filter Controls -->
+<div class="controls" style="margin-bottom:1rem"><select id="posStatus"><option value="">Todos</option><option value="open">Abiertas</option><option value="closed">Cerradas</option></select><button class="btn btn-blue" onclick="loadPositions()">Filtrar</button></div>
+
+<!-- Open Position Cards (Binance-style) -->
+<div id="positionCards" style="margin-bottom:1.5rem"></div>
+
+<!-- Closed Positions Table -->
+<div id="closedPositionsSection" style="display:none">
+<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Historial de Posiciones Cerradas</h3>
+<table><thead><tr><th>ID</th><th>Símbolo</th><th>Lado</th><th>Cant.</th><th>Entry</th><th>Exit</th><th>Inversión</th><th>PnL</th><th>PnL %</th><th>Estado</th><th>Duración</th></tr></thead><tbody id="positionsBody"></tbody></table>
+</div>
 </div>
 <div id="performance" class="panel">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
@@ -1165,101 +1176,181 @@ async function loadPositions(){
       if(a.status!=='open'&&b.status==='open')return 1;
       return b.id-a.id;
     });
-    document.getElementById('positionsBody').innerHTML=data.map(p=>{
-      const sellBtn=p.status==='open'?'<button class="btn btn-red" style="padding:.3rem .8rem;font-size:.8rem" onclick="paperSell(\''+p.symbol+'\')">SELL</button>':'<span style="color:#64748b">-</span>';
-      const pnl=Number(p.unrealized_pnl)||0;
-      const pnlColor=pnl>=0?'#34d399':'#f87171';
-      const pnlPct=p.entry_price&&Number(p.current_price)?((Number(p.current_price)-Number(p.entry_price))/Number(p.entry_price)*100).toFixed(2):'0.00';
-      const curPrice=p.current_price?fmt(p.current_price):'<span style="color:#64748b">-</span>';
-      return '<tr><td>'+p.id+'</td><td>'+p.symbol+'</td><td>'+p.side+'</td><td>'+fmt(p.quantity)+'</td><td>'+fmt(p.entry_price)+'</td><td>'+curPrice+'</td><td style="color:'+pnlColor+'">'+(p.status==='open'?'$'+fmt(p.unrealized_pnl)+' ('+pnlPct+'%)':'$'+fmt(p.realized_pnl))+'</td><td>'+p.status+'</td><td>'+sellBtn+'</td></tr>';
-    }).join('');
-    const openSyms=data.filter(p=>p.status==='open').map(p=>p.symbol);
+    const openPositions=data.filter(p=>p.status==='open');
+    const closedPositions=data.filter(p=>p.status==='closed');
+
+    // Render summary stats
+    renderPositionStats(openPositions,closedPositions);
+
+    // Render open position cards
+    renderOpenPositionCards(openPositions);
+
+    // Render closed positions table
+    const closedSection=document.getElementById('closedPositionsSection');
+    const body=document.getElementById('positionsBody');
+    if(closedPositions.length>0){
+      closedSection.style.display='block';
+      body.innerHTML=closedPositions.map(p=>{
+        const entry=Number(p.entry_price)||0;
+        const exit=Number(p.current_price)||Number(p.exit_price)||0;
+        const qty=Number(p.quantity)||0;
+        const invested=entry*qty;
+        const pnl=Number(p.realized_pnl)||0;
+        const pnlPct=entry?((exit-entry)/entry*100).toFixed(2):'0.00';
+        const pnlColor=pnl>=0?'#34d399':'#f87171';
+        const dur=p.opened_at?p.timeSince||calcDuration(p.opened_at,p.closed_at||p.updated_at):'-';
+        return '<tr><td>'+p.id+'</td><td style="font-weight:600">'+p.symbol+'</td><td><span class="badge '+p.side.toLowerCase()+'">'+p.side+'</span></td><td>'+fmt(p.quantity)+'</td><td>$'+fmt(entry)+'</td><td>$'+fmt(exit)+'</td><td>$'+fmt(invested.toFixed(2))+'</td><td style="color:'+pnlColor+';font-weight:600">'+(pnl>=0?'+':'')+'$'+fmt(pnl)+'</td><td style="color:'+pnlColor+';font-weight:600">'+(pnl>=0?'+':'')+pnlPct+'%</td><td>'+p.status+'</td><td style="color:#64748b;font-size:.8rem">'+dur+'</td></tr>';
+      }).join('');
+    }else{
+      closedSection.style.display='none';
+    }
+
+    // Update charts for open positions
+    const openSyms=openPositions.map(p=>p.symbol);
     const activeTab=document.querySelector('.tab.active');
     if(activeTab&&activeTab.dataset.tab==='positions'){
       const sameSet=openSyms.length===_lastOpenPositionSymbols.length&&openSyms.every(s=>_lastOpenPositionSymbols.includes(s));
       if(!sameSet){
         _lastOpenPositionSymbols=openSyms;
-        loadPositionCharts(data.filter(p=>p.status==='open'));
+        updatePositionCharts(openSyms,openPositions);
       }else{
-        updatePositionCharts(openSyms);
+        updatePositionCharts(openSyms,openPositions);
       }
     }
   }catch(e){toast(e.message,false)}
 }
 
-async function loadPositionCharts(openPositions){
-  const container=document.getElementById('positionCharts');
-  if(openPositions.length===0){container.innerHTML='';return}
-  container.innerHTML='<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Posiciones Abiertas — Entry / SL / TP / Live</h3>';
+function calcDuration(openedAt,closedAt){
+  try{
+    const start=new Date(openedAt);
+    const end=closedAt?new Date(closedAt):new Date();
+    const ms=end-start;
+    if(ms<0)return '-';
+    const h=Math.floor(ms/3600000);
+    const m=Math.floor((ms%3600000)/60000);
+    if(h>24){const d=Math.floor(h/24);return d+'d '+(h%24)+'h'}
+    if(h>0)return h+'h '+m+'m';
+    return m+'m';
+  }catch{return '-'}
+}
+
+function renderPositionStats(openPositions,closedPositions){
+  const container=document.getElementById('positionStatsCards');
+  if(!container)return;
+  const totalOpen=openPositions.length;
+  const totalInvested=openPositions.reduce((s,p)=>s+(Number(p.entry_price)*Number(p.quantity)),0);
+  const totalUnrealizedPnl=openPositions.reduce((s,p)=>s+Number(p.unrealized_pnl||0),0);
+  const totalRealizedPnl=closedPositions.reduce((s,p)=>s+Number(p.realized_pnl||0),0);
+  const wins=closedPositions.filter(p=>Number(p.realized_pnl)>0).length;
+  const losses=closedPositions.filter(p=>Number(p.realized_pnl)<0).length;
+  const winRate=closedPositions.length>0?(wins/closedPositions.length*100).toFixed(1):0;
+
+  container.innerHTML=[
+    {label:'Posiciones Abiertas',value:totalOpen,color:'#38bdf8',icon:'📊'},
+    {label:'Inversión Total',value:'$'+fmt(totalInvested.toFixed(2)),color:'#a78bfa',icon:'💰'},
+    {label:'PnL No Realizado',value:(totalUnrealizedPnl>=0?'+':'')+'$'+fmt(totalUnrealizedPnl.toFixed(2)),color:totalUnrealizedPnl>=0?'#34d399':'#f87171',icon:'📈'},
+    {label:'PnL Realizado',value:(totalRealizedPnl>=0?'+':'')+'$'+fmt(totalRealizedPnl.toFixed(2)),color:totalRealizedPnl>=0?'#34d399':'#f87171',icon:'💵'},
+    {label:'Win Rate',value:winRate+'%',color:Number(winRate)>=50?'#34d399':'#fbbf24',icon:'🎯'},
+    {label:'Wins / Losses',value:'<span style="color:#34d399">'+wins+'</span> / <span style="color:#f87171">'+losses+'</span>',color:'#e2e8f0',icon:'⚖️'},
+  ].map(c=>'<div class="card" style="padding:1rem;text-align:center"><div style="font-size:1.4rem;margin-bottom:.3rem">'+c.icon+'</div><div class="label" style="font-size:.7rem;margin-bottom:.3rem">'+c.label+'</div><div style="font-size:1.3rem;font-weight:800;color:'+c.color+'">'+c.value+'</div></div>').join('');
+}
+
+function renderOpenPositionCards(openPositions){
+  const container=document.getElementById('positionCards');
+  if(openPositions.length===0){
+    container.innerHTML='<div class="card" style="padding:2rem;text-align:center"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="color:#64748b;font-size:.9rem">No hay posiciones abiertas. El AI Agent abrirá posiciones automáticamente cuando encuentre oportunidades.</p></div>';
+    return;
+  }
+  container.innerHTML='<h3 style="color:#38bdf8;margin-bottom:1rem;font-size:1.1rem;display:flex;align-items:center;gap:.5rem"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#34d399;animation:pulse 2s infinite"></span>Posiciones Abiertas ('+openPositions.length+')</h3>';
   for(const pos of openPositions){
-    try{
-      const data=await api('/api/charts/position/'+pos.symbol);
-      const divId='posChart_'+pos.symbol;
-      const card=document.createElement('div');
-      card.className='card';
-      card.style.cssText='padding:1rem;margin-bottom:1rem';
-      card.innerHTML='<h4 style="color:#e2e8f0;margin-bottom:.5rem;font-size:.9rem">'+pos.symbol+' — Entry: $'+fmt(data.entry_price)+(data.stop_loss?' | SL: $'+fmt(data.stop_loss):'')+(data.take_profit?' | TP: $'+fmt(data.take_profit):'')+(data.live_price?' | Live: $'+fmt(data.live_price):'')+'</h4><canvas id="'+divId+'" width="600" height="200" style="width:100%;max-width:600px"></canvas>';
-      container.appendChild(card);
-      drawPositionChart(divId,data);
-    }catch(e){console.error('position chart error for '+pos.symbol,e)}
+    const entry=Number(pos.entry_price)||0;
+    const live=Number(pos.current_price)||0;
+    const qty=Number(pos.quantity)||0;
+    const sl=Number(pos.stop_loss)||0;
+    const tp=Number(pos.take_profit)||0;
+    const invested=entry*qty;
+    const currentValue=live*qty;
+    const pnl=Number(pos.unrealized_pnl)||0;
+    const pnlPct=entry?((live-entry)/entry*100):0;
+    const pnlColor=pnl>=0?'#34d399':'#f87171';
+    const pnlBg=pnl>=0?'rgba(52,211,153,.1)':'rgba(248,113,113,.1)';
+    const dur=calcDuration(pos.opened_at);
+    const slPct=sl?((entry-sl)/entry*100).toFixed(2):null;
+    const tpPct=tp?((tp-entry)/entry*100).toFixed(2):null;
+
+    // SL/TP progress bar
+    let slTpBar='';
+    if(sl&&tp&&live){
+      const range=tp-sl;
+      const livePos=range>0?((live-sl)/range*100):50;
+      const clampedPos=Math.max(0,Math.min(100,livePos));
+      const entryPos=range>0?((entry-sl)/range*100):50;
+      slTpBar='<div style="margin-top:.8rem"><div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:.3rem"><span style="color:#f87171">SL: $'+fmt(sl)+' ('+slPct+'%)</span><span style="color:#34d399">Entry: $'+fmt(entry)+'</span><span style="color:#fbbf24">TP: $'+fmt(tp)+' ('+tpPct+'%)</span></div><div style="position:relative;height:8px;background:#1e293b;border-radius:4px;overflow:hidden"><div style="position:absolute;left:0;top:0;height:100%;width:'+clampedPos+'%;background:linear-gradient(90deg,#f87171,#fbbf24,#34d399);border-radius:4px;transition:width .5s ease"></div><div style="position:absolute;left:'+entryPos+'%;top:-2px;height:12px;width:2px;background:#e2e8f0;transform:translateX(-50%)"></div></div><div style="display:flex;justify-content:space-between;font-size:.65rem;margin-top:.2rem"><span style="color:#64748b">Riesgo: $'+fmt((invested*slPct/100).toFixed(2))+'</span><span style="color:#64748b">Objetivo: $'+fmt((invested*tpPct/100).toFixed(2))+'</span></div></div>';
+    }else if(sl||tp){
+      slTpBar='<div style="margin-top:.8rem;display:flex;gap:1rem;font-size:.75rem">';
+      if(sl)slTpBar+='<span style="color:#f87171">SL: $'+fmt(sl)+' ('+slPct+'%)</span>';
+      if(tp)slTpBar+='<span style="color:#fbbf24">TP: $'+fmt(tp)+' ('+tpPct+'%)</span>';
+      slTpBar+='</div>';
+    }
+
+    const card=document.createElement('div');
+    card.className='card pos-card';
+    card.id='posCard_'+pos.symbol;
+    card.style.cssText='padding:1.2rem;margin-bottom:1rem;border-left:3px solid '+(pnl>=0?'#34d399':'#f87171')+';background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)';
+    card.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">'+
+        '<div style="display:flex;align-items:center;gap:.8rem">'+
+          '<div style="width:40px;height:40px;border-radius:8px;background:'+(pnl>=0?'#064e3b':'#7f1d1d')+';display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;color:'+(pnl>=0?'#34d399':'#f87171')+';border:1px solid '+(pnl>=0?'#34d399':'#f87171')+'">'+pos.symbol.substring(0,3)+'</div>'+
+          '<div><div style="font-size:1.1rem;font-weight:700;color:#e2e8f0">'+pos.symbol+'</div><div style="font-size:.7rem;color:#64748b">ID #'+pos.id+' · '+dur+'</div></div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:.8rem">'+
+          '<div style="text-align:right"><div style="font-size:.7rem;color:#64748b">PnL No Realizado</div><div style="font-size:1.4rem;font-weight:800;color:'+pnlColor+'">'+(pnl>=0?'+':'')+'$'+fmt(pnl.toFixed(2))+'</div><div style="font-size:.85rem;font-weight:600;color:'+pnlColor+'">'+(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%</div></div>'+
+          '<button class="btn btn-red" style="padding:.4rem .8rem;font-size:.8rem" onclick="paperSell(\''+pos.symbol+'\')">Cerrar</button>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.6rem;margin-bottom:.8rem">'+
+        '<div style="padding:.6rem .8rem;background:#0f172a;border-radius:6px;border:1px solid #1e293b"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">Precio Entry</div><div style="font-size:.95rem;font-weight:600;color:#e2e8f0">$'+fmt(entry)+'</div></div>'+
+        '<div style="padding:.6rem .8rem;background:#0f172a;border-radius:6px;border:1px solid #1e293b"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">Precio Live</div><div style="font-size:.95rem;font-weight:600;color:#38bdf8">$'+fmt(live)+'</div></div>'+
+        '<div style="padding:.6rem .8rem;background:#0f172a;border-radius:6px;border:1px solid #1e293b"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">Cantidad</div><div style="font-size:.95rem;font-weight:600;color:#e2e8f0">'+fmt(qty)+'</div></div>'+
+        '<div style="padding:.6rem .8rem;background:#0f172a;border-radius:6px;border:1px solid #1e293b"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">Inversión</div><div style="font-size:.95rem;font-weight:600;color:#a78bfa">$'+fmt(invested.toFixed(2))+'</div></div>'+
+        '<div style="padding:.6rem .8rem;background:#0f172a;border-radius:6px;border:1px solid #1e293b"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">Valor Actual</div><div style="font-size:.95rem;font-weight:600;color:#e2e8f0">$'+fmt(currentValue.toFixed(2))+'</div></div>'+
+        '<div style="padding:.6rem .8rem;background:'+pnlBg+';border-radius:6px;border:1px solid '+pnlColor+'33"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">ROI</div><div style="font-size:.95rem;font-weight:700;color:'+pnlColor+'">'+(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%</div></div>'+
+      '</div>'+
+      slTpBar+
+      '<div style="margin-top:.8rem"><canvas id="posChart_'+pos.symbol+'" width="800" height="120" style="width:100%;max-width:800px;border-radius:6px"></canvas></div>';
+    container.appendChild(card);
   }
 }
 
-async function updatePositionCharts(symbols){
-  const container=document.getElementById('positionCharts');
-  // Remove charts for symbols no longer in the open list
-  const cards=container.querySelectorAll('.card');
-  cards.forEach(card=>{
-    const cv=card.querySelector('canvas');
-    if(!cv)return;
-    const sym=cv.id.replace('posChart_','');
-    if(!symbols.includes(sym)){
-      card.remove();
-    }
-  });
-  // Update existing charts and add new ones
-  for(const sym of symbols){
+async function loadPositionCharts(openPositions){
+  // Legacy compat - now handled by renderOpenPositionCards + updatePositionCharts
+}
+
+async function updatePositionCharts(symbols,openPositions){
+  for(const pos of openPositions){
+    const sym=pos.symbol;
     const cv=document.getElementById('posChart_'+sym);
+    if(!cv)continue;
     try{
       const data=await api('/api/charts/position/'+sym);
-      if(!cv){
-        // Chart doesn't exist yet, create it
-        if(!container.querySelector('h3')){
-          container.innerHTML='<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Posiciones Abiertas — Entry / SL / TP / Live</h3>';
-        }
-        const card=document.createElement('div');
-        card.className='card';
-        card.style.cssText='padding:1rem;margin-bottom:1rem';
-        card.innerHTML='<h4 style="color:#e2e8f0;margin-bottom:.5rem;font-size:.9rem">'+sym+' — Entry: $'+fmt(data.entry_price)+(data.stop_loss?' | SL: $'+fmt(data.stop_loss):'')+(data.take_profit?' | TP: $'+fmt(data.take_profit):'')+(data.live_price?' | Live: $'+fmt(data.live_price):'')+'</h4><canvas id="posChart_'+sym+'" width="600" height="200" style="width:100%;max-width:600px"></canvas>';
-        container.appendChild(card);
-        drawPositionChart('posChart_'+sym,data);
-      }else{
-        drawPositionChart('posChart_'+sym,data);
-        const h4=cv.parentElement.querySelector('h4');
-        if(h4){
-          h4.textContent=sym+' — Entry: $'+fmt(data.entry_price)+(data.stop_loss?' | SL: $'+fmt(data.stop_loss):'')+(data.take_profit?' | TP: $'+fmt(data.take_profit):'')+(data.live_price?' | Live: $'+fmt(data.live_price):'');
-        }
-      }
-    }catch(e){console.error('position chart update error for '+sym,e)}
+      drawPositionChart('posChart_'+sym,data);
+    }catch(e){console.error('position chart error for '+sym,e)}
   }
-  // If no open positions, clear container
-  if(symbols.length===0){container.innerHTML=''}
 }
 
 function drawPositionChart(canvasId,data){
   const cv=document.getElementById(canvasId);
   if(!cv)return;
   const ctx=cv.getContext('2d');
-  const W=cv.width,H=cv.height,pad=60;
+  const W=cv.width,H=cv.height,padL=70,padR=20,padT=15,padB=25;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
 
   const entry=data.entry_price||0;
   const sl=data.stop_loss||0;
   const tp=data.take_profit||0;
   const live=data.live_price||0;
 
-  if(!entry){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin datos',W/2,H/2);return}
+  if(!entry){ctx.fillStyle='#64748b';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('Sin datos',W/2,H/2);return}
 
   const levels=[entry];
   if(sl)levels.push(sl);
@@ -1267,45 +1358,89 @@ function drawPositionChart(canvasId,data){
   if(live)levels.push(live);
   const minP=Math.min(...levels),maxP=Math.max(...levels);
   const range=(maxP-minP)||minP*0.01||1;
-  const padR=range*0.15;
-  const lo=minP-padR,hi=maxP+padR;
+  const padR2=range*0.2;
+  const lo=minP-padR2,hi=maxP+padR2;
   const r2=hi-lo||1;
+  const chartW=W-padL-padR,chartH=H-padT-padB;
 
-  function yOf(v){return pad+(H-pad*2)*(1-(v-lo)/r2);}
+  function yOf(v){return padT+chartH*(1-(v-lo)/r2);}
 
-  // Grid lines
-  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
-  for(let i=0;i<=4;i++){const y=pad+(H-pad*2)*i/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke()}
+  // Background gradient
+  const bgGrad=ctx.createLinearGradient(0,padT,0,padT+chartH);
+  bgGrad.addColorStop(0,'#0f172a');
+  bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(padL,padT,chartW,chartH);
 
-  function drawLevel(level,color,label,big){
+  // Profit zone (green tint between entry and TP)
+  if(tp&&entry){
+    const yT=yOf(tp),yE=yOf(entry);
+    ctx.fillStyle='rgba(52,211,153,.06)';
+    ctx.fillRect(padL,Math.min(yT,yE),chartW,Math.abs(yE-yT));
+  }
+  // Loss zone (red tint between entry and SL)
+  if(sl&&entry){
+    const yS=yOf(sl),yE=yOf(entry);
+    ctx.fillStyle='rgba(248,113,113,.06)';
+    ctx.fillRect(padL,Math.min(yS,yE),chartW,Math.abs(yE-yS));
+  }
+
+  // Grid lines + price labels
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;ctx.font='10px monospace';ctx.fillStyle='#475569';
+  for(let i=0;i<=4;i++){
+    const y=padT+chartH*i/4;
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
+    const priceVal=hi-r2*i/4;
+    ctx.textAlign='right';ctx.fillText('$'+priceVal.toFixed(4),padL-5,y+3);
+  }
+
+  // Draw level lines
+  function drawLevel(level,color,label,dashed){
     if(!level)return;
     const y=yOf(level);
-    ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.setLineDash([8,5]);
-    ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle=color;ctx.font='bold '+big+'px sans-serif';ctx.textAlign='left';
-    ctx.fillText(label+'  $'+fmt(level),pad+8,y-6);
+    ctx.strokeStyle=color;ctx.lineWidth=dashed?1.5:2;
+    if(dashed)ctx.setLineDash([6,4]);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
+    ctx.setLineDash([]);
+    // Label badge
+    ctx.fillStyle=color;ctx.font='bold 10px sans-serif';ctx.textAlign='left';
+    const labelText=label+' $'+fmt(level);
+    const labelW=ctx.measureText(labelText).width+10;
+    ctx.fillStyle=color+'22';
+    ctx.fillRect(padL+4,y-7,labelW,14);
+    ctx.fillStyle=color;
+    ctx.fillText(labelText,padL+9,y+3);
   }
 
-  drawLevel(tp,'#fbbf24','TP',14);
-  drawLevel(entry,'#34d399','ENTRY',14);
-  drawLevel(sl,'#f87171','SL',14);
+  drawLevel(tp,'#fbbf24','TP',true);
+  drawLevel(sl,'#f87171','SL',true);
+  drawLevel(entry,'#94a3b8','ENTRY',true);
 
-  // Live price as thick line + big label
+  // Live price line (thick, with glow)
   if(live){
     const y=yOf(live);
-    ctx.strokeStyle='#38bdf8';ctx.lineWidth=3;
-    ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();
-    ctx.fillStyle='#38bdf8';ctx.beginPath();ctx.arc(W-pad-10,y,6,0,Math.PI*2);ctx.fill();
-
-    // PnL calculation
+    // Glow
+    ctx.shadowColor='#38bdf8';ctx.shadowBlur=8;
+    ctx.strokeStyle='#38bdf8';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
+    ctx.shadowBlur=0;
+    // Dot at right
+    ctx.fillStyle='#38bdf8';ctx.beginPath();ctx.arc(W-padR-3,y,5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#0f172a';ctx.lineWidth=1.5;ctx.stroke();
+    // PnL badge
     const pnlPct=((live-entry)/entry*100);
     const pnlColor=live>=entry?'#34d399':'#f87171';
-    const pnlSign=live>=entry?'+':'';
-    ctx.fillStyle='#38bdf8';ctx.font='bold 16px sans-serif';ctx.textAlign='left';
-    ctx.fillText('LIVE  $'+fmt(live),pad+8,y-8);
-    ctx.fillStyle=pnlColor;ctx.font='bold 20px sans-serif';ctx.textAlign='right';
-    ctx.fillText(pnlSign+pnlPct.toFixed(2)+'%',W-pad-15,y+22);
+    const pnlText=(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%';
+    ctx.font='bold 11px sans-serif';
+    const pW=ctx.measureText(pnlText).width+12;
+    ctx.fillStyle=pnlColor;
+    ctx.fillRect(W-padR-pW-8,y-8,pW,16);
+    ctx.fillStyle='#0f172a';ctx.textAlign='center';
+    ctx.fillText(pnlText,W-padR-pW/2-8,y+3);
   }
+
+  // Border
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
+  ctx.strokeRect(padL,padT,chartW,chartH);
 }
 
 async function loadTrades(){
