@@ -1306,7 +1306,7 @@ function renderOpenPositionCards(openPositions){
 function getCryptoIcon(symbol){
   // Extract base coin from pair (e.g. BTCUSDT -> btc, ETHUSDT -> eth)
   const base=symbol.replace(/USDT$|USDC$|BUSD$|BTC$|ETH$/i,'').toLowerCase();
-  return 'https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a855a5b2436d1d465e1e213/svg/color/'+base+'.svg';
+  return 'https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/'+base+'.svg';
 }
 
 function buildPositionCardHTML(pos){
