@@ -158,6 +158,8 @@ class UpdateSettingsRequest(BaseModel):
     binance_api_secret: str | None = None
     risk_profile: str | None = None
     default_symbols: str | None = None
+    telegram_chat_id: str | None = None
+    telegram_alerts: bool | None = None
 
 
 @app.get("/api/user/settings")
@@ -171,6 +173,8 @@ def get_user_settings(current_user: Annotated[User, Depends(get_current_user)]) 
         "risk_profile": current_user.risk_profile,
         "has_binance_api_key": has_api_key,
         "binance_api_key_preview": decrypt(current_user.binance_api_key_enc)[:8] + "..." if has_api_key else None,
+        "telegram_chat_id": current_user.telegram_chat_id,
+        "telegram_alerts": current_user.telegram_alerts,
     }
 
 
@@ -193,6 +197,10 @@ def update_user_settings(
             if req.risk_profile not in ("conservative", "moderate", "aggressive"):
                 raise HTTPException(status_code=400, detail="risk_profile inválido")
             user.risk_profile = req.risk_profile
+        if req.telegram_chat_id is not None:
+            user.telegram_chat_id = req.telegram_chat_id
+        if req.telegram_alerts is not None:
+            user.telegram_alerts = req.telegram_alerts
         db.commit()
         db.refresh(user)
         return {
@@ -201,6 +209,8 @@ def update_user_settings(
             "subscription": user.subscription,
             "risk_profile": user.risk_profile,
             "has_binance_api_key": bool(user.binance_api_key_enc),
+            "telegram_chat_id": user.telegram_chat_id,
+            "telegram_alerts": user.telegram_alerts,
         }
     finally:
         db.close()
@@ -218,6 +228,23 @@ def get_user_plan(current_user: Annotated[User, Depends(get_current_user)]) -> d
         "max_ai_interval_seconds": limits["max_ai_interval_seconds"],
         "features": limits["features"],
     }
+
+
+@app.post("/api/user/telegram/test")
+def test_telegram(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
+    """Envía un mensaje de prueba a Telegram del usuario."""
+    if not current_user.telegram_chat_id:
+        raise HTTPException(status_code=400, detail="Configura tu Telegram Chat ID primero")
+    from app.services.telegram import send_telegram_message_sync
+    ok = send_telegram_message_sync(
+        current_user.telegram_chat_id,
+        "✅ <b>Alvora — Test de Notificaciones</b>\n\n"
+        "Tu Telegram está configurado correctamente.\n"
+        "Recibirás alertas de cada operación del AI Agent.",
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="No se pudo enviar el mensaje. Verifica el Bot Token y Chat ID.")
+    return {"ok": True, "message": "Mensaje de prueba enviado"}
 
 
 # ---------------------------------------------------------------------------

@@ -33,6 +33,9 @@ class User(Base):
     binance_api_secret_enc: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # User preferences
     risk_profile: Mapped[str] = mapped_column(String(20), nullable=False, default="moderate")
+    # Telegram notifications
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    telegram_alerts: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, default=func.now(), server_default=func.now()
     )

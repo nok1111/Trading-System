@@ -595,6 +595,23 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
   <button class="btn btn-blue" onclick="saveRiskProfile()">Guardar Perfil</button>
 </div>
 
+<div class="card" style="margin-bottom:1rem;padding:1.2rem">
+  <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Notificaciones Telegram</h3>
+  <p style="color:#94a3b8;font-size:.8rem;margin-bottom:1rem">Recibe alertas de cada operación del AI Agent en Telegram.</p>
+  <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem;align-items:center">
+    <div style="display:flex;flex-direction:column;gap:.2rem">
+      <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Telegram Chat ID</label>
+      <input id="settingsTelegramChatId" placeholder="Ej: 123456789" style="width:200px">
+    </div>
+    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;margin-top:1.1rem"><input type="checkbox" id="settingsTelegramAlerts" style="width:18px;height:18px;accent-color:#38bdf8;cursor:pointer"><span style="color:#38bdf8">Activar notificaciones</span></label>
+  </div>
+  <div style="display:flex;gap:.6rem">
+    <button class="btn btn-blue" onclick="saveTelegramSettings()">Guardar</button>
+    <button class="btn btn-green" onclick="testTelegram()">Enviar Test</button>
+  </div>
+  <div style="margin-top:.8rem;font-size:.75rem;color:#64748b">Para obtener tu Chat ID: habla con <a href="https://t.me/userinfobot" target="_blank" style="color:#38bdf8">@userinfobot</a> en Telegram</div>
+</div>
+
 <div class="card" style="padding:1.2rem">
   <h3 style="color:#38bdf8;font-size:1.1rem;margin-bottom:1rem">Plan de Suscripción</h3>
   <div class="cards" style="gap:.5rem">
@@ -2164,6 +2181,9 @@ async function loadUserSettings(){
     if(currentUser){
       document.getElementById('settingsCreated').textContent=currentUser.created_at?new Date(currentUser.created_at).toLocaleDateString('es-ES'):'--';
     }
+    // Telegram
+    document.getElementById('settingsTelegramChatId').value=s.telegram_chat_id||'';
+    document.getElementById('settingsTelegramAlerts').checked=s.telegram_alerts||false;
   }catch(e){toast(e.message,false)}
 }
 
@@ -2194,6 +2214,22 @@ async function saveRiskProfile(){
 
 function showUpgradeModal(){
   toast('Próximamente: integración con Stripe',false);
+}
+
+async function saveTelegramSettings(){
+  const chatId=document.getElementById('settingsTelegramChatId').value.trim();
+  const alerts=document.getElementById('settingsTelegramAlerts').checked;
+  try{
+    await api('/api/user/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram_chat_id:chatId,telegram_alerts:alerts})});
+    toast('Configuración de Telegram guardada');
+  }catch(e){toast(e.message,false)}
+}
+
+async function testTelegram(){
+  try{
+    const r=await api('/api/user/telegram/test',{method:'POST'});
+    toast('Mensaje de prueba enviado a Telegram');
+  }catch(e){toast(e.message,false)}
 }
 
 // Check auth on page load - dashboard requires login
