@@ -400,11 +400,11 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <option value="grok" data-premium="true">Grok (xAI) — Premium 🔒</option>
 </select>
 </div>
-<div style="display:flex;flex-direction:column;gap:.2rem" id="aiGroqKeyWrap">
+<div style="display:flex;flex-direction:column;gap:.2rem;display:none" id="aiGroqKeyWrap">
 <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(gratis en <a href="https://console.groq.com/keys" target="_blank" style="color:#38bdf8;text-decoration:underline">console.groq.com/keys</a>)</span></label>
 <input id="aiGroqKey" type="password" placeholder="Configurada en .env (o ingresa nueva)" style="width:280px">
 </div>
-<div style="display:flex;flex-direction:column;gap:.2rem" id="aiGeminiKeyWrap" style="display:none">
+<div style="display:flex;flex-direction:column;gap:.2rem" id="aiGeminiKeyWrap">
 <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(gratis en <a href="https://aistudio.google.com/api-keys" target="_blank" style="color:#38bdf8;text-decoration:underline">aistudio.google.com/api-keys</a>)</span></label>
 <input id="aiGeminiKey" type="password" placeholder="Configurada en .env (o ingresa nueva)" style="width:280px">
 </div>
@@ -853,6 +853,7 @@ function initDashboard(){
   setInterval(()=>{loadLivePrices()},1000);
   setInterval(()=>{updateCountdown()},1000);
   (async()=>{try{await checkAIStatus();await checkAILiveStatus()}catch{}})();
+  initAIPreferences();
 }
 
 function addLog(boxId,msg,cls='log-info'){
@@ -2537,6 +2538,9 @@ function aiProviderChanged(){
     grok:'<a href="https://console.x.ai" target="_blank" style="color:#38bdf8;text-decoration:underline">console.x.ai</a>'
   };
 
+  // Save preference
+  try{localStorage.setItem('ai_provider',provider)}catch{}
+
   // Hide all key wraps first
   groqKeyWrap.style.display='none';
   geminiKeyWrap.style.display='none';
@@ -2575,11 +2579,35 @@ function aiProviderChanged(){
     const firstOllama=modelSelect.querySelector('optgroup[label="Ollama (Local)"] option');
     if(firstOllama){firstOllama.selected=true;modelInput.value=firstOllama.value}
   }
+
+  // Restore saved model if available
+  try{
+    const savedModel=localStorage.getItem('ai_model_'+provider);
+    if(savedModel){
+      const opt=modelSelect.querySelector('option[value="'+savedModel+'"]');
+      if(opt){opt.selected=true;modelInput.value=savedModel}
+    }
+  }catch{}
 }
 
 function aiModelChanged(){
   const modelSelect=document.getElementById('aiModelSelect');
-  document.getElementById('aiModel').value=modelSelect.value;
+  const model=modelSelect.value;
+  document.getElementById('aiModel').value=model;
+  const provider=document.getElementById('aiProvider').value;
+  try{localStorage.setItem('ai_model_'+provider,model)}catch{}
+}
+
+function initAIPreferences(){
+  try{
+    const savedProvider=localStorage.getItem('ai_provider');
+    if(savedProvider){
+      const select=document.getElementById('aiProvider');
+      const opt=select.querySelector('option[value="'+savedProvider+'"]');
+      if(opt){opt.selected=true}
+    }
+  }catch{}
+  aiProviderChanged();
 }
 
 function aiTradeModeChanged(){
