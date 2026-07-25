@@ -50,6 +50,25 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 .log-err{color:#f87171}
 .log-hold{color:#94a3b8}
 .countdown{font-size:1.1rem;font-weight:600;color:#38bdf8}
+.auth-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#0f172a;display:flex;justify-content:center;align-items:center;z-index:9999}
+.auth-box{background:#1e293b;padding:2rem;border-radius:1rem;border:1px solid #334155;width:380px;max-width:90vw}
+.auth-box h2{color:#38bdf8;font-size:1.4rem;margin-bottom:.3rem}
+.auth-box p{color:#94a3b8;font-size:.8rem;margin-bottom:1.5rem}
+.auth-box .field{margin-bottom:.8rem}
+.auth-box .field label{display:block;font-size:.75rem;color:#94a3b8;margin-bottom:.3rem;font-weight:600}
+.auth-box .field input{width:100%;padding:.6rem .8rem;background:#0f172a;border:1px solid #334155;border-radius:.5rem;color:#e2e8f0;font-size:.9rem}
+.auth-box .btn{width:100%;padding:.7rem;border:none;border-radius:.5rem;cursor:pointer;font-size:.95rem;font-weight:600;margin-top:.5rem}
+.auth-box .btn-primary{background:#2563eb;color:#fff}
+.auth-box .btn-secondary{background:#334155;color:#e2e8f0}
+.auth-box .switch{text-align:center;margin-top:1rem;font-size:.8rem;color:#94a3b8}
+.auth-box .switch a{color:#38bdf8;cursor:pointer;text-decoration:none}
+.auth-box .err{color:#f87171;font-size:.8rem;margin-top:.5rem;display:none}
+.auth-box .err.show{display:block}
+.user-menu{display:flex;gap:.6rem;align-items:center}
+.user-menu .user-info{font-size:.8rem;color:#94a3b8}
+.user-menu .user-info b{color:#38bdf8}
+.user-menu .logout-btn{font-size:.75rem;padding:.3rem .7rem;border-radius:999px;background:#334155;color:#94a3b8;border:1px solid #475569;cursor:pointer;font-weight:600}
+.user-menu .logout-btn:hover{background:#7f1d1d;color:#fca5a5}
 </style>
 </head>
 <body>
@@ -62,6 +81,33 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <button id="killSwitchBtn" onclick="toggleKillSwitch()" style="display:none;font-size:.75rem;padding:.3rem .8rem;border-radius:999px;background:#7f1d1d;color:#fca5a5;font-weight:700;border:1px solid #fca5a5;cursor:pointer">KILL SWITCH</button>
 <button id="killSwitchOffBtn" onclick="deactivateKillSwitch()" style="display:none;font-size:.75rem;padding:.3rem .8rem;border-radius:999px;background:#064e3b;color:#34d399;font-weight:700;border:1px solid #34d399;cursor:pointer">REANUDAR TRADING</button>
 <span id="wsBadge" style="font-size:.75rem;padding:.3rem .7rem;border-radius:999px;background:#334155;color:#94a3b8;font-weight:600">WS: ...</span>
+<div id="userMenu" class="user-menu" style="display:none">
+  <span class="user-info">Hola, <b id="userUsername">--</b></span>
+  <span class="user-info" id="userPlanBadge" style="padding:.2rem .6rem;border-radius:999px;background:#334155;font-weight:700;font-size:.7rem">FREE</span>
+  <button class="logout-btn" onclick="logout()">Salir</button>
+</div>
+</div>
+</div>
+
+<div id="authOverlay" class="auth-overlay">
+<div class="auth-box">
+  <h2>Trading System</h2>
+  <p>Sistema de trading algorítmico con IA</p>
+  <div id="loginForm">
+    <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="********" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div id="loginErr" class="err"></div>
+    <button class="btn btn-primary" onclick="doLogin()">Iniciar Sesión</button>
+    <div class="switch">No tienes cuenta? <a onclick="showRegister()">Registrarse</a></div>
+  </div>
+  <div id="registerForm" style="display:none">
+    <div class="field"><label>Email</label><input id="regEmail" type="email" placeholder="tu@email.com"></div>
+    <div class="field"><label>Username</label><input id="regUsername" placeholder="tu_usuario"></div>
+    <div class="field"><label>Password</label><input id="regPassword" type="password" placeholder="Min 6 caracteres"></div>
+    <div id="regErr" class="err"></div>
+    <button class="btn btn-primary" onclick="doRegister()">Crear Cuenta</button>
+    <div class="switch">Ya tienes cuenta? <a onclick="showLogin()">Iniciar Sesión</a></div>
+  </div>
 </div>
 </div>
 <div class="tabs">
@@ -441,6 +487,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <div style="display:flex;flex-direction:column;gap:.2rem">
 <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Provider</label>
 <select id="aiProvider" onchange="aiProviderChanged()" style="padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem;color:#e2e8f0;font-size:.9rem">
+<option value="gemini">Gemini (Cloud, gratis)</option>
 <option value="groq">Groq (Cloud, gratis)</option>
 <option value="ollama">Ollama (Local)</option>
 </select>
@@ -520,12 +567,91 @@ let tickIntervalSec=300;
 let lastTickTime=0;
 let refreshTimer=null;
 let globalRefreshTimer=null;
+let authToken=localStorage.getItem('jwt')||null;
+let currentUser=null;
 
 function toast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');setTimeout(()=>t.className='toast',3000)}
-async function api(path,opts={}){const r=await fetch(API+path,opts);if(!r.ok){const e=await r.json().catch(()=>({detail:'Error'}));throw new Error(e.detail||'Error')}return r.json()}
+async function api(path,opts={}){
+  const headers=opts.headers||{};
+  if(authToken)headers['Authorization']='Bearer '+authToken;
+  const r=await fetch(API+path,{...opts,headers});
+  if(r.status===401){logout();throw new Error('Sesión expirada')}
+  if(!r.ok){const e=await r.json().catch(()=>({detail:'Error'}));throw new Error(e.detail||'Error')}
+  return r.json()
+}
 function fmt(n){if(n==null)return'-';return Number(n).toFixed(2)}
 function fmtDate(d){if(!d)return'-';return new Date(d).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function nowTime(){return new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+
+function showLogin(){document.getElementById('loginForm').style.display='block';document.getElementById('registerForm').style.display='none';document.getElementById('loginErr').classList.remove('show')}
+function showRegister(){document.getElementById('loginForm').style.display='none';document.getElementById('registerForm').style.display='block';document.getElementById('regErr').classList.remove('show')}
+
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const password=document.getElementById('loginPassword').value;
+  const errEl=document.getElementById('loginErr');
+  errEl.classList.remove('show');
+  if(!email||!password){errEl.textContent='Email y password requeridos';errEl.classList.add('show');return}
+  try{
+    const r=await fetch(API+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+    const data=await r.json();
+    if(!r.ok){errEl.textContent=data.detail||'Error';errEl.classList.add('show');return}
+    authToken=data.token;currentUser=data.user;
+    localStorage.setItem('jwt',authToken);
+    onAuthSuccess();
+  }catch(e){errEl.textContent=e.message;errEl.classList.add('show')}
+}
+
+async function doRegister(){
+  const email=document.getElementById('regEmail').value.trim();
+  const username=document.getElementById('regUsername').value.trim();
+  const password=document.getElementById('regPassword').value;
+  const errEl=document.getElementById('regErr');
+  errEl.classList.remove('show');
+  if(!email||!username||!password){errEl.textContent='Todos los campos son requeridos';errEl.classList.add('show');return}
+  if(password.length<6){errEl.textContent='Password mínimo 6 caracteres';errEl.classList.add('show');return}
+  try{
+    const r=await fetch(API+'/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,username,password})});
+    const data=await r.json();
+    if(!r.ok){errEl.textContent=data.detail||'Error';errEl.classList.add('show');return}
+    authToken=data.token;currentUser=data.user;
+    localStorage.setItem('jwt',authToken);
+    onAuthSuccess();
+  }catch(e){errEl.textContent=e.message;errEl.classList.add('show')}
+}
+
+function logout(){authToken=null;currentUser=null;localStorage.removeItem('jwt');document.getElementById('authOverlay').style.display='flex';document.getElementById('userMenu').style.display='none';if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null}if(globalRefreshTimer){clearInterval(globalRefreshTimer);globalRefreshTimer=null}}
+
+function onAuthSuccess(){
+  document.getElementById('authOverlay').style.display='none';
+  document.getElementById('userMenu').style.display='flex';
+  document.getElementById('userUsername').textContent=currentUser.username;
+  const planBadge=document.getElementById('userPlanBadge');
+  planBadge.textContent=currentUser.subscription.toUpperCase();
+  if(currentUser.subscription==='pro'){planBadge.style.background='#1e40af';planBadge.style.color='#93c5fd'}
+  else if(currentUser.subscription==='premium'){planBadge.style.background='#7c2d12';planBadge.style.color='#fdba74'}
+  initDashboard();
+}
+
+async function checkAuth(){
+  if(!authToken){document.getElementById('authOverlay').style.display='flex';return}
+  try{
+    const r=await fetch(API+'/api/auth/me',{headers:{'Authorization':'Bearer '+authToken}});
+    if(!r.ok){logout();return}
+    currentUser=await r.json();
+    onAuthSuccess();
+  }catch{document.getElementById('authOverlay').style.display='flex'}
+}
+
+function initDashboard(){
+  loadHealth();loadOverview();loadAllocatedCapital();loadBinanceBalance();loadSignals();loadOrders();loadPositions();loadTrades();loadBacktests();loadRiskEvents();loadPerformance();loadPaperStatus();loadPaperStats();loadMLAccuracy();loadMLPredictions();loadMLModelInfo();loadLivePrices();
+  startGlobalRefresh();
+  if(refreshTimer)clearInterval(refreshTimer);
+  refreshTimer=setInterval(()=>{loadHealth();loadPaperStatus();loadPaperStats()},2000);
+  setInterval(()=>{loadLivePrices()},1000);
+  setInterval(()=>{updateCountdown()},1000);
+  (async()=>{try{await checkAIStatus();await checkAILiveStatus()}catch{}})();
+}
 
 function addLog(boxId,msg,cls='log-info'){
   const box=document.getElementById(boxId);
@@ -1635,7 +1761,12 @@ function aiProviderChanged(){
   const modelInput=document.getElementById('aiModel');
   if(provider==='groq'){
     keyWrap.style.display='flex';
-    modelInput.value='llama-3.1-8b-instant';
+    keyWrap.querySelector('label').innerHTML='Groq API Key <span style="color:#64748b">(gratis en console.groq.com/keys)</span>';
+    modelInput.value='llama-3.3-70b-versatile';
+  }else if(provider==='gemini'){
+    keyWrap.style.display='flex';
+    keyWrap.querySelector('label').innerHTML='Gemini API Key <span style="color:#64748b">(gratis en aistudio.google.com/apikey)</span>';
+    modelInput.value='gemini-2.0-flash';
   }else{
     keyWrap.style.display='none';
     modelInput.value='qwen2.5:14b';
@@ -1662,6 +1793,7 @@ async function aiStart(){
   try{
     const body={provider:provider,interval_seconds:interval,auto_trade:autoTrade};
     if(provider==='groq'){if(groqKey)body.groq_api_key=groqKey;body.model=model}
+    else if(provider==='gemini'){if(groqKey)body.gemini_api_key=groqKey;body.model=model}
     else{body.model=model}
     const r=await api('/api/ai-agent/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     toast('Agente IA activado ['+provider+'] '+(autoTrade?'(auto-trade ON)':'(solo análisis)'));
@@ -1703,6 +1835,66 @@ function startAIPolling(){
 
 function stopAIPolling(){
   if(aiPollTimer){clearInterval(aiPollTimer);aiPollTimer=null}
+}
+
+async function checkAIStatus(){
+  try{
+    const status=await api('/api/ai-agent/status');
+    updateAIUI(status);
+  }catch{}
+}
+
+async function checkAILiveStatus(){
+  try{
+    const status=await api('/api/ai-agent/status');
+    const liveStatus=document.getElementById('aiLiveStatus');
+    const liveDot=document.getElementById('aiLiveDot');
+    if(status.is_running){
+      liveStatus.textContent='ACTIVO';
+      liveStatus.style.background='#064e3b';
+      liveStatus.style.color='#34d399';
+      liveDot.style.display='inline-block';
+      document.getElementById('aiLiveStartBtn').disabled=true;
+      document.getElementById('aiLiveStopBtn').disabled=false;
+      const logs=await api('/api/ai-agent/log?limit=20');
+      const liveFeed=document.getElementById('aiLiveFeed');
+      const aiLogBox=document.getElementById('aiLog');
+      if(logs&&logs.length>0){
+        liveFeed.innerHTML='';
+        if(aiLogBox)aiLogBox.innerHTML='';
+        logs.reverse().forEach(entry=>{
+          const time=entry.timestamp?new Date(entry.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+          addAILiveEntry(entry,time);
+          if(aiLogBox){
+            const div=document.createElement('div');
+            div.className='log-entry';
+            let color='#38bdf8';
+            if(entry.level==='error')color='#f87171';
+            else if(entry.level==='warn')color='#fbbf24';
+            else if(entry.message&&entry.message.includes('Comprando'))color='#34d399';
+            else if(entry.message&&entry.message.includes('Vendiendo'))color='#f87171';
+            else if(entry.message&&entry.message.includes('Sin acciones'))color='#94a3b8';
+            div.innerHTML='<span class="log-time">'+time+'</span> <span style="color:'+color+'">['+entry.level.toUpperCase()+']</span> '+entry.message;
+            if(entry.analysis){div.innerHTML+='<div style="color:#a78bfa;font-size:.78rem;margin-left:1rem;margin-top:.2rem">Análisis: '+entry.analysis+'</div>'}
+            if(entry.risk_assessment){div.innerHTML+='<div style="color:#fbbf24;font-size:.78rem;margin-left:1rem">Riesgo: '+entry.risk_assessment+'</div>'}
+            aiLogBox.insertBefore(div,aiLogBox.firstChild);
+          }
+        });
+        const allLogs=await api('/api/ai-agent/log?limit=500');
+        aiLastLogCount=allLogs?allLogs.length:0;
+      }
+      startAIPolling();
+    }else{
+      liveStatus.textContent='INACTIVO';
+      liveStatus.style.background='#334155';
+      liveStatus.style.color='#94a3b8';
+      liveDot.style.display='none';
+      document.getElementById('aiLiveStartBtn').disabled=false;
+      document.getElementById('aiLiveStopBtn').disabled=true;
+    }
+    document.getElementById('aiLiveProvider').textContent=status.provider||'--';
+    document.getElementById('aiLiveCycle').textContent=status.cycles||0;
+  }catch{}
 }
 
 async function pollAI(){
@@ -1865,73 +2057,8 @@ function addAILiveEntry(entry,time){
   while(liveFeed.children.length>100){liveFeed.removeChild(liveFeed.lastChild)}
 }
 
-loadHealth();loadOverview();loadAllocatedCapital();loadBinanceBalance();loadSignals();loadOrders();loadPositions();loadTrades();loadBacktests();loadRiskEvents();loadPerformance();loadPaperStatus();loadPaperStats();loadMLAccuracy();loadMLPredictions();loadMLModelInfo();loadLivePrices();
-startGlobalRefresh();
-setInterval(()=>{loadHealth();loadPaperStatus();loadPaperStats()},2000);
-setInterval(()=>{loadLivePrices()},1000);
-setInterval(()=>{updateCountdown()},1000);
-
-// Check if AI Agent is already running on page load
-(async()=>{
-  try{
-    const status=await api('/api/ai-agent/status');
-    updateAIUI(status);
-    const liveStatus=document.getElementById('aiLiveStatus');
-    const liveDot=document.getElementById('aiLiveDot');
-    if(status.is_running){
-      liveStatus.textContent='ACTIVO';
-      liveStatus.style.background='#064e3b';
-      liveStatus.style.color='#34d399';
-      liveDot.style.display='inline-block';
-      document.getElementById('aiLiveStartBtn').disabled=true;
-      document.getElementById('aiLiveStopBtn').disabled=false;
-
-      // Load existing logs into live feed immediately
-      const logs=await api('/api/ai-agent/log?limit=20');
-      const liveFeed=document.getElementById('aiLiveFeed');
-      const aiLogBox=document.getElementById('aiLog');
-      if(logs&&logs.length>0){
-        liveFeed.innerHTML='';
-        if(aiLogBox)aiLogBox.innerHTML='';
-        logs.reverse().forEach(entry=>{
-          const time=entry.timestamp?new Date(entry.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
-          // Add to AI Live feed (detailed)
-          addAILiveEntry(entry,time);
-          // Add to compact log
-          if(aiLogBox){
-            const div=document.createElement('div');
-            div.className='log-entry';
-            let color='#38bdf8';
-            if(entry.level==='error')color='#f87171';
-            else if(entry.level==='warn')color='#fbbf24';
-            else if(entry.message&&entry.message.includes('Comprando'))color='#34d399';
-            else if(entry.message&&entry.message.includes('Vendiendo'))color='#f87171';
-            else if(entry.message&&entry.message.includes('Sin acciones'))color='#94a3b8';
-            div.innerHTML='<span class="log-time">'+time+'</span> <span style="color:'+color+'">['+entry.level.toUpperCase()+']</span> '+entry.message;
-            if(entry.analysis){div.innerHTML+='<div style="color:#a78bfa;font-size:.78rem;margin-left:1rem;margin-top:.2rem">Análisis: '+entry.analysis+'</div>'}
-            if(entry.risk_assessment){div.innerHTML+='<div style="color:#fbbf24;font-size:.78rem;margin-left:1rem">Riesgo: '+entry.risk_assessment+'</div>'}
-            aiLogBox.insertBefore(div,aiLogBox.firstChild);
-          }
-        });
-        // Set aiLastLogCount to current total so polling only adds NEW logs
-        const allLogs=await api('/api/ai-agent/log?limit=500');
-        aiLastLogCount=allLogs?allLogs.length:0;
-      }
-
-      // Start polling for new logs
-      startAIPolling();
-    }else{
-      liveStatus.textContent='INACTIVO';
-      liveStatus.style.background='#334155';
-      liveStatus.style.color='#94a3b8';
-      liveDot.style.display='none';
-      document.getElementById('aiLiveStartBtn').disabled=false;
-      document.getElementById('aiLiveStopBtn').disabled=true;
-    }
-    document.getElementById('aiLiveProvider').textContent=status.provider||'--';
-    document.getElementById('aiLiveCycle').textContent=status.cycles||0;
-  }catch{}
-})();
+// Check auth on page load - dashboard requires login
+checkAuth();
 </script>
 </body>
 </html>
