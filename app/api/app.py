@@ -41,6 +41,7 @@ app = FastAPI(
 )
 
 _DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
+_LANDING_HTML = (Path(__file__).parent / "landing.html").read_text(encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Authentication (JWT)
@@ -298,8 +299,14 @@ def live_price(symbol: str) -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
+def landing() -> HTMLResponse:
+    """Landing page de Alvora."""
+    return HTMLResponse(_LANDING_HTML)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
-    """Dashboard web interactivo."""
+    """Dashboard web interactivo (requiere login)."""
     return HTMLResponse(_DASHBOARD_HTML)
 
 
