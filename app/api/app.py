@@ -1336,6 +1336,8 @@ def _get_or_create_agent() -> AITradingAgent:
                 provider=getattr(settings, "AI_PROVIDER", "groq"),
                 groq_api_key=getattr(settings, "GROQ_API_KEY", None),
                 groq_model=getattr(settings, "AI_MODEL", "llama-3.1-8b-instant"),
+                gemini_api_key=getattr(settings, "GEMINI_API_KEY", None),
+                gemini_model=getattr(settings, "AI_MODEL", "gemini-2.0-flash"),
                 ollama_url=getattr(settings, "OLLAMA_URL", "http://localhost:11434"),
                 ollama_model=getattr(settings, "OLLAMA_MODEL", "qwen2.5:14b"),
                 interval_seconds=getattr(settings, "AI_INTERVAL_SECONDS", 30),
@@ -1347,6 +1349,7 @@ def _get_or_create_agent() -> AITradingAgent:
 class AIStartRequest(BaseModel):
     provider: str | None = None
     groq_api_key: str | None = None
+    gemini_api_key: str | None = None
     model: str | None = None
     interval_seconds: int | None = None
     auto_trade: bool | None = None
@@ -1360,9 +1363,13 @@ def ai_agent_start(req: AIStartRequest = AIStartRequest()) -> dict:
         agent.provider = req.provider
     if req.groq_api_key:
         agent.groq_api_key = req.groq_api_key
+    if req.gemini_api_key:
+        agent.gemini_api_key = req.gemini_api_key
     if req.model:
         if agent.provider == "groq":
             agent.groq_model = req.model
+        elif agent.provider == "gemini":
+            agent.gemini_model = req.model
         else:
             agent.ollama_model = req.model
     if req.interval_seconds is not None and req.interval_seconds >= 10:

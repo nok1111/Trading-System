@@ -52,8 +52,9 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_ACCESS_TOKEN: str | None = None
     WHATSAPP_TO_NUMBER: str | None = None
-    AI_PROVIDER: Literal["groq", "ollama"] = "groq"
+    AI_PROVIDER: Literal["groq", "ollama", "gemini"] = "groq"
     GROQ_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
     AI_MODEL: str = "llama-3.3-70b-versatile"
     OLLAMA_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:14b"

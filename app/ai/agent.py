@@ -45,6 +45,8 @@ class AITradingAgent:
         provider: str = "groq",
         groq_api_key: str | None = None,
         groq_model: str = "llama-3.1-8b-instant",
+        gemini_api_key: str | None = None,
+        gemini_model: str = "gemini-2.0-flash",
         ollama_url: str = "http://localhost:11434",
         ollama_model: str = "qwen2.5:14b",
         api_base: str = "http://127.0.0.1:8080",
@@ -54,6 +56,8 @@ class AITradingAgent:
         self.provider = provider
         self.groq_api_key = groq_api_key
         self.groq_model = groq_model
+        self.gemini_api_key = gemini_api_key
+        self.gemini_model = gemini_model
         self.ollama_url = ollama_url.rstrip("/")
         self.ollama_model = ollama_model
         self.api_base = api_base
@@ -81,7 +85,7 @@ class AITradingAgent:
         return {
             "is_running": self.is_running,
             "provider": self.provider,
-            "model": self.groq_model if self.provider == "groq" else self.ollama_model,
+            "model": self.groq_model if self.provider == "groq" else (self.gemini_model if self.provider == "gemini" else self.ollama_model),
             "interval_seconds": self.interval,
             "current_interval": self._current_interval,
             "hold_streak": self._hold_streak,
@@ -515,12 +519,28 @@ class AITradingAgent:
         if self.provider == "groq":
             result = self._ask_groq(user_msg)
             if result is None:
-                self._add_log("warn", "Groq no disponible, intentando con Ollama local...")
-                result = self._ask_ollama(user_msg)
+                # Try Gemini as fallback
+                if self.gemini_api_key:
+                    self._add_log("warn", "Groq no disponible, intentando con Gemini...")
+                    result = self._ask_gemini(user_msg)
                 if result is None:
-                    self._add_log("error", "Ni Groq ni Ollama disponibles. Revisa tu conexión o API key.")
+                    self._add_log("warn", "Groq no disponible, intentando con Ollama local...")
+                    result = self._ask_ollama(user_msg)
+                if result is None:
+                    self._add_log("error", "Ni Groq, Gemini ni Ollama disponibles. Revisa tu conexión o API keys.")
                 else:
-                    self._add_log("info", "Ollama respondió correctamente (fallback exitoso)")
+                    self._add_log("info", "Fallback respondió correctamente")
+            return result
+        elif self.provider == "gemini":
+            result = self._ask_gemini(user_msg)
+            if result is None and self.groq_api_key:
+                self._add_log("warn", "Gemini no disponible, intentando con Groq...")
+                result = self._ask_groq(user_msg)
+            if result is None:
+                self._add_log("warn", "Gemini no disponible, intentando con Ollama local...")
+                result = self._ask_ollama(user_msg)
+            if result is None:
+                self._add_log("error", "Ni Gemini, Groq ni Ollama disponibles.")
             return result
         elif self.provider == "ollama":
             return self._ask_ollama(user_msg)
@@ -560,6 +580,37 @@ class AITradingAgent:
             return None
         except Exception as exc:
             self._add_log("error", f"Error consultando Groq: {exc}")
+            return None
+
+    def _ask_gemini(self, user_msg: str) -> dict | None:
+        """Consulta a Google Gemini API (gratis, generoso)."""
+        if not self.gemini_api_key:
+            self._add_log("error", "GEMINI_API_KEY no configurada")
+            return None
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
+            resp = httpx.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                    "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
+                    "generationConfig": {
+                        "temperature": 0.3,
+                        "maxOutputTokens": 1000,
+                        "responseMimeType": "application/json",
+                    },
+                },
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            content = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            return self._parse_response(content)
+        except httpx.HTTPStatusError as exc:
+            self._add_log("error", f"Gemini API error {exc.response.status_code}: {exc.response.text[:200]}")
+            return None
+        except Exception as exc:
+            self._add_log("error", f"Error consultando Gemini: {exc}")
             return None
 
     def _ask_ollama(self, user_msg: str) -> dict | None:
