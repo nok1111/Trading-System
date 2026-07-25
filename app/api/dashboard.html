@@ -135,9 +135,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <button class="tab" data-tab="activity">Actividad</button>
 <button class="tab" data-tab="positions">Posiciones</button>
 <button class="tab" data-tab="performance">Performance</button>
-<button class="tab" data-tab="paper">Paper Trading</button>
 <button class="tab" data-tab="market">Mercado</button>
-<button class="tab" data-tab="ml">Machine Learning</button>
 <button class="tab" data-tab="ai">AI Agent</button>
 <button class="tab" data-tab="ailive">AI Live</button>
 <button class="tab" data-tab="settings">Settings</button>
@@ -234,164 +232,55 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 <div id="performance" class="panel">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-<h3 style="color:#38bdf8;margin-bottom:0;font-size:1rem">Performance por Estrategia</h3>
+<h3 style="color:#a78bfa;margin-bottom:0;font-size:1.1rem">Performance — AI Agent</h3>
 <button class="btn btn-red" style="padding:.4rem .8rem;font-size:.8rem" onclick="resetStats()">Reiniciar Stats</button>
 </div>
-<div id="strategyStatsCards" style="margin-bottom:1.5rem"></div>
+<div class="cards" id="aiStatsCards" style="margin-bottom:1.5rem"></div>
 <div style="margin-top:1rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Curva de Equity — Combinada</h3>
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Curva de Equity — AI Agent</h3>
 <div class="card" style="padding:1rem">
-<canvas id="equityChartCombined" width="1100" height="300" style="width:100%;max-width:1100px"></canvas>
-</div>
-</div>
-<div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
-<div style="flex:1;min-width:500px">
-<h3 style="color:#34d399;margin-bottom:.8rem;font-size:1rem">TrendMomentum — Equity</h3>
-<div class="card" style="padding:1rem">
-<canvas id="equityChartTrend" width="500" height="250" style="width:100%;max-width:500px"></canvas>
-</div>
-</div>
-<div style="flex:1;min-width:500px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Machine Learning — Equity</h3>
-<div class="card" style="padding:1rem">
-<canvas id="equityChartML" width="500" height="250" style="width:100%;max-width:500px"></canvas>
-</div>
-</div>
-</div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">PnL por Trade (Combinado)</h3>
-<div class="card" style="padding:1rem">
-<canvas id="pnlChart" width="1100" height="250" style="width:100%;max-width:1100px"></canvas>
+<canvas id="aiPnlChart" width="1100" height="300" style="width:100%;max-width:1100px"></canvas>
 </div>
 </div>
 <div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
 <div style="flex:1;min-width:300px">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Aciertos vs Fallos</h3>
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Decisiones del Agente</h3>
+<div class="card" style="padding:1rem">
+<canvas id="aiDecisionsChart" width="300" height="250" style="width:100%;max-width:300px"></canvas>
+</div>
+</div>
+<div style="flex:1;min-width:300px">
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Aciertos vs Fallos</h3>
 <div class="card" style="padding:1rem">
 <canvas id="winLossChart" width="300" height="200" style="width:100%;max-width:300px"></canvas>
 </div>
 </div>
 <div style="flex:1;min-width:300px">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Distribución por Símbolo</h3>
-<div class="card" style="padding:1rem">
-<canvas id="symbolChart" width="400" height="200" style="width:100%;max-width:400px"></canvas>
-</div>
-</div>
-</div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">PnL Diario (últimos 14 días)</h3>
-<div class="card" style="padding:1rem">
-<canvas id="dailyPnlChart" width="1100" height="280" style="width:100%;max-width:1100px"></canvas>
-</div>
-</div>
-<div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
-<div style="flex:1;min-width:300px">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">PnL por Periodo</h3>
-<div class="card" style="padding:1rem">
-<canvas id="periodCompareChart" width="400" height="250" style="width:100%;max-width:400px"></canvas>
-</div>
-</div>
-<div style="flex:1;min-width:300px">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">W/L por Periodo</h3>
-<div class="card" style="padding:1rem">
-<canvas id="periodWinLossChart" width="400" height="250" style="width:100%;max-width:400px"></canvas>
-</div>
-</div>
-</div>
-<div id="statsPeriodCards" style="margin-top:1.5rem"></div>
-
-<!-- AI Agent Performance Section -->
-<div style="margin-top:2rem;border-top:2px solid #a78bfa;padding-top:1.5rem">
-<h3 style="color:#a78bfa;margin-bottom:1rem;font-size:1.1rem">AI Agent Performance</h3>
-<div class="cards" id="aiStatsCards" style="margin-bottom:1.5rem"></div>
-<div style="margin-top:1rem;display:flex;gap:1.5rem;flex-wrap:wrap">
-<div style="flex:1;min-width:500px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">AI Agent — PnL por Trade</h3>
-<div class="card" style="padding:1rem">
-<canvas id="aiPnlChart" width="500" height="250" style="width:100%;max-width:500px"></canvas>
-</div>
-</div>
-<div style="flex:1;min-width:300px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">AI Agent — Decisiones</h3>
-<div class="card" style="padding:1rem">
-<canvas id="aiDecisionsChart" width="300" height="250" style="width:100%;max-width:300px"></canvas>
-</div>
-</div>
-</div>
-<div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
-<div style="flex:1;min-width:400px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">AI Agent — Trades por Símbolo</h3>
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Trades por Símbolo</h3>
 <div class="card" style="padding:1rem">
 <canvas id="aiSymbolChart" width="400" height="200" style="width:100%;max-width:400px"></canvas>
 </div>
 </div>
+</div>
+<div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
 <div style="flex:1;min-width:400px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">AI Agent — Compras vs Ventas</h3>
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Compras vs Ventas</h3>
 <div class="card" style="padding:1rem">
 <canvas id="aiBuySellChart" width="400" height="200" style="width:100%;max-width:400px"></canvas>
 </div>
 </div>
+<div style="flex:1;min-width:400px">
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">PnL Diario (últimos 14 días)</h3>
+<div class="card" style="padding:1rem">
+<canvas id="dailyPnlChart" width="400" height="250" style="width:100%;max-width:400px"></canvas>
+</div>
+</div>
 </div>
 <div style="margin-top:1.5rem">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">AI Agent — Posiciones Abiertas</h3>
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Posiciones Abiertas</h3>
 <div class="card" style="padding:.5rem">
 <table><thead><tr><th>Símbolo</th><th>Side</th><th>Cantidad</th><th>Precio Entrada</th><th>Stop Loss</th><th>Take Profit</th><th>Abierta</th></tr></thead><tbody id="aiPositionsBody"><tr><td colspan="7" style="color:#64748b;text-align:center">Sin posiciones del AI Agent</td></tr></tbody></table>
 </div>
-</div>
-</div>
-
-</div>
-<div id="paper" class="panel">
-<div class="controls"><button class="btn btn-green" id="btnPaperStart" onclick="paperStart()">Iniciar</button><button class="btn btn-red" id="btnPaperStop" onclick="paperStop()">Detener</button><span id="paperStatus" style="font-size:.9rem"></span></div>
-<div class="card" style="margin-bottom:1rem">
-<div class="label" style="margin-bottom:.6rem">Estrategias a ejecutar</div>
-<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">
-<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.9rem"><input type="checkbox" id="stratTrend" checked style="width:18px;height:18px;accent-color:#38bdf8;cursor:pointer"><span>TrendMomentum <span style="color:#64748b;font-size:.75rem">(cruce EMAs + RSI)</span></span></label>
-<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.9rem"><input type="checkbox" id="stratML" style="width:18px;height:18px;accent-color:#38bdf8;cursor:pointer"><span>Machine Learning <span style="color:#64748b;font-size:.75rem">(LightGBM)</span></span></label>
-</div>
-<div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-<div class="label">Timeframe:</div>
-<select id="timeframeSelect" style="padding:.4rem .6rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem;color:#e2e8f0;font-size:.9rem">
-<option value="1m">1 min</option>
-<option value="5m" selected>5 min</option>
-<option value="15m">15 min</option>
-<option value="1h">1 hora</option>
-<option value="4h">4 horas</option>
-<option value="1d">1 dia</option>
-</select>
-<div class="label" style="margin-left:1rem">Intervalo (seg):</div>
-<input id="intervalInput" type="number" value="300" min="5" max="3600" style="width:80px">
-<button class="btn btn-blue" onclick="setTickInterval()">Aplicar</button>
-<div class="label" style="margin-left:1rem">Depositar $:</div>
-<input id="depositAmount" type="number" placeholder="500" style="width:100px">
-<button class="btn btn-blue" onclick="paperDeposit()">Depositar</button>
-</div>
-</div>
-<div class="cards">
-<div class="card"><div class="label">Estado</div><div class="value" id="paperState">Detenido</div></div>
-<div class="card"><div class="label">Próximo Tick</div><div class="value blue countdown" id="tickCountdown">--</div></div>
-<div class="card"><div class="label">Intervalo</div><div class="value" id="tickInterval">--</div></div>
-<div class="card"><div class="label">Run IDs</div><div class="value" id="paperRunId">--</div></div>
-</div>
-<div class="cards" style="margin-top:1rem">
-<div class="card"><div class="label">% Acierto Global</div><div class="value" id="paperWinRate">--</div></div>
-<div class="card"><div class="label">PnL Total</div><div class="value" id="paperTotalPnl">--</div></div>
-<div class="card"><div class="label">Trades Cerrados</div><div class="value" id="paperTradesClosed">0</div></div>
-<div class="card"><div class="label">Aciertos / Fallos</div><div class="value" id="paperWinsLosses">-- / --</div></div>
-<div class="card"><div class="label">Símbolo + Frecuente</div><div class="value blue" id="paperTopSymbol" style="font-size:1rem">--</div></div>
-</div>
-<div class="card" style="margin-top:1rem"><p style="color:#94a3b8;font-size:.85rem">El paper trading ejecuta la estrategia periódicamente. Con Binance Testnet, descarga datos reales y ejecuta órdenes en el testnet. Requiere PAPER_TRADING_ENABLED=true en .env</p></div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Resumen por Simulación</h3>
-<table><thead><tr><th>Run ID</th><th>Estrategia</th><th>Estado</th><th>Trades</th><th>W/L</th><th>Win %</th><th>PnL</th><th>Avg Win</th><th>Avg Loss</th><th>Símbolos</th></tr></thead><tbody id="simulationsBody"><tr><td colspan="10" style="color:#64748b;text-align:center">Sin datos</td></tr></tbody></table>
-</div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Monedas más Frecuentes</h3>
-<table><thead><tr><th>Símbolo</th><th>Trades</th><th>Compras</th><th>Ventas</th><th>Wins</th><th>Losses</th><th>Win %</th><th>PnL Total</th></tr></thead><tbody id="symbolStatsBody"><tr><td colspan="8" style="color:#64748b;text-align:center">Sin datos</td></tr></tbody></table>
-</div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Log de Actividad en Vivo</h3>
-<div class="log-box" id="paperLog"><div class="log-entry" style="color:#64748b">Sin actividad. Inicia el paper trading para ver eventos en tiempo real.</div></div>
 </div>
 </div>
 <div id="market" class="panel">
@@ -424,79 +313,14 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 </div>
 </div>
-<div id="ml" class="panel">
-<div class="controls" style="flex-wrap:wrap;gap:.5rem;align-items:flex-end">
-<div style="display:flex;flex-direction:column;gap:.2rem">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Símbolo</label>
-<input id="mlSymbol" value="BTCUSDT" placeholder="BTCUSDT" style="width:140px">
-</div>
-<div style="display:flex;flex-direction:column;gap:.2rem">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Forward Window (barras)</label>
-<input id="mlFW" type="number" value="5" style="width:80px" placeholder="5">
-</div>
-<div style="display:flex;flex-direction:column;gap:.2rem">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Timeframe</label>
-<select id="mlTF" style="width:90px;padding:.5rem;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0">
-<option value="1h">1h</option><option value="4h">4h</option><option value="1d">1d</option><option value="15m">15m</option><option value="5m">5m</option>
-</select>
-</div>
-<button class="btn btn-blue" id="mlTrainBtn" onclick="mlTrain()">Entrenar Modelo</button>
-<button class="btn btn-green" id="mlRetrainBtn" onclick="mlRetrain()">Re-entrenar con Feedback</button>
-<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem"><input type="checkbox" id="mlContinuous" style="width:18px;height:18px;accent-color:#f59e0b;cursor:pointer"><span style="color:#fbbf24">Entrenamiento continuo</span></label>
-<button class="btn btn-red" id="mlCancelBtn" onclick="mlCancel()" style="display:none">Cancelar</button><button class="btn" id="mlResetBtn" onclick="mlReset()" style="background:#7f1d1d;color:#fca5a5;display:none">Reset</button>
-</div>
-<div style="margin-top:1rem;display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
-<div id="mlStatusBadge" style="padding:.4rem .9rem;border-radius:999px;font-size:.8rem;font-weight:700;background:#334155;color:#94a3b8">IDLE</div>
-<div id="mlProgressWrap" style="flex:1;min-width:200px;display:none">
-<div style="font-size:.75rem;color:#94a3b8;margin-bottom:.3rem">Progreso: <span id="mlProgressPct">0</span>%</div>
-<div style="background:#1e293b;border-radius:999px;height:8px;overflow:hidden"><div id="mlProgressBar" style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:0%;transition:width .3s"></div></div>
-</div>
-<div id="mlElapsed" style="font-size:.75rem;color:#64748b"></div>
-</div>
-<div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-<div>
-<div class="cards" style="gap:.5rem">
-<div class="card" style="padding:.7rem .9rem"><div class="label">Estado Modelo</div><div class="value" id="mlModelState" style="font-size:.9rem">Sin modelo</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Algoritmo</div><div class="value" id="mlAlgo" style="font-size:.9rem">--</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Train Accuracy</div><div class="value" id="mlTrainAcc" style="font-size:.9rem">--</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Val Accuracy</div><div class="value" id="mlValAcc" style="font-size:.9rem">--</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Samples / Features</div><div class="value" id="mlSamplesFeat" style="font-size:.9rem">--</div></div>
-</div>
-<div class="cards" style="margin-top:.5rem;gap:.5rem">
-<div class="card" style="padding:.7rem .9rem"><div class="label">Accuracy en Vivo</div><div class="value" id="mlLiveAccuracy">--</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Correctos</div><div class="value green" id="mlCorrect">0</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Incorrectos</div><div class="value red" id="mlIncorrect">0</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Pendientes</div><div class="value blue" id="mlPending">0</div></div>
-</div>
-<div class="cards" style="margin-top:.5rem;gap:.5rem">
-<div class="card" style="padding:.7rem .9rem"><div class="label">Acierto BUY</div><div class="value green" id="mlBuyAcc">--</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Acierto SELL</div><div class="value red" id="mlSellAcc">--</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Total Predicciones</div><div class="value" id="mlTotalPred">0</div></div>
-<div class="card" style="padding:.7rem .9rem"><div class="label">Última Versión</div><div class="value" id="mlVersion" style="font-size:.85rem">--</div></div>
-</div>
-</div>
-<div>
-<h3 style="color:#38bdf8;margin-bottom:.5rem;font-size:.9rem">Consola de Entrenamiento (Live Logs)</h3>
-<div id="mlLogConsole" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:.8rem;height:320px;overflow-y:auto;font-family:'Courier New',monospace;font-size:.78rem;line-height:1.5;color:#94a3b8;white-space:pre-wrap">
-<div style="color:#64748b">[Esperando] Presiona "Entrenar Modelo" para iniciar...</div>
-</div>
-</div>
-</div>
-<div id="mlResult" class="card" style="display:none;margin-top:1rem"></div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Historial de Predicciones ML</h3>
-<table><thead><tr><th>ID</th><th>Fecha</th><th>Símbolo</th><th>Tipo</th><th>Prob.</th><th>Precio Pred.</th><th>Resultado</th><th>Precio Real</th><th>Correcto</th></tr></thead><tbody id="mlPredictionsBody"></tbody></table>
-</div>
-</div>
-</div>
 
-<!-- AI Agent Panel -->
+<!-- AI Agent Panel — Configuration & Control -->
 <div id="ai" class="panel">
-<div class="card" style="margin-bottom:1rem;padding:1.2rem">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+<div class="card" style="margin-bottom:1rem;padding:1.2rem;border-left:3px solid #a78bfa">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">
 <div>
-<h3 style="color:#a78bfa;font-size:1.1rem">Agente de IA Autónomo</h3>
-<p style="color:#94a3b8;font-size:.8rem;margin-top:.3rem">Analiza el mercado y ejecuta trades automáticamente usando LLM</p>
+<h3 style="color:#a78bfa;font-size:1.2rem">AI Agent — Configuración</h3>
+<p style="color:#94a3b8;font-size:.8rem;margin-top:.3rem">Configura el proveedor de IA, el modelo y el modo de trading. El agente analizará el mercado y ejecutará trades automáticamente.</p>
 </div>
 <div style="display:flex;gap:.6rem;align-items:center">
 <button class="btn btn-green" id="aiStartBtn" onclick="aiStart()">Activar IA</button>
@@ -504,12 +328,16 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 </div>
 
-<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+<div style="margin-bottom:1rem;padding:.6rem .8rem;background:#0f172a;border-radius:.5rem;border:1px solid #334155">
+<p style="color:#64748b;font-size:.75rem;line-height:1.5"><b style="color:#a78bfa">AI Agent</b> = configura y controla el agente (provider, modelo, modo). <b style="color:#38bdf8">AI Live</b> = monitorea el agente en tiempo real (qué ve, qué analiza, qué decide).</p>
+</div>
+
+<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:flex-start">
 <div style="display:flex;flex-direction:column;gap:.2rem">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Provider</label>
+<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Proveedor de IA</label>
 <select id="aiProvider" onchange="aiProviderChanged()" style="padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem;color:#e2e8f0;font-size:.9rem">
-<option value="gemini">Gemini (Cloud, gratis)</option>
-<option value="groq">Groq (Cloud, gratis)</option>
+<option value="gemini">Gemini (Google Cloud)</option>
+<option value="groq">Groq (Cloud)</option>
 <option value="ollama">Ollama (Local)</option>
 </select>
 </div>
@@ -517,15 +345,52 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(gratis en console.groq.com/keys)</span></label>
 <input id="aiGroqKey" type="password" placeholder="Configurada en .env (o ingresa nueva)" style="width:280px">
 </div>
+<div style="display:flex;flex-direction:column;gap:.2rem" id="aiGeminiKeyWrap" style="display:none">
+<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(gratis en aistudio.google.com)</span></label>
+<input id="aiGeminiKey" type="password" placeholder="Configurada en .env (o ingresa nueva)" style="width:280px">
+</div>
 <div style="display:flex;flex-direction:column;gap:.2rem" id="aiModelWrap">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Modelo</label>
-<input id="aiModel" value="llama-3.1-8b-instant" style="width:200px">
+<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Modelo de IA</label>
+<select id="aiModelSelect" onchange="aiModelChanged()" style="padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem;color:#e2e8f0;font-size:.9rem;min-width:220px">
+<optgroup label="Gemini">
+<option value="gemini-2.0-flash">Gemini 2.0 Flash (rápido, gratis)</option>
+<option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (más rápido)</option>
+<option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+<option value="gemini-1.5-pro">Gemini 1.5 Pro (más potente)</option>
+</optgroup>
+<optgroup label="Groq">
+<option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (rápido)</option>
+<option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (potente)</option>
+<option value="llama-3.1-70b-versatile">Llama 3.1 70B Versatile</option>
+<option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+</optgroup>
+<optgroup label="Ollama (Local)">
+<option value="qwen2.5:14b">Qwen 2.5 14B</option>
+<option value="qwen2.5:7b">Qwen 2.5 7B (rápido)</option>
+<option value="llama3.2:3b">Llama 3.2 3B (muy rápido)</option>
+<option value="llama3.1:8b">Llama 3.1 8B</option>
+</optgroup>
+</select>
+<input id="aiModel" type="hidden" value="gemini-2.0-flash">
 </div>
 <div style="display:flex;flex-direction:column;gap:.2rem">
 <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Intervalo (seg)</label>
 <input id="aiInterval" type="number" value="30" min="10" max="3600" style="width:80px">
 </div>
-<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;margin-top:1.1rem"><input type="checkbox" id="aiAutoTrade" checked style="width:18px;height:18px;accent-color:#a78bfa;cursor:pointer"><span style="color:#a78bfa">Auto-trade (ejecutar compras/ventas)</span></label>
+</div>
+
+<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+<div style="display:flex;flex-direction:column;gap:.3rem">
+<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Modo de Trading</label>
+<div style="display:flex;gap:.5rem">
+<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.5rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem;font-size:.85rem"><input type="radio" name="aiTradeMode" value="paper" checked style="accent-color:#34d399"><span style="color:#34d399">Paper Trading</span></label>
+<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.5rem 1rem;background:#1e293b;border:1px solid #334155;border-radius:.5rem;font-size:.85rem"><input type="radio" name="aiTradeMode" value="live" style="accent-color:#f87171"><span style="color:#f87171">Live Trading</span></label>
+</div>
+</div>
+<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;margin-top:1.4rem"><input type="checkbox" id="aiAutoTrade" checked style="width:18px;height:18px;accent-color:#a78bfa;cursor:pointer"><span style="color:#a78bfa">Auto-trade (ejecutar compras/ventas)</span></label>
+</div>
+<div id="aiLiveWarning" style="display:none;margin-bottom:1rem;padding:.6rem .8rem;background:#7f1d1d;border-radius:.5rem;border:1px solid #fca5a5">
+<p style="color:#fca5a5;font-size:.75rem">⚠️ <b>Live Trading:</b> Las órdenes se ejecutarán con dinero real en tu cuenta de Binance. Asegúrate de tener API keys configuradas y revisar tu perfil de riesgo.</p>
 </div>
 </div>
 
@@ -535,6 +400,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <div class="card"><div class="label">Modelo</div><div class="value" id="aiModelLabel" style="font-size:1rem">--</div></div>
 <div class="card"><div class="label">Ciclos</div><div class="value blue" id="aiCycles">0</div></div>
 <div class="card"><div class="label">Auto-trade</div><div class="value" id="aiAutoTradeLabel">--</div></div>
+<div class="card"><div class="label">Modo</div><div class="value" id="aiTradeModeLabel" style="color:#34d399">PAPER</div></div>
 </div>
 
 <div style="margin-top:1.5rem">
@@ -543,12 +409,13 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 </div>
 
-<!-- AI Live Panel -->
+<!-- AI Live Panel — Real-time Monitor -->
 <div id="ailive" class="panel">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+<div class="card" style="margin-bottom:1rem;padding:1.2rem;border-left:3px solid #38bdf8">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">
 <div>
-<h3 style="color:#a78bfa;font-size:1.1rem">AI Live Feed</h3>
-<p style="color:#94a3b8;font-size:.8rem;margin-top:.3rem">Comunicación en tiempo real del agente IA: qué ve, qué analiza, qué decide</p>
+<h3 style="color:#38bdf8;font-size:1.2rem">AI Live — Monitor en Tiempo Real</h3>
+<p style="color:#94a3b8;font-size:.8rem;margin-top:.3rem">Observa lo que el agente IA ve, analiza y decide en cada ciclo. Comunicación completa con el LLM en vivo.</p>
 </div>
 <div style="display:flex;gap:.6rem;align-items:center">
 <span id="aiLiveStatus" style="padding:.4rem .9rem;border-radius:999px;font-size:.8rem;font-weight:700;background:#334155;color:#94a3b8">INACTIVO</span>
@@ -557,18 +424,24 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 </div>
 
+<div style="margin-bottom:1rem;padding:.6rem .8rem;background:#0f172a;border-radius:.5rem;border:1px solid #334155">
+<p style="color:#64748b;font-size:.75rem;line-height:1.5">Este tab es de <b style="color:#38bdf8">solo lectura</b> — muestra el feed en vivo del agente. Para cambiar configuración, ve a <b style="color:#a78bfa">AI Agent</b>.</p>
+</div>
+</div>
+
 <div class="cards" style="margin-bottom:1rem">
 <div class="card"><div class="label">Ciclo Actual</div><div class="value blue" id="aiLiveCycle">0</div></div>
 <div class="card"><div class="label">Fase</div><div class="value" id="aiLivePhase">--</div></div>
 <div class="card"><div class="label">Provider</div><div class="value" id="aiLiveProvider">--</div></div>
+<div class="card"><div class="label">Modelo Activo</div><div class="value" id="aiLiveModel" style="font-size:.9rem">--</div></div>
 <div class="card"><div class="label">Acciones Ciclo</div><div class="value" id="aiLiveActions">0</div></div>
 <div class="card"><div class="label">Total Decisiones</div><div class="value" id="aiLiveTotalDecisions">0</div></div>
 </div>
 
 <div style="margin-top:1rem">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem"><span class="live-dot" id="aiLiveDot" style="display:none"></span>Feed del Agente IA</h3>
+<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem"><span class="live-dot" id="aiLiveDot" style="display:none"></span>Feed del Agente IA — Comunicación Completa</h3>
 <div id="aiLiveFeed" style="background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:1rem;max-height:600px;overflow-y:auto;font-family:'Consolas',monospace;font-size:.82rem;line-height:1.6">
-<div style="color:#64748b;text-align:center;padding:2rem">Activa el agente IA para ver su comunicación en tiempo real.</div>
+<div style="color:#64748b;text-align:center;padding:2rem">Activa el agente IA desde <b style="color:#a78bfa">AI Agent</b> para ver su comunicación en tiempo real.</div>
 </div>
 </div>
 </div>
@@ -723,7 +596,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 <p>Tu cuenta está configurada. Ya puedes empezar a usar Alvora.</p>
 <div style="text-align:center;padding:1rem 0">
 <div style="font-size:3rem;margin-bottom:1rem">✅</div>
-<p style="color:#cbd5e1;font-size:.9rem">Dirígete a la pestaña <b style="color:#38bdf8">AI Agent</b> para activar el trading automático, o explora <b style="color:#38bdf8">Paper Trading</b> para practicar sin riesgo.</p>
+<p style="color:#cbd5e1;font-size:.9rem">Dirígete a la pestaña <b style="color:#a78bfa">AI Agent</b> para configurar el modelo de IA y activar el trading automático, o a <b style="color:#38bdf8">AI Live</b> para monitorear el agente en tiempo real.</p>
 </div>
 </div>
 <div class="onb-dots">
@@ -1380,23 +1253,12 @@ async function loadRiskEvents(){
 
 async function loadPerformance(){
   try{
-    const[snapshots,trades,strategyStats,stats]=await Promise.all([
-      api('/api/snapshots?limit=200'),
+    const[trades,stats]=await Promise.all([
       api('/api/trades?limit=200'),
-      api('/api/stats/by-strategy'),
       api('/api/stats')
     ]);
-    drawEquityChart(snapshots,'equityChartCombined','#38bdf8');
-    drawEquityChart(snapshots,'equityChartTrend','#34d399');
-    drawEquityChart(snapshots,'equityChartML','#a78bfa');
-    drawPnlChart(trades);
     drawWinLossChart(trades);
-    drawSymbolChart(trades);
     drawDailyPnlChart(stats.daily_pnl||[]);
-    drawPeriodCompareChart([{key:'today',label:'Hoy'},{key:'yesterday',label:'Ayer'},{key:'week',label:'Semana'},{key:'all_time',label:'Todo'}],stats);
-    drawPeriodWinLossChart([{key:'today',label:'Hoy'},{key:'yesterday',label:'Ayer'},{key:'week',label:'Semana'},{key:'all_time',label:'Todo'}],stats);
-    loadStrategyStats(strategyStats);
-    loadStatsCards(stats);
     loadAIPerformance();
   }catch(e){console.error('performance error',e)}
 }
@@ -1606,7 +1468,7 @@ async function resetStats(){
   try{
     await api('/api/stats/reset',{method:'POST'});
     toast('Stats reiniciados correctamente');
-    loadOverview();loadSignals();loadOrders();loadPositions();loadTrades();loadPerformance();loadPaperStats();
+    loadOverview();loadSignals();loadOrders();loadPositions();loadTrades();loadPerformance();
   }catch(e){
     // If 403 in live mode with open positions, offer force reset
     if(e.message&&e.message.includes('posiciones de test')){
@@ -1614,7 +1476,7 @@ async function resetStats(){
         try{
           await api('/api/stats/reset?force=true',{method:'POST'});
           toast('Stats reiniciados (forzado)');
-          loadOverview();loadSignals();loadOrders();loadPositions();loadTrades();loadPerformance();loadPaperStats();
+          loadOverview();loadSignals();loadOrders();loadPositions();loadTrades();loadPerformance();
         }catch(e2){toast(e2.message,false)}
       }
     }else{
@@ -1867,7 +1729,7 @@ function startAutoRefresh(){
 function startGlobalRefresh(){
   if(globalRefreshTimer)return;
   globalRefreshTimer=setInterval(()=>{
-    loadOverview();loadSignals();loadOrders();loadPositions();loadTrades();loadRiskEvents();loadMLAccuracy();loadMLPredictions();loadMLModelInfo();loadPaperStats();
+    loadOverview();loadSignals();loadOrders();loadPositions();loadTrades();loadRiskEvents();
     const activeTab=document.querySelector('.tab.active');if(activeTab&&activeTab.dataset.tab==='performance')loadPerformance();
   },REFRESH_MS);
 }
@@ -1944,43 +1806,67 @@ var aiLastLogCount=0;
 
 function aiProviderChanged(){
   const provider=document.getElementById('aiProvider').value;
-  const keyWrap=document.getElementById('aiGroqKeyWrap');
+  const groqKeyWrap=document.getElementById('aiGroqKeyWrap');
+  const geminiKeyWrap=document.getElementById('aiGeminiKeyWrap');
+  const modelSelect=document.getElementById('aiModelSelect');
   const modelInput=document.getElementById('aiModel');
   if(provider==='groq'){
-    keyWrap.style.display='flex';
-    keyWrap.querySelector('label').innerHTML='Groq API Key <span style="color:#64748b">(gratis en console.groq.com/keys)</span>';
-    modelInput.value='llama-3.3-70b-versatile';
+    groqKeyWrap.style.display='flex';
+    geminiKeyWrap.style.display='none';
+    // Select first Groq model
+    const firstGroq=modelSelect.querySelector('optgroup[label="Groq"] option');
+    if(firstGroq){firstGroq.selected=true;modelInput.value=firstGroq.value}
   }else if(provider==='gemini'){
-    keyWrap.style.display='flex';
-    keyWrap.querySelector('label').innerHTML='Gemini API Key <span style="color:#64748b">(gratis en aistudio.google.com/apikey)</span>';
-    modelInput.value='gemini-2.0-flash';
+    groqKeyWrap.style.display='none';
+    geminiKeyWrap.style.display='flex';
+    const firstGemini=modelSelect.querySelector('optgroup[label="Gemini"] option');
+    if(firstGemini){firstGemini.selected=true;modelInput.value=firstGemini.value}
   }else{
-    keyWrap.style.display='none';
-    modelInput.value='qwen2.5:14b';
+    groqKeyWrap.style.display='none';
+    geminiKeyWrap.style.display='none';
+    const firstOllama=modelSelect.querySelector('optgroup[label="Ollama (Local)"] option');
+    if(firstOllama){firstOllama.selected=true;modelInput.value=firstOllama.value}
+  }
+}
+
+function aiModelChanged(){
+  const modelSelect=document.getElementById('aiModelSelect');
+  document.getElementById('aiModel').value=modelSelect.value;
+}
+
+function aiTradeModeChanged(){
+  const mode=document.querySelector('input[name="aiTradeMode"]:checked').value;
+  const warning=document.getElementById('aiLiveWarning');
+  const label=document.getElementById('aiTradeModeLabel');
+  if(mode==='live'){
+    warning.style.display='block';
+    label.textContent='LIVE';
+    label.style.color='#f87171';
+  }else{
+    warning.style.display='none';
+    label.textContent='PAPER';
+    label.style.color='#34d399';
   }
 }
 
 async function aiStart(){
   const provider=document.getElementById('aiProvider').value;
   const groqKey=document.getElementById('aiGroqKey').value.trim();
+  const geminiKey=document.getElementById('aiGeminiKey').value.trim();
   const model=document.getElementById('aiModel').value.trim();
   const interval=parseInt(document.getElementById('aiInterval').value)||30;
   const autoTrade=document.getElementById('aiAutoTrade').checked;
+  const tradeMode=document.querySelector('input[name="aiTradeMode"]:checked')?.value||'paper';
 
   // Check if in live mode before starting with auto-trade
-  if(autoTrade){
-    try{
-      const tm=await api('/api/trading-mode');
-      if(tm.mode==='live'){
-        if(!confirm('ATENCION: Estas en modo LIVE con dinero real.\n\nEl AI Agent ejecutara ordenes REALES en Binance.\nMax por orden: $'+tm.max_order_usd+'\nLimite perdida diaria: $'+tm.daily_loss_limit_usd+'\n\nConfirmas iniciar?'))return;
-      }
-    }catch{}
+  if(autoTrade && tradeMode==='live'){
+    if(!confirm('⚠️ ATENCION: Vas a iniciar el AI Agent en modo LIVE.\n\nLas ordenes se ejecutaran con dinero REAL en tu cuenta de Binance.\n\nAsegurate de tener API keys configuradas y revisar tu perfil de riesgo.\n\nConfirmas iniciar?'))return;
   }
 
   try{
     const body={provider:provider,interval_seconds:interval,auto_trade:autoTrade};
     if(provider==='groq'){if(groqKey)body.groq_api_key=groqKey;body.model=model}
-    else if(provider==='gemini'){if(groqKey)body.gemini_api_key=groqKey;body.model=model}
+    else if(provider==='gemini'){if(geminiKey)body.gemini_api_key=geminiKey;body.model=model}
     else{body.model=model}
     const r=await api('/api/ai-agent/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     toast('Agente IA activado ['+provider+'] '+(autoTrade?'(auto-trade ON)':'(solo análisis)'));
@@ -2006,12 +1892,21 @@ function updateAIUI(status){
   stateEl.className='value '+(running?'green':'');
   document.getElementById('aiStartBtn').disabled=running;
   document.getElementById('aiStopBtn').disabled=!running;
+  document.getElementById('aiLiveStartBtn').disabled=running;
+  document.getElementById('aiLiveStopBtn').disabled=!running;
   document.getElementById('aiProviderLabel').textContent=status.provider||'--';
   document.getElementById('aiModelLabel').textContent=status.model||'--';
   document.getElementById('aiCycles').textContent=status.cycles||0;
   const atEl=document.getElementById('aiAutoTradeLabel');
   atEl.textContent=status.auto_trade?'ON':'OFF';
   atEl.className='value '+(status.auto_trade?'green':'red');
+  // Update trade mode label
+  const tmLabel=document.getElementById('aiTradeModeLabel');
+  if(tmLabel){
+    const mode=document.querySelector('input[name="aiTradeMode"]:checked')?.value||'paper';
+    tmLabel.textContent=mode.toUpperCase();
+    tmLabel.style.color=mode==='live'?'#f87171':'#34d399';
+  }
 }
 
 function startAIPolling(){
@@ -2465,6 +2360,9 @@ async function onbNext(){
 function skipOnboarding(){
   document.getElementById('onbOverlay').style.display='none';
 }
+
+// Trade mode radio listener
+document.querySelectorAll('input[name="aiTradeMode"]').forEach(r=>r.onchange=aiTradeModeChanged);
 
 // Check auth on page load - dashboard requires login
 checkAuth();
