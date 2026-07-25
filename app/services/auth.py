@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext
+from jwt import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,8 +19,6 @@ from app.database.session import get_db
 
 settings = get_settings()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 JWT_SECRET = getattr(settings, "JWT_SECRET", "change-me-in-production")
@@ -28,11 +27,14 @@ JWT_EXPIRE_HOURS = 24
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
 
 
 def create_access_token(user_id: int, expires_hours: int | None = None) -> str:

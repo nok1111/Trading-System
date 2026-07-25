@@ -683,6 +683,7 @@ class AITradingAgent:
             })
             if isinstance(result, dict) and result.get("status") == "executed":
                 self._add_log("info", f"Compra {symbol} ejecutada: {result.get('quantity')} @ ${result.get('price')}")
+                self._notify_telegram("buy", symbol, result.get("quantity", 0), result.get("price", 0), reason)
             elif isinstance(result, dict) and result.get("status") == "rejected":
                 self._add_log("warn", f"Compra {symbol} rechazada: {result.get('reason', 'risk manager')}")
             elif isinstance(result, dict) and result.get("status") == "error":
@@ -695,6 +696,26 @@ class AITradingAgent:
 
         else:
             self._add_log("warn", f"Tipo de acción desconocido: {action_type}")
+
+    def _notify_telegram(self, action: str, symbol: str, quantity: float, price: float, reason: str = "") -> None:
+        """Send Telegram notification to all users with alerts enabled."""
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.user import User
+            from app.services.telegram import notify_trade
+            from sqlalchemy import select
+
+            db = SessionLocal()
+            try:
+                users = db.execute(
+                    select(User).where(User.telegram_alerts == True, User.telegram_chat_id.isnot(None))
+                ).scalars().all()
+                for user in users:
+                    notify_trade(user.telegram_chat_id, action, symbol, float(quantity), float(price), reason)
+            finally:
+                db.close()
+        except Exception:
+            pass
 
     def _api_get(self, path: str) -> Any:
         try:
