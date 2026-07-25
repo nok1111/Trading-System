@@ -15,7 +15,9 @@ build/
 .env.*.local
 
 # Bases de datos locales
-*.db
+test.db
+test.db-shm
+test.db-wal
 *.sqlite3
 *.sqlite
 
