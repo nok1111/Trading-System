@@ -243,56 +243,98 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 <div id="performance" class="panel">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-<h3 style="color:#a78bfa;margin-bottom:0;font-size:1.1rem">Performance — AI Agent</h3>
+<div>
+<h3 style="color:#a78bfa;margin-bottom:0;font-size:1.2rem">Performance Dashboard</h3>
+<p style="color:#64748b;font-size:.8rem;margin-top:.2rem">Métricas detalladas de trading y AI Agent</p>
+</div>
 <button class="btn btn-red" style="padding:.4rem .8rem;font-size:.8rem" onclick="resetStats()">Reiniciar Stats</button>
 </div>
-<div class="cards" id="aiStatsCards" style="margin-bottom:1.5rem"></div>
-<div style="margin-top:1rem">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Curva de Equity — AI Agent</h3>
-<div class="card" style="padding:1rem">
-<canvas id="aiPnlChart" width="1100" height="300" style="width:100%;max-width:1100px"></canvas>
+
+<!-- KPI Summary Cards -->
+<div class="cards" id="perfKpiCards" style="margin-bottom:1.5rem"></div>
+
+<!-- Period Stats -->
+<div style="margin-bottom:1.5rem">
+<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Stats por Periodo</h3>
+<div class="cards" id="perfPeriodCards"></div>
+</div>
+
+<!-- Equity Curve + PnL per Trade -->
+<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+<div style="flex:2;min-width:500px">
+<h3 style="color:#34d399;margin-bottom:.8rem;font-size:1rem">Curva de Equity</h3>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="aiPnlChart" width="1100" height="300" style="width:100%;max-width:1100px;border-radius:6px"></canvas>
 </div>
 </div>
-<div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
 <div style="flex:1;min-width:300px">
+<h3 style="color:#fbbf24;margin-bottom:.8rem;font-size:1rem">PnL por Trade</h3>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="pnlPerTradeChart" width="400" height="300" style="width:100%;max-width:400px;border-radius:6px"></canvas>
+</div>
+</div>
+</div>
+
+<!-- Win/Loss + Daily PnL + Decisions -->
+<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+<div style="flex:1;min-width:250px">
+<h3 style="color:#34d399;margin-bottom:.8rem;font-size:1rem">Aciertos vs Fallos</h3>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="winLossChart" width="300" height="250" style="width:100%;max-width:300px;border-radius:6px"></canvas>
+</div>
+</div>
+<div style="flex:1;min-width:300px">
+<h3 style="color:#fbbf24;margin-bottom:.8rem;font-size:1rem">PnL Diario (14 días)</h3>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="dailyPnlChart" width="400" height="250" style="width:100%;max-width:400px;border-radius:6px"></canvas>
+</div>
+</div>
+<div style="flex:1;min-width:250px">
 <h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Decisiones del Agente</h3>
-<div class="card" style="padding:1rem">
-<canvas id="aiDecisionsChart" width="300" height="250" style="width:100%;max-width:300px"></canvas>
-</div>
-</div>
-<div style="flex:1;min-width:300px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Aciertos vs Fallos</h3>
-<div class="card" style="padding:1rem">
-<canvas id="winLossChart" width="300" height="200" style="width:100%;max-width:300px"></canvas>
-</div>
-</div>
-<div style="flex:1;min-width:300px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Trades por Símbolo</h3>
-<div class="card" style="padding:1rem">
-<canvas id="aiSymbolChart" width="400" height="200" style="width:100%;max-width:400px"></canvas>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="aiDecisionsChart" width="300" height="250" style="width:100%;max-width:300px;border-radius:6px"></canvas>
 </div>
 </div>
 </div>
-<div style="margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap">
+
+<!-- Trades by Symbol + Buy/Sell -->
+<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
 <div style="flex:1;min-width:400px">
+<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Trades por Símbolo</h3>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="aiSymbolChart" width="500" height="220" style="width:100%;max-width:500px;border-radius:6px"></canvas>
+</div>
+</div>
+<div style="flex:1;min-width:300px">
 <h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Compras vs Ventas</h3>
-<div class="card" style="padding:1rem">
-<canvas id="aiBuySellChart" width="400" height="200" style="width:100%;max-width:400px"></canvas>
-</div>
-</div>
-<div style="flex:1;min-width:400px">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">PnL Diario (últimos 14 días)</h3>
-<div class="card" style="padding:1rem">
-<canvas id="dailyPnlChart" width="400" height="250" style="width:100%;max-width:400px"></canvas>
+<div class="card" style="padding:1rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<canvas id="aiBuySellChart" width="400" height="220" style="width:100%;max-width:400px;border-radius:6px"></canvas>
 </div>
 </div>
 </div>
-<div style="margin-top:1.5rem">
-<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">Posiciones Abiertas</h3>
-<div class="card" style="padding:.5rem">
-<table><thead><tr><th>Símbolo</th><th>Side</th><th>Cantidad</th><th>Precio Entrada</th><th>Stop Loss</th><th>Take Profit</th><th>Abierta</th></tr></thead><tbody id="aiPositionsBody"><tr><td colspan="7" style="color:#64748b;text-align:center">Sin posiciones del AI Agent</td></tr></tbody></table>
+
+<!-- AI Agent Stats Cards -->
+<div style="margin-bottom:1.5rem">
+<h3 style="color:#a78bfa;margin-bottom:.8rem;font-size:1rem">AI Agent — Métricas Detalladas</h3>
+<div class="cards" id="aiStatsCards"></div>
+</div>
+
+<!-- Open Positions Table -->
+<div style="margin-bottom:1.5rem">
+<h3 style="color:#38bdf8;margin-bottom:.8rem;font-size:1rem">Posiciones Abiertas del AI Agent</h3>
+<div class="card" style="padding:.5rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<table><thead><tr><th>Símbolo</th><th>Side</th><th>Cant.</th><th>Entry</th><th>SL</th><th>TP</th><th>PnL</th><th>Abierta</th></tr></thead><tbody id="aiPositionsBody"><tr><td colspan="8" style="color:#64748b;text-align:center">Sin posiciones del AI Agent</td></tr></tbody></table>
 </div>
 </div>
+
+<!-- Recent Trades Table -->
+<div style="margin-bottom:1.5rem">
+<h3 style="color:#fbbf24;margin-bottom:.8rem;font-size:1rem">Trades Recientes</h3>
+<div class="card" style="padding:.5rem;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">
+<table><thead><tr><th>Símbolo</th><th>Side</th><th>Cant.</th><th>Precio</th><th>PnL</th><th>Estrategia</th><th>Fecha</th></tr></thead><tbody id="perfTradesBody"><tr><td colspan="7" style="color:#64748b;text-align:center">Sin trades</td></tr></tbody></table>
+</div>
+</div>
+
 </div>
 <div id="market" class="panel">
 <div class="controls">
@@ -1696,55 +1738,157 @@ async function loadRiskEvents(){
 
 async function loadPerformance(){
   try{
-    const[trades,stats]=await Promise.all([
+    const[trades,stats,aiStats]=await Promise.all([
       api('/api/trades?limit=200'),
-      api('/api/stats')
+      api('/api/stats'),
+      api('/api/ai-agent/stats').catch(()=>null)
     ]);
+
+    // Compute KPIs from all trades
+    const sellTrades=trades.filter(t=>t.side==='SELL');
+    const wins=sellTrades.filter(t=>Number(t.realized_pnl)>0);
+    const losses=sellTrades.filter(t=>Number(t.realized_pnl)<0);
+    const totalPnl=sellTrades.reduce((s,t)=>s+Number(t.realized_pnl),0);
+    const winRate=sellTrades.length>0?(wins.length/sellTrades.length*100):0;
+    const avgWin=wins.length>0?wins.reduce((s,t)=>s+Number(t.realized_pnl),0)/wins.length:0;
+    const avgLoss=losses.length>0?losses.reduce((s,t)=>s+Number(t.realized_pnl),0)/losses.length:0;
+    const profitFactor=avgLoss!==0?Math.abs(avgWin*wins.length/(avgLoss*losses.length)):0;
+    const bestTrade=sellTrades.length>0?sellTrades.reduce((b,t)=>Number(t.realized_pnl)>Number(b.realized_pnl)?t:b):null;
+    const worstTrade=sellTrades.length>0?sellTrades.reduce((w,t)=>Number(t.realized_pnl)<Number(w.realized_pnl)?t:w):null;
+    const expectancy=sellTrades.length>0?totalPnl/sellTrades.length:0;
+
+    // KPI Cards
+    const kpiData=[
+      {label:'PnL Total',value:(totalPnl>=0?'+':'')+'$'+fmt(totalPnl.toFixed(2)),color:totalPnl>=0?'#34d399':'#f87171',bg:totalPnl>=0?'rgba(52,211,153,.08)':'rgba(248,113,114,.08)',icon:'💰'},
+      {label:'Win Rate',value:winRate.toFixed(1)+'%',color:winRate>=50?'#34d399':'#fbbf24',bg:'rgba(56,189,248,.08)',icon:'🎯'},
+      {label:'Profit Factor',value:profitFactor>0?profitFactor.toFixed(2):'--',color:profitFactor>=1.5?'#34d399':profitFactor>=1?'#fbbf24':'#f87171',bg:'rgba(167,139,250,.08)',icon:'⚖️'},
+      {label:'Expectativa/Trade',value:(expectancy>=0?'+':'')+'$'+fmt(expectancy.toFixed(2)),color:expectancy>=0?'#34d399':'#f87171',bg:'rgba(251,191,36,.08)',icon:'📊'},
+      {label:'Total Trades',value:sellTrades.length,color:'#38bdf8',bg:'rgba(56,189,248,.08)',icon:'🔄'},
+      {label:'Wins / Losses',value:'<span style="color:#34d399">'+wins.length+'</span> / <span style="color:#f87171">'+losses.length+'</span>',color:'#e2e8f0',bg:'rgba(148,163,184,.08)',icon:'🏆'},
+      {label:'Avg Win',value:'+$'+fmt(avgWin.toFixed(2)),color:'#34d399',bg:'rgba(52,211,153,.08)',icon:'📈'},
+      {label:'Avg Loss',value:'$'+fmt(avgLoss.toFixed(2)),color:'#f87171',bg:'rgba(248,113,114,.08)',icon:'📉'},
+      {label:'Mejor Trade',value:bestTrade?(bestTrade.symbol+' +$'+fmt(Number(bestTrade.realized_pnl).toFixed(2))):'--',color:'#34d399',bg:'rgba(52,211,153,.05)',icon:'🚀'},
+      {label:'Peor Trade',value:worstTrade?(worstTrade.symbol+' $'+fmt(Number(worstTrade.realized_pnl).toFixed(2))):'--',color:'#f87171',bg:'rgba(248,113,114,.05)',icon:'💥'},
+    ];
+    document.getElementById('perfKpiCards').innerHTML=kpiData.map(k=>
+      '<div class="card" style="padding:1rem;text-align:center;background:'+k.bg+';border:1px solid '+k.color+'22">'+
+      '<div style="font-size:1.3rem;margin-bottom:.3rem">'+k.icon+'</div>'+
+      '<div class="label" style="font-size:.7rem;margin-bottom:.3rem;color:#94a3b8">'+k.label+'</div>'+
+      '<div style="font-size:1.1rem;font-weight:800;color:'+k.color+'">'+k.value+'</div>'+
+      '</div>'
+    ).join('');
+
+    // Period stats
+    const periods=[
+      {key:'today',label:'Hoy',color:'#38bdf8'},
+      {key:'yesterday',label:'Ayer',color:'#a78bfa'},
+      {key:'week',label:'Semana',color:'#34d399'},
+      {key:'all_time',label:'Todo',color:'#fbbf24'},
+    ];
+    document.getElementById('perfPeriodCards').innerHTML=periods.map(p=>{
+      const d=stats[p.key]||{total_pnl:0,trades_closed:0,win_rate:0,avg_win:0,avg_loss:0};
+      const pnlColor=d.total_pnl>=0?'#34d399':'#f87171';
+      return '<div class="card" style="padding:1rem;border-top:3px solid '+p.color+';background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">'+
+        '<div class="label" style="font-size:.75rem;color:'+p.color+';font-weight:700;margin-bottom:.5rem">'+p.label+'</div>'+
+        '<div style="font-size:1.4rem;font-weight:800;color:'+pnlColor+';margin-bottom:.6rem">'+(d.total_pnl>=0?'+':'')+'$'+fmt(d.total_pnl)+'</div>'+
+        '<div style="font-size:.75rem;color:#94a3b8;line-height:1.8">'+
+        'Trades: <b style="color:#e2e8f0">'+d.trades_closed+'</b><br>'+
+        'Win Rate: <b style="color:'+(d.win_rate>=50?'#34d399':'#f87171')+'">'+fmt(d.win_rate)+'%</b><br>'+
+        'Avg Win: <span style="color:#34d399">$'+fmt(d.avg_win)+'</span><br>'+
+        'Avg Loss: <span style="color:#f87171">$'+fmt(d.avg_loss)+'</span>'+
+        '</div></div>';
+    }).join('');
+
+    // Recent trades table with icons
+    const tradesBody=document.getElementById('perfTradesBody');
+    if(trades.length>0){
+      tradesBody.innerHTML=trades.slice(0,20).map(t=>{
+        const icon=getCryptoIcon(t.symbol);
+        const base=t.symbol.replace(/USDT$|USDC$|BUSD$/i,'');
+        const pnl=Number(t.realized_pnl);
+        const pnlColor=pnl>=0?'#34d399':'#f87171';
+        const sideColor=t.side==='BUY'?'#34d399':'#f87171';
+        return '<tr>'+
+          '<td style="display:flex;align-items:center;gap:.4rem;padding:.3rem .5rem"><img src="'+icon+'" alt="'+base+'" width="18" height="18" style="border-radius:50%" onerror="this.style.display=\'none\'"><b>'+t.symbol+'</b></td>'+
+          '<td><span style="color:'+sideColor+';font-weight:600">'+t.side+'</span></td>'+
+          '<td>'+fmt(t.quantity)+'</td>'+
+          '<td>$'+fmt(t.price)+'</td>'+
+          '<td style="color:'+pnlColor+';font-weight:600">'+(pnl>=0?'+':'')+'$'+fmt(pnl)+'</td>'+
+          '<td style="font-size:.8rem;color:#94a3b8">'+(t.strategy_name||'--')+'</td>'+
+          '<td style="font-size:.8rem;color:#64748b">'+fmtDate(t.timestamp)+'</td>'+
+        '</tr>';
+      }).join('');
+    }else{
+      tradesBody.innerHTML='<tr><td colspan="7" style="color:#64748b;text-align:center">Sin trades</td></tr>';
+    }
+
+    // Charts
     drawWinLossChart(trades);
     drawDailyPnlChart(stats.daily_pnl||[]);
-    loadAIPerformance();
+    drawPnlPerTradeChart(trades);
+
+    // AI Agent performance
+    if(aiStats&&!aiStats.error){
+      loadAIPerformance(aiStats);
+    }
   }catch(e){console.error('performance error',e)}
 }
 
-async function loadAIPerformance(){
-  try{
-    const s=await api('/api/ai-agent/stats');
-    if(s.error){console.error('AI stats error',s.error);return}
+function loadAIPerformance(s){
+  if(s.error){console.error('AI stats error',s.error);return}
 
-    // Cards
-    const pnlColor=s.total_pnl>=0?'green':'red';
-    const wrColor=s.win_rate>=50?'green':'red';
-    let html='<div class="cards">';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">AI Trades</div><div class="value blue">'+s.total_trades+'</div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">PnL Total</div><div class="value '+pnlColor+'">'+(s.total_pnl>=0?'+':'')+'$'+fmt(s.total_pnl)+'</div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">Win Rate</div><div class="value '+wrColor+'">'+s.win_rate+'%</div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">Wins/Losses</div><div class="value"><span style="color:#34d399">'+s.wins+'</span> / <span style="color:#f87171">'+s.losses+'</span></div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">Posiciones Abiertas</div><div class="value blue">'+s.open_positions+'</div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">Ciclos</div><div class="value">'+s.agent_cycles+'</div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">Decisiones</div><div class="value">'+s.decisions_total+'</div></div>';
-    html+='<div class="card" style="border-top:3px solid #a78bfa"><div class="label">Con Acciones</div><div class="value" style="color:#a78bfa">'+s.decisions_with_actions+'</div></div>';
-    html+='</div>';
-    document.getElementById('aiStatsCards').innerHTML=html;
+  // AI Agent detailed stats cards
+  const pnlColor=s.total_pnl>=0?'#34d399':'#f87171';
+  const wrColor=s.win_rate>=50?'#34d399':'#f87171';
+  const aiCards=[
+    {label:'AI Trades',value:s.total_trades,color:'#38bdf8',icon:'🤖'},
+    {label:'PnL Total',value:(s.total_pnl>=0?'+':'')+'$'+fmt(s.total_pnl),color:pnlColor,icon:'💰'},
+    {label:'Win Rate',value:s.win_rate+'%',color:wrColor,icon:'🎯'},
+    {label:'Wins/Losses',value:'<span style="color:#34d399">'+s.wins+'</span> / <span style="color:#f87171">'+s.losses+'</span>',color:'#e2e8f0',icon:'⚖️'},
+    {label:'Posiciones Abiertas',value:s.open_positions,color:'#38bdf8',icon:'📊'},
+    {label:'Ciclos',value:s.agent_cycles,color:'#a78bfa',icon:'🔄'},
+    {label:'Decisiones',value:s.decisions_total,color:'#94a3b8',icon:'🧠'},
+    {label:'Con Acciones',value:s.decisions_with_actions,color:'#a78bfa',icon:'⚡'},
+  ];
+  document.getElementById('aiStatsCards').innerHTML=aiCards.map(c=>
+    '<div class="card" style="padding:1rem;text-align:center;border-top:3px solid #a78bfa;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)">'+
+    '<div style="font-size:1.2rem;margin-bottom:.2rem">'+c.icon+'</div>'+
+    '<div class="label" style="font-size:.7rem;margin-bottom:.3rem;color:#94a3b8">'+c.label+'</div>'+
+    '<div style="font-size:1.1rem;font-weight:800;color:'+c.color+'">'+c.value+'</div>'+
+    '</div>'
+  ).join('');
 
-    // Charts
-    drawAIPnlChart(s.pnl_series||[]);
-    drawAIDecisionsChart(s);
-    drawAISymbolChart(s.by_symbol||{});
-    drawAIBuySellChart(s);
+  // Charts
+  drawAIPnlChart(s.pnl_series||[]);
+  drawAIDecisionsChart(s);
+  drawAISymbolChart(s.by_symbol||{});
+  drawAIBuySellChart(s);
 
-    // Positions table
-    const posBody=document.getElementById('aiPositionsBody');
-    if(s.open_positions_detail&&s.open_positions_detail.length>0){
-      posBody.innerHTML=s.open_positions_detail.map(p=>{
-        const slStr=p.stop_loss?'$'+fmt(p.stop_loss):'--';
-        const tpStr=p.take_profit?'$'+fmt(p.take_profit):'--';
-        const openedStr=p.opened_at?fmtDate(p.opened_at):'--';
-        return '<tr><td><b>'+p.symbol+'</b></td><td>'+p.side+'</td><td>'+fmt(p.quantity)+'</td><td>$'+fmt(p.entry_price)+'</td><td style="color:#f87171">'+slStr+'</td><td style="color:#34d399">'+tpStr+'</td><td style="font-size:.8rem">'+openedStr+'</td></tr>';
-      }).join('');
-    }else{
-      posBody.innerHTML='<tr><td colspan="7" style="color:#64748b;text-align:center">Sin posiciones del AI Agent</td></tr>';
-    }
-  }catch(e){console.error('AI performance error',e)}
+  // Positions table with icons
+  const posBody=document.getElementById('aiPositionsBody');
+  if(s.open_positions_detail&&s.open_positions_detail.length>0){
+    posBody.innerHTML=s.open_positions_detail.map(p=>{
+      const icon=getCryptoIcon(p.symbol);
+      const base=p.symbol.replace(/USDT$|USDC$|BUSD$/i,'');
+      const slStr=p.stop_loss?'$'+fmt(p.stop_loss):'--';
+      const tpStr=p.take_profit?'$'+fmt(p.take_profit):'--';
+      const openedStr=p.opened_at?fmtDate(p.opened_at):'--';
+      const pnl=p.unrealized_pnl?Number(p.unrealized_pnl):0;
+      const pnlColor=pnl>=0?'#34d399':'#f87171';
+      return '<tr>'+
+        '<td style="display:flex;align-items:center;gap:.4rem;padding:.3rem .5rem"><img src="'+icon+'" alt="'+base+'" width="18" height="18" style="border-radius:50%" onerror="this.style.display=\'none\'"><b>'+p.symbol+'</b></td>'+
+        '<td><span style="color:'+(p.side==='BUY'?'#34d399':'#f87171')+';font-weight:600">'+p.side+'</span></td>'+
+        '<td>'+fmt(p.quantity)+'</td>'+
+        '<td>$'+fmt(p.entry_price)+'</td>'+
+        '<td style="color:#f87171">'+slStr+'</td>'+
+        '<td style="color:#34d399">'+tpStr+'</td>'+
+        '<td style="color:'+pnlColor+';font-weight:600">'+(pnl>=0?'+':'')+'$'+fmt(pnl.toFixed(2))+'</td>'+
+        '<td style="font-size:.8rem;color:#64748b">'+openedStr+'</td>'+
+      '</tr>';
+    }).join('');
+  }else{
+    posBody.innerHTML='<tr><td colspan="8" style="color:#64748b;text-align:center">Sin posiciones del AI Agent</td></tr>';
+  }
 }
 
 function drawAIPnlChart(pnlSeries){
@@ -1753,29 +1897,93 @@ function drawAIPnlChart(pnlSeries){
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height,pad=50;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  // Background gradient
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
   const sellTrades=pnlSeries.filter(t=>t.side==='SELL');
   if(sellTrades.length<1){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin trades del AI Agent',W/2,H/2);return}
   const pnls=sellTrades.map(t=>t.realized_pnl);
   const maxAbs=Math.max(Math.abs(Math.min(...pnls)),Math.abs(Math.max(...pnls)),1);
   const barW=Math.min((W-pad*2)/sellTrades.length,30);
   const zeroY=pad+(H-pad*2)/2;
-  ctx.strokeStyle='#334155';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,zeroY);ctx.lineTo(W-pad,zeroY);ctx.stroke();
-  ctx.fillStyle='#64748b';ctx.font='10px sans-serif';ctx.textAlign='right';
+  // Grid
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=pad+(H-pad*2)*i/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke()}
+  // Zero line
+  ctx.strokeStyle='#334155';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(pad,zeroY);ctx.lineTo(W-pad,zeroY);ctx.stroke();
+  ctx.fillStyle='#64748b';ctx.font='10px monospace';ctx.textAlign='right';
   ctx.fillText('+$'+fmt(maxAbs),pad-5,pad+5);
   ctx.fillText('$0',pad-5,zeroY+3);
   ctx.fillText('-$'+fmt(maxAbs),pad-5,H-pad);
+  // Bars with gradient
   sellTrades.forEach((t,i)=>{
     const x=pad+i*barW+2;
     const pnl=t.realized_pnl;
     const barH=(H-pad*2)/2*Math.abs(pnl)/maxAbs;
     const y=pnl>=0?zeroY-barH:zeroY;
-    ctx.fillStyle=pnl>=0?'#a78bfa':'#f87171';
+    if(pnl>=0){
+      const grad=ctx.createLinearGradient(0,y,0,zeroY);
+      grad.addColorStop(0,'#a78bfa');grad.addColorStop(1,'#7c3aed');
+      ctx.fillStyle=grad;
+    }else{
+      const grad=ctx.createLinearGradient(0,zeroY,0,y+barH);
+      grad.addColorStop(0,'#f87171');grad.addColorStop(1,'#dc2626');
+      ctx.fillStyle=grad;
+    }
     ctx.fillRect(x,y,barW-4,barH);
   });
-  ctx.fillStyle='#a78bfa';ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillStyle='#a78bfa';ctx.font='bold 12px sans-serif';ctx.textAlign='left';
   ctx.fillText('AI PnL por Trade ($)',pad,pad-10);
-  ctx.textAlign='center';ctx.fillText(sellTrades.length+' trades cerrados',W/2,H-pad+15);
+  ctx.textAlign='center';ctx.fillStyle='#64748b';ctx.font='10px sans-serif';
+  ctx.fillText(sellTrades.length+' trades cerrados',W/2,H-pad+15);
+}
+
+function drawPnlPerTradeChart(trades){
+  const cv=document.getElementById('pnlPerTradeChart');
+  if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height,pad=45;
+  ctx.clearRect(0,0,W,H);
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
+  const sellTrades=trades.filter(t=>t.side==='SELL');
+  if(sellTrades.length<1){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin trades',W/2,H/2);return}
+  const pnls=sellTrades.map(t=>Number(t.realized_pnl));
+  const maxAbs=Math.max(Math.abs(Math.min(...pnls)),Math.abs(Math.max(...pnls)),1);
+  const barW=Math.min((W-pad*2)/sellTrades.length,24);
+  const zeroY=pad+(H-pad*2)/2;
+  // Grid
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=pad+(H-pad*2)*i/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke()}
+  // Zero line
+  ctx.strokeStyle='#334155';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(pad,zeroY);ctx.lineTo(W-pad,zeroY);ctx.stroke();
+  ctx.fillStyle='#64748b';ctx.font='10px monospace';ctx.textAlign='right';
+  ctx.fillText('+$'+fmt(maxAbs),pad-5,pad+5);
+  ctx.fillText('$0',pad-5,zeroY+3);
+  ctx.fillText('-$'+fmt(maxAbs),pad-5,H-pad);
+  // Bars
+  sellTrades.forEach((t,i)=>{
+    const x=pad+i*barW+2;
+    const pnl=Number(t.realized_pnl);
+    const barH=(H-pad*2)/2*Math.abs(pnl)/maxAbs;
+    const y=pnl>=0?zeroY-barH:zeroY;
+    if(pnl>=0){
+      const grad=ctx.createLinearGradient(0,y,0,zeroY);
+      grad.addColorStop(0,'#34d399');grad.addColorStop(1,'#059669');
+      ctx.fillStyle=grad;
+    }else{
+      const grad=ctx.createLinearGradient(0,zeroY,0,y+barH);
+      grad.addColorStop(0,'#f87171');grad.addColorStop(1,'#dc2626');
+      ctx.fillStyle=grad;
+    }
+    ctx.fillRect(x,y,barW-4,barH);
+  });
+  ctx.fillStyle='#fbbf24';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('PnL por Trade ($)',pad,pad-10);
+  ctx.textAlign='center';ctx.fillStyle='#64748b';ctx.font='10px sans-serif';
+  ctx.fillText(sellTrades.length+' trades',W/2,H-pad+15);
 }
 
 function drawAIDecisionsChart(s){
@@ -1784,25 +1992,30 @@ function drawAIDecisionsChart(s){
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
   const data=[s.decisions_with_actions||0,s.decisions_hold||0,s.decisions_rejected||0];
   const labels=['Con Acciones','Hold','Rechazadas'];
   const colors=['#a78bfa','#64748b','#f87171'];
   const total=data.reduce((a,b)=>a+b,0);
   if(total===0){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin decisiones',W/2,H/2);return}
-  const cx=W/2,cy=H/2,radius=80;
+  const cx=W/2,cy=H/2-10,radius=75;
   let startAngle=-Math.PI/2;
   data.forEach((val,i)=>{
     if(val===0)return;
     const angle=(val/total)*Math.PI*2;
     ctx.beginPath();ctx.arc(cx,cy,radius,startAngle,startAngle+angle);ctx.lineTo(cx,cy);ctx.closePath();ctx.fillStyle=colors[i];ctx.fill();
+    ctx.strokeStyle='#0f172a';ctx.lineWidth=2;ctx.stroke();
     startAngle+=angle;
   });
-  ctx.fillStyle='#e2e8f0';ctx.font='bold 20px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(total,cx,cy-5);ctx.font='11px sans-serif';ctx.fillStyle='#94a3b8';
+  // Center hole for donut effect
+  ctx.beginPath();ctx.arc(cx,cy,radius*0.55,0,Math.PI*2);ctx.fillStyle='#0f172a';ctx.fill();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 22px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(total,cx,cy-5);ctx.font='10px sans-serif';ctx.fillStyle='#94a3b8';
   ctx.fillText('decisiones',cx,cy+15);
   ctx.textBaseline='alphabetic';ctx.textAlign='left';
-  let ly=H-50;
+  let ly=H-55;
   data.forEach((val,i)=>{
     if(i>0)ly-=16;
     ctx.fillStyle=colors[i];ctx.fillRect(10,ly,12,12);
@@ -1816,20 +2029,28 @@ function drawAISymbolChart(bySymbol){
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height,pad=40;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
   const symbols=Object.keys(bySymbol);
   if(symbols.length===0){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin trades del AI Agent',W/2,H/2);return}
   const maxCount=Math.max(...symbols.map(s=>bySymbol[s].trades),1);
   const barW=(W-pad*2)/symbols.length;
   const chartH=H-pad*2;
-  ctx.strokeStyle='#334155';ctx.beginPath();ctx.moveTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
+  for(let i=0;i<=3;i++){const y=pad+chartH*i/3;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke()}
+  ctx.beginPath();ctx.moveTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
   symbols.forEach((sym,i)=>{
     const x=pad+i*barW+5;
     const d=bySymbol[sym];
     const buyH=chartH*d.buys/maxCount;
     const sellH=chartH*d.sells/maxCount;
-    ctx.fillStyle='#a78bfa';ctx.fillRect(x,H-pad-buyH,barW/2-3,buyH);
-    ctx.fillStyle='#f87171';ctx.fillRect(x+barW/2,H-pad-sellH,barW/2-3,sellH);
+    const buyGrad=ctx.createLinearGradient(0,H-pad-buyH,0,H-pad);
+    buyGrad.addColorStop(0,'#a78bfa');buyGrad.addColorStop(1,'#7c3aed');
+    ctx.fillStyle=buyGrad;ctx.fillRect(x,H-pad-buyH,barW/2-3,buyH);
+    const sellGrad=ctx.createLinearGradient(0,H-pad-sellH,0,H-pad);
+    sellGrad.addColorStop(0,'#f87171');sellGrad.addColorStop(1,'#dc2626');
+    ctx.fillStyle=sellGrad;ctx.fillRect(x+barW/2,H-pad-sellH,barW/2-3,sellH);
     ctx.fillStyle='#94a3b8';ctx.font='9px sans-serif';ctx.textAlign='center';
     ctx.fillText(sym,x+barW/2,H-pad+12);
   });
@@ -1843,17 +2064,31 @@ function drawAIBuySellChart(s){
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height,pad=40;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
   const buys=s.buy_signals||0;
   const sells=s.sell_signals||0;
   const total=buys+sells;
   if(total===0){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin señales del AI Agent',W/2,H/2);return}
-  const cx=W/2,cy=H/2,radius=70;
+  const cx=W/2,cy=H/2-10,radius=70;
   const buyAngle=(buys/total)*Math.PI*2;
-  ctx.beginPath();ctx.arc(cx,cy,radius,0,buyAngle);ctx.lineTo(cx,cy);ctx.closePath();ctx.fillStyle='#a78bfa';ctx.fill();
-  ctx.beginPath();ctx.arc(cx,cy,radius,buyAngle,Math.PI*2);ctx.lineTo(cx,cy);ctx.closePath();ctx.fillStyle='#f87171';ctx.fill();
-  ctx.fillStyle='#e2e8f0';ctx.font='bold 20px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(total,cx,cy-5);ctx.font='11px sans-serif';ctx.fillStyle='#94a3b8';
+  // Buy slice
+  ctx.beginPath();ctx.arc(cx,cy,radius,0,buyAngle);ctx.lineTo(cx,cy);ctx.closePath();
+  const buyGrad=ctx.createRadialGradient(cx,cy,0,cx,cy,radius);
+  buyGrad.addColorStop(0,'#a78bfa');buyGrad.addColorStop(1,'#7c3aed');
+  ctx.fillStyle=buyGrad;ctx.fill();
+  ctx.strokeStyle='#0f172a';ctx.lineWidth=2;ctx.stroke();
+  // Sell slice
+  ctx.beginPath();ctx.arc(cx,cy,radius,buyAngle,Math.PI*2);ctx.lineTo(cx,cy);ctx.closePath();
+  const sellGrad=ctx.createRadialGradient(cx,cy,0,cx,cy,radius);
+  sellGrad.addColorStop(0,'#f87171');sellGrad.addColorStop(1,'#dc2626');
+  ctx.fillStyle=sellGrad;ctx.fill();
+  ctx.strokeStyle='#0f172a';ctx.lineWidth=2;ctx.stroke();
+  // Donut hole
+  ctx.beginPath();ctx.arc(cx,cy,radius*0.55,0,Math.PI*2);ctx.fillStyle='#0f172a';ctx.fill();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 22px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(total,cx,cy-5);ctx.font='10px sans-serif';ctx.fillStyle='#94a3b8';
   ctx.fillText('señales',cx,cy+15);
   ctx.textBaseline='alphabetic';ctx.textAlign='left';
   ctx.fillStyle='#a78bfa';ctx.fillRect(10,H-30,12,12);ctx.fillStyle='#e2e8f0';ctx.font='11px sans-serif';ctx.fillText('Compras: '+buys,25,H-20);
@@ -1999,18 +2234,32 @@ function drawWinLossChart(trades){
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
   const sellTrades=trades.filter(t=>t.side==='SELL');
   const wins=sellTrades.filter(t=>Number(t.realized_pnl)>0).length;
   const losses=sellTrades.filter(t=>Number(t.realized_pnl)<0).length;
   const total=wins+losses;
   if(total===0){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin datos',W/2,H/2);return}
-  const cx=W/2,cy=H/2,radius=70;
+  const cx=W/2,cy=H/2-10,radius=75;
   const winAngle=(wins/total)*Math.PI*2;
-  ctx.beginPath();ctx.arc(cx,cy,radius,0,winAngle);ctx.lineTo(cx,cy);ctx.closePath();ctx.fillStyle='#34d399';ctx.fill();
-  ctx.beginPath();ctx.arc(cx,cy,radius,winAngle,Math.PI*2);ctx.lineTo(cx,cy);ctx.closePath();ctx.fillStyle='#f87171';ctx.fill();
-  ctx.fillStyle='#e2e8f0';ctx.font='bold 20px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(fmt(wins/total*100)+'%',cx,cy-5);ctx.font='11px sans-serif';ctx.fillStyle='#94a3b8';
+  // Win slice
+  ctx.beginPath();ctx.arc(cx,cy,radius,0,winAngle);ctx.lineTo(cx,cy);ctx.closePath();
+  const winGrad=ctx.createRadialGradient(cx,cy,0,cx,cy,radius);
+  winGrad.addColorStop(0,'#34d399');winGrad.addColorStop(1,'#059669');
+  ctx.fillStyle=winGrad;ctx.fill();
+  ctx.strokeStyle='#0f172a';ctx.lineWidth=2;ctx.stroke();
+  // Loss slice
+  ctx.beginPath();ctx.arc(cx,cy,radius,winAngle,Math.PI*2);ctx.lineTo(cx,cy);ctx.closePath();
+  const lossGrad=ctx.createRadialGradient(cx,cy,0,cx,cy,radius);
+  lossGrad.addColorStop(0,'#f87171');lossGrad.addColorStop(1,'#dc2626');
+  ctx.fillStyle=lossGrad;ctx.fill();
+  ctx.strokeStyle='#0f172a';ctx.lineWidth=2;ctx.stroke();
+  // Donut hole
+  ctx.beginPath();ctx.arc(cx,cy,radius*0.55,0,Math.PI*2);ctx.fillStyle='#0f172a';ctx.fill();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 22px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(fmt(wins/total*100)+'%',cx,cy-5);ctx.font='10px sans-serif';ctx.fillStyle='#94a3b8';
   ctx.fillText(wins+'W / '+losses+'L',cx,cy+15);
   ctx.textBaseline='alphabetic';ctx.textAlign='left';
   ctx.fillStyle='#34d399';ctx.fillRect(10,H-30,12,12);ctx.fillStyle='#e2e8f0';ctx.font='11px sans-serif';ctx.fillText('Aciertos: '+wins,25,H-20);
@@ -2053,14 +2302,20 @@ function drawDailyPnlChart(daily){
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height,pad=50;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#0f172a');bgGrad.addColorStop(1,'#020617');
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
   if(!daily||daily.length<1){ctx.fillStyle='#64748b';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('Sin datos',W/2,H/2);return}
   const pnls=daily.map(d=>d.pnl);
   const maxAbs=Math.max(Math.abs(Math.min(...pnls)),Math.abs(Math.max(...pnls)),1);
   const barW=(W-pad*2)/daily.length;
   const zeroY=pad+(H-pad*2)/2;
-  ctx.strokeStyle='#334155';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,zeroY);ctx.lineTo(W-pad,zeroY);ctx.stroke();
-  ctx.fillStyle='#64748b';ctx.font='10px sans-serif';ctx.textAlign='right';
+  // Grid
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=pad+(H-pad*2)*i/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke()}
+  // Zero line
+  ctx.strokeStyle='#334155';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(pad,zeroY);ctx.lineTo(W-pad,zeroY);ctx.stroke();
+  ctx.fillStyle='#64748b';ctx.font='10px monospace';ctx.textAlign='right';
   ctx.fillText('+$'+fmt(maxAbs),pad-5,pad+5);
   ctx.fillText('$0',pad-5,zeroY+3);
   ctx.fillText('-$'+fmt(maxAbs),pad-5,H-pad);
@@ -2068,7 +2323,15 @@ function drawDailyPnlChart(daily){
     const x=pad+i*barW+3;
     const barH=(H-pad*2)/2*Math.abs(d.pnl)/maxAbs;
     const y=d.pnl>=0?zeroY-barH:zeroY;
-    ctx.fillStyle=d.pnl>=0?'#34d399':'#f87171';
+    if(d.pnl>=0){
+      const grad=ctx.createLinearGradient(0,y,0,zeroY);
+      grad.addColorStop(0,'#34d399');grad.addColorStop(1,'#059669');
+      ctx.fillStyle=grad;
+    }else{
+      const grad=ctx.createLinearGradient(0,zeroY,0,y+barH);
+      grad.addColorStop(0,'#f87171');grad.addColorStop(1,'#dc2626');
+      ctx.fillStyle=grad;
+    }
     ctx.fillRect(x,y,barW-6,barH);
     if(d.trades>0){
       ctx.fillStyle='#94a3b8';ctx.font='8px sans-serif';ctx.textAlign='center';
@@ -2077,7 +2340,7 @@ function drawDailyPnlChart(daily){
     ctx.fillStyle='#64748b';ctx.font='9px sans-serif';ctx.textAlign='center';
     ctx.fillText(d.date,x+(barW-6)/2,H-pad+12);
   });
-  ctx.fillStyle='#94a3b8';ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillStyle='#fbbf24';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
   ctx.fillText('PnL por Dia ($)',pad,pad-10);
 }
 
