@@ -401,11 +401,11 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </select>
 </div>
 <div style="display:flex;flex-direction:column;gap:.2rem" id="aiGroqKeyWrap">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(gratis en console.groq.com/keys)</span></label>
+<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(gratis en <a href="https://console.groq.com/keys" target="_blank" style="color:#38bdf8;text-decoration:underline">console.groq.com/keys</a>)</span></label>
 <input id="aiGroqKey" type="password" placeholder="Configurada en .env (o ingresa nueva)" style="width:280px">
 </div>
 <div style="display:flex;flex-direction:column;gap:.2rem" id="aiGeminiKeyWrap" style="display:none">
-<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(gratis en aistudio.google.com)</span></label>
+<label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(gratis en <a href="https://aistudio.google.com/api-keys" target="_blank" style="color:#38bdf8;text-decoration:underline">aistudio.google.com/api-keys</a>)</span></label>
 <input id="aiGeminiKey" type="password" placeholder="Configurada en .env (o ingresa nueva)" style="width:280px">
 </div>
 <div style="display:flex;flex-direction:column;gap:.2rem" id="aiPremiumKeyWrap" style="display:none">
@@ -605,11 +605,11 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
   <div id="aiKeysSection" style="display:none">
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem">
       <div style="display:flex;flex-direction:column;gap:.2rem">
-        <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(console.groq.com/keys)</span></label>
+        <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Groq API Key <span style="color:#64748b">(<a href="https://console.groq.com/keys" target="_blank" style="color:#38bdf8;text-decoration:underline">console.groq.com/keys</a>)</span></label>
         <input id="settingsAiGroqKey" type="password" placeholder="gsk_..." style="width:300px">
       </div>
       <div style="display:flex;flex-direction:column;gap:.2rem">
-        <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(aistudio.google.com)</span></label>
+        <label style="font-size:.75rem;color:#94a3b8;font-weight:600">Gemini API Key <span style="color:#64748b">(<a href="https://aistudio.google.com/api-keys" target="_blank" style="color:#38bdf8;text-decoration:underline">aistudio.google.com/api-keys</a>)</span></label>
         <input id="settingsAiGeminiKey" type="password" placeholder="AIza..." style="width:300px">
       </div>
     </div>
@@ -2527,12 +2527,12 @@ function aiProviderChanged(){
     grok:'Grok (xAI) API Key'
   };
   const PREMIUM_KEY_LINKS={
-    openai:'platform.openai.com/api-keys',
-    deepseek:'platform.deepseek.com',
-    mistral:'console.mistral.ai/api-keys',
-    together:'api.together.xyz/settings/api-keys',
-    perplexity:'perplexity.ai/settings/api',
-    grok:'console.x.ai'
+    openai:'<a href="https://platform.openai.com/api-keys" target="_blank" style="color:#38bdf8;text-decoration:underline">platform.openai.com/api-keys</a>',
+    deepseek:'<a href="https://platform.deepseek.com" target="_blank" style="color:#38bdf8;text-decoration:underline">platform.deepseek.com</a>',
+    mistral:'<a href="https://console.mistral.ai/api-keys" target="_blank" style="color:#38bdf8;text-decoration:underline">console.mistral.ai/api-keys</a>',
+    together:'<a href="https://api.together.xyz/settings/api-keys" target="_blank" style="color:#38bdf8;text-decoration:underline">api.together.xyz/settings/api-keys</a>',
+    perplexity:'<a href="https://perplexity.ai/settings/api" target="_blank" style="color:#38bdf8;text-decoration:underline">perplexity.ai/settings/api</a>',
+    grok:'<a href="https://console.x.ai" target="_blank" style="color:#38bdf8;text-decoration:underline">console.x.ai</a>'
   };
 
   // Hide all key wraps first
