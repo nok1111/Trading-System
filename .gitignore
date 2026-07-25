@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Variables de entorno y secretos
+.env
+.env.local
+.env.*.local
+
+# Bases de datos locales
+*.db
+*.sqlite3
+*.sqlite
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+*.lnk
+
+# Reportes y artefactos
+reports/
+*.csv
+*.html
+!dashboard.html
+
+# Modelos ML (solo raiz, no app/models/)
+/models/
+*.joblib
+*.pkl
+*.onnx
