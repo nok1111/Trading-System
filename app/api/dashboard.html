@@ -1363,7 +1363,19 @@ function buildPositionCardHTML(pos){
     '<div id="posRoi_'+pos.symbol+'" style="padding:.6rem .8rem;background:'+pnlBg+';border-radius:6px;border:1px solid '+pnlColor+'33;transition:background .3s,border-color .3s"><div style="font-size:.65rem;color:#64748b;margin-bottom:.2rem">ROI</div><div id="posRoiVal_'+pos.symbol+'" style="font-size:.95rem;font-weight:700;color:'+pnlColor+';transition:color .3s">'+(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%</div></div>'+
   '</div>'+
   slTpBar+
-  '<div style="margin-top:.8rem"><canvas id="posChart_'+pos.symbol+'" width="800" height="120" style="width:100%;max-width:800px;border-radius:6px"></canvas></div>';
+  '<div style="margin-top:.8rem">'+
+    '<canvas id="posChart_'+pos.symbol+'" width="800" height="120" style="width:100%;max-width:800px;border-radius:6px;cursor:ns-resize"></canvas>'+
+    '<div style="display:flex;align-items:center;gap:.4rem;margin-top:.4rem;flex-wrap:wrap">'+
+      '<button onclick="chartZoomIn(\''+pos.symbol+'\')" style="padding:.2rem .5rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#38bdf8;cursor:pointer" title="Zoom in">🔍+</button>'+
+      '<button onclick="chartZoomOut(\''+pos.symbol+'\')" style="padding:.2rem .5rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#38bdf8;cursor:pointer" title="Zoom out">🔍−</button>'+
+      '<button onclick="chartZoomReset(\''+pos.symbol+'\')" style="padding:.2rem .5rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer" title="Reset zoom">⟲ Auto</button>'+
+      '<span style="color:#475569;font-size:.7rem">|</span>'+
+      '<span style="font-size:.7rem;color:#64748b">Min:</span> <input id="zoomMin_'+pos.symbol+'" type="number" step="0.0001" placeholder="auto" style="width:80px;padding:.2rem .4rem;font-size:.7rem;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0">'+
+      '<span style="font-size:.7rem;color:#64748b">Max:</span> <input id="zoomMax_'+pos.symbol+'" type="number" step="0.0001" placeholder="auto" style="width:80px;padding:.2rem .4rem;font-size:.7rem;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0">'+
+      '<button onclick="chartZoomManual(\''+pos.symbol+'\')" style="padding:.2rem .5rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#fbbf24;cursor:pointer" title="Aplicar zoom manual">Aplicar</button>'+
+      '<span style="font-size:.65rem;color:#475569;margin-left:.3rem">💡 Scroll sobre la gráfica para zoom</span>'+
+    '</div>'+
+  '</div>';
 }
 
 function updatePositionCardData(pos){
@@ -1433,14 +1445,40 @@ async function updatePositionCharts(symbols,openPositions){
     if(!cv)continue;
     try{
       const data=await api('/api/charts/position/'+sym);
+      _posChartData[sym]=data;
       drawPositionChart('posChart_'+sym,data);
+      setupChartZoom('posChart_'+sym,sym);
     }catch(e){console.error('position chart error for '+sym,e)}
   }
+}
+
+// Per-chart zoom state: { symbol: { lo, hi, auto } }
+const _posChartZoom={};
+
+function getChartZoomState(sym,data){
+  if(!_posChartZoom[sym])_posChartZoom[sym]={auto:true};
+  const st=_posChartZoom[sym];
+  if(st.auto){
+    const entry=data.entry_price||0;
+    const sl=data.stop_loss||0;
+    const tp=data.take_profit||0;
+    const live=data.live_price||0;
+    const levels=[entry];
+    if(sl)levels.push(sl);
+    if(tp)levels.push(tp);
+    if(live)levels.push(live);
+    const minP=Math.min(...levels),maxP=Math.max(...levels);
+    const range=(maxP-minP)||minP*0.01||1;
+    const pad=range*0.2;
+    st.lo=minP-pad;st.hi=maxP+pad;
+  }
+  return st;
 }
 
 function drawPositionChart(canvasId,data){
   const cv=document.getElementById(canvasId);
   if(!cv)return;
+  const sym=canvasId.replace('posChart_','');
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height,padL=70,padR=20,padT=15,padB=25;
   ctx.clearRect(0,0,W,H);
@@ -1452,15 +1490,9 @@ function drawPositionChart(canvasId,data){
 
   if(!entry){ctx.fillStyle='#64748b';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('Sin datos',W/2,H/2);return}
 
-  const levels=[entry];
-  if(sl)levels.push(sl);
-  if(tp)levels.push(tp);
-  if(live)levels.push(live);
-  const minP=Math.min(...levels),maxP=Math.max(...levels);
-  const range=(maxP-minP)||minP*0.01||1;
-  const padR2=range*0.2;
-  const lo=minP-padR2,hi=maxP+padR2;
-  const r2=hi-lo||1;
+  const st=getChartZoomState(sym,data);
+  const lo=st.lo,hi=st.hi;
+  const r2=(hi-lo)||1;
   const chartW=W-padL-padR,chartH=H-padT-padB;
 
   function yOf(v){return padT+chartH*(1-(v-lo)/r2);}
@@ -1474,14 +1506,18 @@ function drawPositionChart(canvasId,data){
   // Profit zone (green tint between entry and TP)
   if(tp&&entry){
     const yT=yOf(tp),yE=yOf(entry);
-    ctx.fillStyle='rgba(52,211,153,.06)';
-    ctx.fillRect(padL,Math.min(yT,yE),chartW,Math.abs(yE-yT));
+    if(yT>=padT&&yT<=padT+chartH){
+      ctx.fillStyle='rgba(52,211,153,.06)';
+      ctx.fillRect(padL,Math.min(yT,yE),chartW,Math.abs(yE-yT));
+    }
   }
   // Loss zone (red tint between entry and SL)
   if(sl&&entry){
     const yS=yOf(sl),yE=yOf(entry);
-    ctx.fillStyle='rgba(248,113,113,.06)';
-    ctx.fillRect(padL,Math.min(yS,yE),chartW,Math.abs(yE-yS));
+    if(yS>=padT&&yS<=padT+chartH){
+      ctx.fillStyle='rgba(248,113,113,.06)';
+      ctx.fillRect(padL,Math.min(yS,yE),chartW,Math.abs(yE-yS));
+    }
   }
 
   // Grid lines + price labels
@@ -1490,12 +1526,15 @@ function drawPositionChart(canvasId,data){
     const y=padT+chartH*i/4;
     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
     const priceVal=hi-r2*i/4;
-    ctx.textAlign='right';ctx.fillText('$'+priceVal.toFixed(4),padL-5,y+3);
+    ctx.textAlign='right';
+    const decimals=Math.abs(priceVal)<1?6:Math.abs(priceVal)<100?4:2;
+    ctx.fillText('$'+priceVal.toFixed(decimals),padL-5,y+3);
   }
 
-  // Draw level lines
+  // Draw level lines (only if visible in zoom range)
   function drawLevel(level,color,label,dashed){
     if(!level)return;
+    if(level<lo||level>hi)return; // skip if outside zoom
     const y=yOf(level);
     ctx.strokeStyle=color;ctx.lineWidth=dashed?1.5:2;
     if(dashed)ctx.setLineDash([6,4]);
@@ -1516,17 +1555,14 @@ function drawPositionChart(canvasId,data){
   drawLevel(entry,'#94a3b8','ENTRY',true);
 
   // Live price line (thick, with glow)
-  if(live){
+  if(live&&live>=lo&&live<=hi){
     const y=yOf(live);
-    // Glow
     ctx.shadowColor='#38bdf8';ctx.shadowBlur=8;
     ctx.strokeStyle='#38bdf8';ctx.lineWidth=2.5;
     ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
     ctx.shadowBlur=0;
-    // Dot at right
     ctx.fillStyle='#38bdf8';ctx.beginPath();ctx.arc(W-padR-3,y,5,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='#0f172a';ctx.lineWidth=1.5;ctx.stroke();
-    // PnL badge
     const pnlPct=((live-entry)/entry*100);
     const pnlColor=live>=entry?'#34d399':'#f87171';
     const pnlText=(pnlPct>=0?'+':'')+pnlPct.toFixed(2)+'%';
@@ -1541,6 +1577,90 @@ function drawPositionChart(canvasId,data){
   // Border
   ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
   ctx.strokeRect(padL,padT,chartW,chartH);
+
+  // Zoom indicator if not auto
+  if(!st.auto){
+    ctx.fillStyle='#fbbf24';ctx.font='9px sans-serif';ctx.textAlign='right';
+    ctx.fillText('🔍 Zoom: $'+fmt(lo)+' - $'+fmt(hi),W-padR-5,padT+10);
+  }
+}
+
+// Store last data per chart for re-render on zoom
+const _posChartData={};
+
+function setupChartZoom(canvasId,sym){
+  const cv=document.getElementById(canvasId);
+  if(!cv)return;
+  // Avoid double-binding
+  if(cv._zoomBound)return;
+  cv._zoomBound=true;
+
+  cv.addEventListener('wheel',function(e){
+    e.preventDefault();
+    const data=_posChartData[sym];
+    if(!data)return;
+    const st=_posChartZoom[sym]||{auto:true};
+    if(st.auto){
+      // Initialize from auto range
+      getChartZoomState(sym,data);
+    }
+    st.auto=false;
+    const factor=e.deltaY>0?1.15:0.87; // zoom out / zoom in
+    const center=(st.lo+st.hi)/2;
+    const halfRange=(st.hi-st.lo)/2*factor;
+    // Don't allow zoom in beyond 0.01% of original range
+    const entry=data.entry_price||0;
+    const minRange=(entry*0.0001)||0.01;
+    if(halfRange<minRange)return;
+    st.lo=center-halfRange;
+    st.hi=center+halfRange;
+    drawPositionChart(canvasId,data);
+  },{passive:false});
+}
+
+function chartZoomIn(sym){
+  const data=_posChartData[sym];
+  if(!data)return;
+  const st=_posChartZoom[sym]||{auto:true};
+  if(st.auto)getChartZoomState(sym,data);
+  st.auto=false;
+  const center=(st.lo+st.hi)/2;
+  const halfRange=(st.hi-st.lo)/2*0.7;
+  st.lo=center-halfRange;st.hi=center+halfRange;
+  drawPositionChart('posChart_'+sym,data);
+}
+
+function chartZoomOut(sym){
+  const data=_posChartData[sym];
+  if(!data)return;
+  const st=_posChartZoom[sym]||{auto:true};
+  if(st.auto)getChartZoomState(sym,data);
+  st.auto=false;
+  const center=(st.lo+st.hi)/2;
+  const halfRange=(st.hi-st.lo)/2*1.5;
+  st.lo=center-halfRange;st.hi=center+halfRange;
+  drawPositionChart('posChart_'+sym,data);
+}
+
+function chartZoomReset(sym){
+  const data=_posChartData[sym];
+  if(!data)return;
+  _posChartZoom[sym]={auto:true};
+  drawPositionChart('posChart_'+sym,data);
+}
+
+function chartZoomManual(sym){
+  const data=_posChartData[sym];
+  if(!data)return;
+  const minInput=document.getElementById('zoomMin_'+sym);
+  const maxInput=document.getElementById('zoomMax_'+sym);
+  if(!minInput||!maxInput)return;
+  const minVal=parseFloat(minInput.value);
+  const maxVal=parseFloat(maxInput.value);
+  if(isNaN(minVal)||isNaN(maxVal)){toast('Ingresa valores validos',false);return}
+  if(minVal>=maxVal){toast('Min debe ser menor que Max',false);return}
+  _posChartZoom[sym]={auto:false,lo:minVal,hi:maxVal};
+  drawPositionChart('posChart_'+sym,data);
 }
 
 async function loadTrades(){
