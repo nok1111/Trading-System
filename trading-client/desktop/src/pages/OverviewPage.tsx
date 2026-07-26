@@ -24,6 +24,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -365,7 +367,10 @@ export function OverviewPage() {
                   Sin balances disponibles.
                 </p>
               ) : (
-                walletAssets.map((a, idx) => (
+                walletAssets.map((a, idx) => {
+                  const sparkData = (sparkRef.current[a.asset + "USDT"] || sparkRef.current[a.asset] || []).map((v, i) => ({ i, v }));
+                  const sparkUp = sparkData.length > 1 && sparkData[sparkData.length - 1].v >= sparkData[0].v;
+                  return (
                   <div key={a.asset} className="flex items-center gap-2.5">
                     <span
                       className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
@@ -386,11 +391,27 @@ export function OverviewPage() {
                         {a.qty.toFixed(6)}
                       </div>
                     </div>
+                    {sparkData.length > 2 && (
+                      <div className="w-[50px] h-[24px] flex-shrink-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={sparkData}>
+                            <Line
+                              type="monotone"
+                              dataKey="v"
+                              stroke={sparkUp ? "var(--color-success)" : "var(--color-danger)"}
+                              strokeWidth={1.5}
+                              dot={false}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                     <span className="num text-[12px] font-semibold text-[var(--color-text-secondary)]">
                       ${fmt(a.usd)}
                     </span>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
             <div className="w-[128px] h-[128px] flex-shrink-0 relative">
