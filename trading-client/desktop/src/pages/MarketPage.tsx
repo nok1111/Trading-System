@@ -24,8 +24,13 @@ export function MarketPage() {
 
   const loadLivePrices = useCallback(async () => {
     try {
-      const r = await api<any[]>("/api/prices/live");
-      setLivePrices(r);
+      const r = await api<any>("/api/prices/live");
+      const priceList = Array.isArray(r)
+        ? r
+        : r?.prices
+          ? Object.entries(r.prices).map(([symbol, price]) => ({ symbol, price }))
+          : [];
+      setLivePrices(priceList);
     } catch {}
   }, []);
 
