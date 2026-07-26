@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { toast } from "../ui/Toast";
 
-export function LoginScreen() {
-  const { login, register } = useAuth();
+interface LoginScreenProps {
+  onLogin: (email: string, password: string) => Promise<any>;
+  onRegister: (email: string, username: string, password: string) => Promise<any>;
+}
+
+export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -31,10 +34,10 @@ export function LoginScreen() {
     setLoading(true);
     try {
       if (mode === "login") {
-        await login(email, password);
+        await onLogin(email, password);
         toast("Sesión iniciada");
       } else {
-        await register(email, username, password);
+        await onRegister(email, username, password);
         toast("Cuenta creada");
       }
     } catch (e: any) {

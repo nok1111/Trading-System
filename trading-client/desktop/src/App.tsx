@@ -25,7 +25,7 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, login, register } = useAuth();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   if (loading) {
@@ -37,7 +37,7 @@ function AppContent() {
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return <LoginScreen onLogin={login} onRegister={register} />;
   }
 
   const pages: Record<TabId, React.ReactNode> = {
