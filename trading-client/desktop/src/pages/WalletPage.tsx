@@ -239,13 +239,13 @@ export function WalletPage() {
             {enrichedAssets.length}
           </div>
           <div className="text-sm text-[var(--color-text-muted)] mt-1">
-            {balance?.error ? "Sin API keys" : "Vía Binance API"}
+            {balance?.assets && balance.assets.length > 0 ? "Vía Binance API" : "Vía posiciones"}
           </div>
         </Card>
       </div>
 
       {/* API Key Warning */}
-      {balance?.error && (
+      {balance?.error && enrichedAssets.length === 0 && (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30">
           <AlertCircle size={18} className="text-[var(--color-warning)] shrink-0" />
           <div className="text-sm text-[var(--color-text)]">
