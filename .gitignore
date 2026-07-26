@@ -43,6 +43,7 @@ reports/
 *.csv
 *.html
 !dashboard.html
+!admin_panel.html
 
 # Modelos ML (solo raiz, no app/models/)
 /models/
