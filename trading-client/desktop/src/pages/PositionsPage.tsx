@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { Select } from "../components/ui/Input";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { fmt, fmtDate } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 
 export function PositionsPage() {
   const [positions, setPositions] = useState<any[]>([]);
@@ -94,7 +95,8 @@ export function PositionsPage() {
           {open.map((p) => (
             <Card key={p.id}>
               <div className="flex justify-between items-start mb-3">
-                <div>
+                <div className="flex items-center gap-2">
+                  <CryptoIcon symbol={p.symbol} size={32} />
                   <span className="font-bold text-lg">{p.symbol}</span>
                   <Badge
                     variant={p.side === "BUY" ? "success" : "danger"}
@@ -167,7 +169,12 @@ export function PositionsPage() {
               {closed.slice(-30).reverse().map((p) => (
                 <Tr key={p.id}>
                   <Td>{p.id}</Td>
-                  <Td>{p.symbol}</Td>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <CryptoIcon symbol={p.symbol} size={24} />
+                      {p.symbol}
+                    </div>
+                  </Td>
                   <Td>{p.side}</Td>
                   <Td>{fmt(p.quantity)}</Td>
                   <Td>${fmt(p.entry_price)}</Td>
