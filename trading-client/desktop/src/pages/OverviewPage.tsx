@@ -104,12 +104,12 @@ export function OverviewPage() {
       setHealth(h);
     } catch {}
     try {
-      const s = await api<Snapshot[]>("/api/snapshots");
-      setSnapshots(s.slice(-200));
+      const s = await api<any>("/api/snapshots");
+      setSnapshots(Array.isArray(s) ? s.slice(-200) : []);
     } catch {}
     try {
-      const p = await api<any[]>("/api/positions");
-      setPositions(p);
+      const p = await api<any>("/api/positions");
+      setPositions(Array.isArray(p) ? p : []);
     } catch {}
     try {
       const pr = await api<any>("/api/prices/live");
@@ -135,12 +135,14 @@ export function OverviewPage() {
       setBalance(b);
     } catch {}
     try {
-      const sig = await api<any[]>("/api/signals");
-      setSignals(sig.slice(-10).reverse());
+      const sig = await api<any>("/api/signals");
+      const sigArr = Array.isArray(sig) ? sig : [];
+      setSignals(sigArr.slice(-10).reverse());
     } catch {}
     try {
-      const log = await api<any[]>("/api/ai-agent/log");
-      setAiLog(log.slice(-10).reverse());
+      const log = await api<any>("/api/ai-agent/log");
+      const logArr = Array.isArray(log) ? log : [];
+      setAiLog(logArr.slice(-10).reverse());
     } catch {}
     try {
       const cap = await api<any>("/api/ai-agent/capital");

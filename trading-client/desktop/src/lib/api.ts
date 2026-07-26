@@ -1,6 +1,8 @@
 const API_BASE = "http://localhost:18652";
 
-let authToken: string | null = localStorage.getItem("jwt");
+// Force login on every app start — clear any stored token
+localStorage.removeItem("jwt");
+let authToken: string | null = null;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
