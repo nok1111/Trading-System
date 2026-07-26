@@ -12,6 +12,7 @@ import { MarketPage } from "./pages/MarketPage";
 import { AIAgentPage } from "./pages/AIAgentPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { logger } from "./lib/logger";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Global error handlers
 window.addEventListener("error", (e) => {
@@ -58,9 +59,11 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-      <Toast />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AppContent />
+        <Toast />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
