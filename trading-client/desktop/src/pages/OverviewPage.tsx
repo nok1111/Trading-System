@@ -110,9 +110,8 @@ export function OverviewPage() {
     } catch {}
     try {
       const s = await api<any>("/api/snapshots");
-      console.log("SNAPSHOTS:", Array.isArray(s) ? s.length : typeof s, s?.[0]);
-      setSnapshots(Array.isArray(s) ? s.slice(-200) : []);
-    } catch (e) { console.log("SNAPSHOTS ERROR:", e); }
+      setSnapshots(Array.isArray(s) ? s.slice(-200).reverse() : []);
+    } catch {}
     try {
       const p = await api<any>("/api/positions");
       setPositions(Array.isArray(p) ? p : []);
@@ -152,9 +151,8 @@ export function OverviewPage() {
     } catch {}
     try {
       const cap = await api<any>("/api/trading-mode");
-      console.log("TRADING-MODE:", cap);
       setAllocatedCapital(cap?.allocated_capital ?? 0);
-    } catch (e) { console.log("TRADING-MODE ERROR:", e); }
+    } catch {}
   }, []);
 
   useEffect(() => {
