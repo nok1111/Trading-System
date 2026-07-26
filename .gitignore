@@ -20,6 +20,12 @@ test.db-shm
 test.db-wal
 *.sqlite3
 *.sqlite
+trading.db
+trading.db-shm
+trading.db-wal
+alvora_auth.db
+alvora_auth.db-shm
+alvora_auth.db-wal
 
 # IDEs
 .idea/

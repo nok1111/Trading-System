@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  trading-client:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - AUTH_SERVER_URL=${AUTH_SERVER_URL:-http://localhost:8000}
+    restart: unless-stopped

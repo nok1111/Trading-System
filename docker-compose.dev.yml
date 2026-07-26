@@ -1,0 +1,54 @@
+version: "3.8"
+
+# Development docker-compose — runs Auth Server + PostgreSQL + Trading Client together
+# Usage: docker-compose -f docker-compose.dev.yml up -d
+#
+# Auth Server:    http://localhost:8000
+# Trading Client: http://localhost:8080
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alvora
+      POSTGRES_PASSWORD: alvora
+      POSTGRES_DB: alvora_auth
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alvora"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-server:
+    build: ./auth-server
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://alvora:alvora@db:5432/alvora_auth
+      - JWT_SECRET=dev-secret-change-in-production
+      - CORS_ORIGINS=*
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  trading-client:
+    build: ./trading-client
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTH_SERVER_URL=http://auth-server:8000
+    volumes:
+      - ./trading-client/.env:/app/.env:ro
+      - client-data:/app/data
+    depends_on:
+      - auth-server
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  client-data:

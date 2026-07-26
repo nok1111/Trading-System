@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alvora
+      POSTGRES_PASSWORD: alvora
+      POSTGRES_DB: alvora_auth
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alvora"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://alvora:alvora@db:5432/alvora_auth
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - BINANCE_PAY_API_KEY=${BINANCE_PAY_API_KEY:-}
+      - BINANCE_PAY_API_SECRET=${BINANCE_PAY_API_SECRET:-}
+      - BINANCE_PAY_MERCHANT_ID=${BINANCE_PAY_MERCHANT_ID:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
