@@ -112,9 +112,14 @@ export function OverviewPage() {
       setPositions(p);
     } catch {}
     try {
-      const pr = await api<any[]>("/api/prices/live");
-      setPrices(pr);
-      for (const t of pr) {
+      const pr = await api<any>("/api/prices/live");
+      const priceList = Array.isArray(pr)
+        ? pr
+        : pr?.prices
+          ? Object.entries(pr.prices).map(([symbol, price]) => ({ symbol, price }))
+          : [];
+      setPrices(priceList);
+      for (const t of priceList) {
         const arr = sparkRef.current[t.symbol] || [];
         arr.push(Number(t.price) || 0);
         if (arr.length > 40) arr.shift();
