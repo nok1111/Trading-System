@@ -98,5 +98,6 @@ def auth_me(current_user: Annotated[User, Depends(get_current_user)]) -> dict:
         "subscription": current_user.subscription,
         "risk_profile": current_user.risk_profile,
         "is_active": current_user.is_active,
+        "is_admin": current_user.is_admin,
         "created_at": str(current_user.created_at),
     }
