@@ -8,6 +8,7 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { PositionsPage } from "./pages/PositionsPage";
 import { PerformancePage } from "./pages/PerformancePage";
 import { MarketPage } from "./pages/MarketPage";
+import { WalletPage } from "./pages/WalletPage";
 import { AIAgentPage } from "./pages/AIAgentPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { logger } from "./lib/logger";
@@ -40,10 +41,11 @@ function AppContent() {
     return <LoginScreen onLogin={login} onRegister={register} />;
   }
 
-  const tabs: TabId[] = ["overview", "activity", "positions", "performance", "market", "ai", "settings"];
+  const tabs: TabId[] = ["overview", "wallet", "activity", "positions", "performance", "market", "ai", "settings"];
 
   const pages: Record<TabId, React.ReactNode> = {
     overview: <OverviewPage />,
+    wallet: <WalletPage />,
     activity: <ActivityPage />,
     positions: <PositionsPage />,
     performance: <PerformancePage />,

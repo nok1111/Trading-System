@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Activity,
   Wallet,
+  Layers,
   TrendingUp,
   Store as MarketIcon,
   Bot,
@@ -24,6 +25,7 @@ import { Badge } from "../ui/Badge";
 
 export type TabId =
   | "overview"
+  | "wallet"
   | "activity"
   | "positions"
   | "performance"
@@ -52,9 +54,15 @@ const navItems: NavItem[] = [
     group: "trading",
   },
   {
+    id: "wallet",
+    label: "Wallet",
+    icon: <Wallet size={17} />,
+    group: "trading",
+  },
+  {
     id: "positions",
     label: "Posiciones",
-    icon: <Wallet size={17} />,
+    icon: <Layers size={17} />,
     group: "trading",
   },
   {
@@ -81,6 +89,7 @@ const navItems: NavItem[] = [
 const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   overview: { title: "Dashboard", subtitle: "Vista general de la operación" },
   market: { title: "Mercado", subtitle: "Movers y precios en vivo" },
+  wallet: { title: "Wallet", subtitle: "Balance detallado y exposición" },
   positions: { title: "Posiciones", subtitle: "Exposición abierta y órdenes" },
   activity: { title: "Actividad", subtitle: "Señales, trades y eventos" },
   performance: { title: "Performance", subtitle: "Métricas y equity" },
