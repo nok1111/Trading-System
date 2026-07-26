@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import time
 import httpx
 
 from app.config import get_settings
+
+# Cache: token -> (result, expiry_timestamp)
+_token_cache: dict[str, tuple[dict, float]] = {}
+_CACHE_TTL = 60  # seconds
 
 
 def validate_license(jwt_token: str) -> dict | None:
@@ -14,6 +19,12 @@ def validate_license(jwt_token: str) -> dict | None:
         dict with {valid, user_id, email, subscription, plan_limits} if valid.
         None if the token is invalid, expired, or the Auth Server is unreachable.
     """
+    # Check cache first
+    now = time.time()
+    cached = _token_cache.get(jwt_token)
+    if cached and now < cached[1]:
+        return cached[0]
+
     settings = get_settings()
     try:
         resp = httpx.post(
@@ -22,7 +33,9 @@ def validate_license(jwt_token: str) -> dict | None:
             timeout=10.0,
         )
         if resp.status_code == 200:
-            return resp.json()
+            result = resp.json()
+            _token_cache[jwt_token] = (result, now + _CACHE_TTL)
+            return result
         return None
     except Exception:
         return None

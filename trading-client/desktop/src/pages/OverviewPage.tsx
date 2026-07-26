@@ -64,23 +64,28 @@ interface HealthResponse {
 interface Snapshot {
   id: number;
   timestamp: string;
-  total_equity: number;
-  cash: number;
-  positions_value: number;
-  pnl: number;
+  equity: any;
+  cash: any;
+  total_pnl: any;
+  total_equity?: any;
+  positions_value?: any;
+  open_positions_count: number;
 }
 
 interface Stats {
-  total_trades: number;
-  win_rate: number;
-  total_pnl: number;
+  trades_closed: number;
   open_positions: number;
+  total_pnl: number;
+  win_rate: number;
+  wins: number;
+  losses: number;
 }
 
 interface BinanceBalance {
-  balances: { asset: string; free: string; locked: string }[];
+  assets: { asset: string; free: string; locked: string }[];
   total_usd: number;
   total_mxn: number;
+  error?: string;
 }
 
 export function OverviewPage() {
@@ -127,8 +132,8 @@ export function OverviewPage() {
       }
     } catch {}
     try {
-      const st = await api<Stats>("/api/stats");
-      setStats(st);
+      const st = await api<any>("/api/stats");
+      setStats(st?.today ?? null);
     } catch {}
     try {
       const b = await api<BinanceBalance>("/api/binance/balance");
@@ -145,8 +150,8 @@ export function OverviewPage() {
       setAiLog(logArr.slice(-10).reverse());
     } catch {}
     try {
-      const cap = await api<any>("/api/ai-agent/capital");
-      setAllocatedCapital(cap.allocated_capital ?? 0);
+      const cap = await api<any>("/api/ai-agent/trading-mode");
+      setAllocatedCapital(cap?.allocated_capital ?? 0);
     } catch {}
   }, []);
 
@@ -160,10 +165,8 @@ export function OverviewPage() {
     const val = parseFloat(capitalInput);
     if (isNaN(val)) return;
     try {
-      await api("/api/ai-agent/capital", {
+      await api(`/api/ai-agent/capital?amount=${val}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allocated_capital: val }),
       });
       setAllocatedCapital(val);
       setCapitalInput("");
@@ -198,23 +201,23 @@ export function OverviewPage() {
   const ranged = useMemo(() => (snapshots ?? []).slice(-rangeN), [snapshots, rangeN]);
 
   const equityData = useMemo(
-    () => (ranged ?? []).map((s, i) => ({ i, v: s.total_equity ?? 0 })),
+    () => (ranged ?? []).map((s: any, i) => ({ i, v: Number(s.equity ?? s.total_equity ?? 0) })),
     [ranged]
   );
 
   const growthData = useMemo(
     () =>
-      (ranged ?? []).map((s, i) => ({
+      (ranged ?? []).map((s: any, i) => ({
         i: i + 1,
-        cash: s.cash ?? 0,
-        pos: s.positions_value ?? 0,
+        cash: Number(s.cash ?? 0),
+        pos: Number(s.equity ?? s.total_equity ?? 0) - Number(s.cash ?? 0),
       })),
     [ranged]
   );
 
   const equityDeltaPct = useMemo(() => {
-    const a = prevSnapshot?.total_equity;
-    const b = latestSnapshot?.total_equity;
+    const a = prevSnapshot ? Number(prevSnapshot.equity ?? prevSnapshot.total_equity ?? 0) : 0;
+    const b = latestSnapshot ? Number(latestSnapshot.equity ?? latestSnapshot.total_equity ?? 0) : 0;
     if (!a || !b) return 0;
     return ((b - a) / a) * 100;
   }, [latestSnapshot, prevSnapshot]);
@@ -229,8 +232,8 @@ export function OverviewPage() {
   );
 
   const walletAssets = useMemo(() => {
-    if (!balance?.balances) return [];
-    return (balance.balances ?? [])
+    if (!balance?.assets) return [];
+    return (balance.assets ?? [])
       .map((b) => {
         const qty = parseFloat(b.free) + parseFloat(b.locked || "0");
         const px = priceOf(b.asset);
@@ -251,7 +254,7 @@ export function OverviewPage() {
       name: p.symbol as string,
       value: (p.quantity || 0) * (p.entry_price || 0),
     }));
-    const cash = latestSnapshot?.cash ?? 0;
+    const cash = latestSnapshot ? Number(latestSnapshot.cash ?? 0) : 0;
     if (cash > 0) items.push({ name: "Cash", value: cash });
     return items.filter((i) => i.value > 0);
   }, [openPositions, latestSnapshot]);
@@ -262,11 +265,11 @@ export function OverviewPage() {
     () => (positions ?? []).filter((p) => p.status === "closed"),
     [positions]
   );
-  const grossProfit = closed.reduce(
+  const grossProfit = (closed ?? []).reduce(
     (a, p) => a + Math.max(p.pnl || 0, 0),
     0
   );
-  const grossLoss = closed.reduce((a, p) => a + Math.min(p.pnl || 0, 0), 0);
+  const grossLoss = (closed ?? []).reduce((a, p) => a + Math.min(p.pnl || p.realized_pnl || 0, 0), 0);
 
   const transactions = useMemo(() => {
     const rows = [...openPositions, ...closed]
@@ -422,7 +425,7 @@ export function OverviewPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="num text-[26px] font-extrabold text-[var(--color-text)] leading-none truncate">
-                ${fmt(latestSnapshot?.total_equity)}
+                ${fmt(latestSnapshot ? Number(latestSnapshot.equity ?? latestSnapshot.total_equity ?? 0) : undefined)}
               </div>
               <div className="flex items-center gap-1.5 mt-2">
                 <span
@@ -573,13 +576,13 @@ export function OverviewPage() {
         <StatCard
           icon={<Wallet size={17} />}
           label="Equity Total"
-          value={`$${fmt(latestSnapshot?.total_equity)}`}
+          value={`$${fmt(latestSnapshot ? Number(latestSnapshot.equity ?? latestSnapshot.total_equity ?? 0) : undefined)}`}
           tone="primary"
         />
         <StatCard
           icon={<Coins size={17} />}
           label="Cash"
-          value={`$${fmt(latestSnapshot?.cash)}`}
+          value={`$${fmt(latestSnapshot ? Number(latestSnapshot.cash ?? 0) : undefined)}`}
           tone="cyan"
         />
         <StatCard
@@ -604,7 +607,7 @@ export function OverviewPage() {
         <StatCard
           icon={<Repeat size={17} />}
           label="Total Trades"
-          value={stats?.total_trades ?? 0}
+          value={stats?.trades_closed ?? 0}
           tone="primary"
         />
       </div>
