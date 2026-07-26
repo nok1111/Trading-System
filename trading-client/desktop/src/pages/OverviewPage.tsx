@@ -151,7 +151,8 @@ export function OverviewPage() {
     } catch {}
     try {
       const cap = await api<any>("/api/trading-mode");
-      setAllocatedCapital(cap?.allocated_capital ?? 0);
+      const allocated = cap?.allocated_capital ?? 0;
+      setAllocatedCapital(allocated);
     } catch {}
   }, []);
 
@@ -231,23 +232,34 @@ export function OverviewPage() {
     [prices]
   );
 
-  const walletAssets = useMemo(() => {
-    if (!balance?.assets) return [];
-    return (balance.assets ?? [])
-      .map((b) => {
-        const qty = parseFloat(b.free) + parseFloat(b.locked || "0");
-        const px = priceOf(b.asset);
-        return { asset: b.asset, qty, usd: qty * px };
-      })
-      .filter((b) => b.qty > 0)
-      .sort((a, b) => b.usd - a.usd)
-      .slice(0, 5);
-  }, [balance, priceOf]);
-
   const openPositions = useMemo(
     () => (positions ?? []).filter((p) => p.status === "open"),
     [positions]
   );
+
+  const walletAssets = useMemo(() => {
+    if (balance?.assets && balance.assets.length > 0) {
+      return (balance.assets ?? [])
+        .map((b) => {
+          const qty = parseFloat(b.free) + parseFloat(b.locked || "0");
+          const px = priceOf(b.asset);
+          return { asset: b.asset, qty, usd: qty * px };
+        })
+        .filter((b) => b.qty > 0)
+        .sort((a, b) => b.usd - a.usd)
+        .slice(0, 5);
+    }
+    // No Binance API keys — derive from open positions
+    return (openPositions ?? [])
+      .map((p) => {
+        const qty = Number(p.quantity || 0);
+        const px = Number(p.current_price || p.entry_price || 0);
+        return { asset: p.symbol as string, qty, usd: qty * px };
+      })
+      .filter((b) => b.qty > 0)
+      .sort((a, b) => b.usd - a.usd)
+      .slice(0, 5);
+  }, [balance, priceOf, openPositions]);
 
   const allocation = useMemo(() => {
     const items = (openPositions ?? []).map((p) => ({
@@ -621,19 +633,19 @@ export function OverviewPage() {
         >
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-[10px] bg-[var(--color-surface-2)]">
             <span className="text-[12px] font-semibold text-[var(--color-text-muted)]">
-              Saldo Binance
+              Equity Total
             </span>
             <span className="num text-[13px] font-bold text-[var(--color-success)]">
-              ${fmt(balance?.total_usd)}
+              ${fmt(latestSnapshot ? Number(latestSnapshot.equity ?? 0) : undefined)}
             </span>
           </div>
 
           <div className="mt-3">
             <div className="text-[11px] uppercase tracking-[0.06em] font-semibold text-[var(--color-text-muted)]">
-              Asignado
+              {allocatedCapital > 0 ? "Asignado" : "Auto (todo el saldo)"}
             </div>
             <div className="num text-[24px] font-extrabold text-[var(--color-accent)] leading-tight mt-1">
-              ${fmt(allocatedCapital)}
+              ${fmt(allocatedCapital > 0 ? allocatedCapital : (latestSnapshot ? Number(latestSnapshot.equity ?? 0) : 0))}
             </div>
           </div>
 
