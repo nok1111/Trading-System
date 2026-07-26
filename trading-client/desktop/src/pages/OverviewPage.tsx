@@ -38,6 +38,7 @@ import { Panel, StatCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Input";
+import { CryptoIcon } from "../components/CryptoIcon";
 import { toast } from "../components/ui/Toast";
 import { cn, fmt, fmtDate, nowTime } from "../lib/utils";
 
@@ -372,17 +373,7 @@ export function OverviewPage() {
                   const sparkUp = sparkData.length > 1 && sparkData[sparkData.length - 1].v >= sparkData[0].v;
                   return (
                   <div key={a.asset} className="flex items-center gap-2.5">
-                    <span
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                      style={{
-                        background: `color-mix(in srgb, ${
-                          PIE_COLORS[idx % PIE_COLORS.length]
-                        } 16%, transparent)`,
-                        color: PIE_COLORS[idx % PIE_COLORS.length],
-                      }}
-                    >
-                      {a.asset.slice(0, 3)}
-                    </span>
+                    <CryptoIcon symbol={a.asset} size={28} />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-bold text-[var(--color-text)] leading-none truncate">
                         {a.asset}
@@ -824,17 +815,7 @@ export function OverviewPage() {
                 <div key={t.symbol} className="panel p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
-                        style={{
-                          background: `color-mix(in srgb, ${
-                            PIE_COLORS[idx % PIE_COLORS.length]
-                          } 16%, transparent)`,
-                          color: PIE_COLORS[idx % PIE_COLORS.length],
-                        }}
-                      >
-                        {t.symbol.replace("USDT", "").slice(0, 3)}
-                      </span>
+                      <CryptoIcon symbol={t.symbol} size={24} />
                       <span className="text-[12px] font-bold text-[var(--color-text)] truncate">
                         {t.symbol}
                       </span>

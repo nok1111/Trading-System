@@ -4,6 +4,7 @@ import { Card } from "../components/ui/Card";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
 import { fmt } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 import {
   TrendingUp,
   TrendingDown,
@@ -346,9 +347,7 @@ export function WalletPage() {
                 <Tr key={a.asset}>
                   <Td className="font-semibold">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[var(--color-surface-3)] flex items-center justify-center text-[10px] font-bold text-[var(--color-text-muted)]">
-                        {a.asset.slice(0, 3)}
-                      </div>
+                      <CryptoIcon symbol={a.asset} size={28} />
                       {a.asset}
                     </div>
                   </Td>
@@ -400,9 +399,7 @@ export function WalletPage() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-[var(--color-surface-3)] flex items-center justify-center text-[10px] font-bold text-[var(--color-text-muted)]">
-                        {p.symbol.slice(0, 3)}
-                      </div>
+                      <CryptoIcon symbol={p.symbol} size={32} />
                       <div>
                         <div className="font-bold text-sm text-[var(--color-text)]">
                           {p.symbol}
