@@ -71,14 +71,15 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    checkAuth();
+    // Don't check auth on mount — always require login
+    setLoading(false);
     const handler = () => {
       setUser(null);
       setLoading(false);
     };
     window.addEventListener("auth-logout", handler);
     return () => window.removeEventListener("auth-logout", handler);
-  }, [checkAuth]);
+  }, []);
 
   return {
     user,
