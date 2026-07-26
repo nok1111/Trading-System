@@ -40,6 +40,8 @@ function AppContent() {
     return <LoginScreen onLogin={login} onRegister={register} />;
   }
 
+  const tabs: TabId[] = ["overview", "activity", "positions", "performance", "market", "ai", "settings"];
+
   const pages: Record<TabId, React.ReactNode> = {
     overview: <OverviewPage />,
     activity: <ActivityPage />,
@@ -52,7 +54,11 @@ function AppContent() {
 
   return (
     <Layout activeTab={activeTab} onTabChange={setActiveTab}>
-      {pages[activeTab]}
+      {tabs.map((tab) => (
+        <div key={tab} style={{ display: tab === activeTab ? "block" : "none" }}>
+          {pages[tab]}
+        </div>
+      ))}
     </Layout>
   );
 }

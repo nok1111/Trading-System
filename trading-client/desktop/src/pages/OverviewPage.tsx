@@ -152,7 +152,7 @@ export function OverviewPage() {
 
   useEffect(() => {
     loadData();
-    const id = setInterval(loadData, 3000);
+    const id = setInterval(loadData, 5000);
     return () => clearInterval(id);
   }, [loadData]);
 

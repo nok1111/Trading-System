@@ -40,7 +40,7 @@ export function MarketPage() {
 
   useEffect(() => {
     loadLivePrices();
-    const id = setInterval(loadLivePrices, 1000);
+    const id = setInterval(loadLivePrices, 5000);
     return () => clearInterval(id);
   }, [loadLivePrices]);
 
