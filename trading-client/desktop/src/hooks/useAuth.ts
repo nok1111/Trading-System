@@ -71,14 +71,17 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    checkAuth();
+    // Always force login on app start — clear any stored token
+    setAuthToken(null);
+    setLoading(false);
+
     const handler = () => {
       setUser(null);
       setLoading(false);
     };
     window.addEventListener("auth-logout", handler);
     return () => window.removeEventListener("auth-logout", handler);
-  }, [checkAuth]);
+  }, []);
 
   return {
     user,
