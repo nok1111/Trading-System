@@ -187,14 +187,15 @@ export function OverviewPage() {
     }
   };
 
-  const latestSnapshot = snapshots[snapshots.length - 1];
-  const prevSnapshot = snapshots[snapshots.length - 2];
+  const safeSnapshots = snapshots ?? [];
+  const latestSnapshot = safeSnapshots[safeSnapshots.length - 1];
+  const prevSnapshot = safeSnapshots[safeSnapshots.length - 2];
 
   const pnl = stats?.total_pnl ?? 0;
   const pnlUp = pnl >= 0;
   const isLive = health?.trading_mode === "live";
 
-  const ranged = useMemo(() => snapshots.slice(-rangeN), [snapshots, rangeN]);
+  const ranged = useMemo(() => (snapshots ?? []).slice(-rangeN), [snapshots, rangeN]);
 
   const equityData = useMemo(
     () => ranged.map((s, i) => ({ i, v: s.total_equity ?? 0 })),
@@ -241,7 +242,7 @@ export function OverviewPage() {
   }, [balance, priceOf]);
 
   const openPositions = useMemo(
-    () => positions.filter((p) => p.status === "open"),
+    () => (positions ?? []).filter((p) => p.status === "open"),
     [positions]
   );
 
@@ -258,7 +259,7 @@ export function OverviewPage() {
   const allocTotal = allocation.reduce((a, i) => a + i.value, 0);
 
   const closed = useMemo(
-    () => positions.filter((p) => p.status === "closed"),
+    () => (positions ?? []).filter((p) => p.status === "closed"),
     [positions]
   );
   const grossProfit = closed.reduce(
@@ -282,7 +283,7 @@ export function OverviewPage() {
 
   const tickers = useMemo(
     () =>
-      prices.slice(0, 6).map((p) => ({
+      (prices ?? []).slice(0, 6).map((p) => ({
         symbol: p.symbol as string,
         price: Number(p.price) || 0,
         spark: (sparkRef.current[p.symbol] || []).map((v, i) => ({ i, v })),
