@@ -13,6 +13,13 @@ export function SettingsPage() {
   const [apiKeyStatus, setApiKeyStatus] = useState<string>("");
   const [authUrl, setAuthUrl] = useState(getAuthServerUrl());
 
+  // Binance keys
+  const [binanceKey, setBinanceKey] = useState("");
+  const [binanceSecret, setBinanceSecret] = useState("");
+  const [binanceKeyPreview, setBinanceKeyPreview] = useState("");
+  const [binanceKeySet, setBinanceKeySet] = useState(false);
+  const [savingKeys, setSavingKeys] = useState(false);
+
   const loadLicense = useCallback(async () => {
     try {
       const l = await authApi<any>("/api/license/check");
@@ -35,14 +42,60 @@ export function SettingsPage() {
     }
   }, []);
 
+  const loadKeys = useCallback(async () => {
+    try {
+      const r = await api<any>("/api/settings/keys");
+      setBinanceKeySet(r.binance_api_key_set);
+      setBinanceKeyPreview(r.binance_api_key_preview || "");
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     loadLicense();
     checkApiKeys();
-  }, [loadLicense, checkApiKeys]);
+    loadKeys();
+  }, [loadLicense, checkApiKeys, loadKeys]);
 
   const saveAuthUrl = () => {
     setAuthServerUrl(authUrl);
     toast("Auth Server URL guardado");
+  };
+
+  const saveBinanceKeys = async () => {
+    if (!binanceKey || !binanceSecret) {
+      toast("API Key y Secret son requeridos", false);
+      return;
+    }
+    setSavingKeys(true);
+    try {
+      await api<any>("/api/settings/binance-keys", {
+        method: "POST",
+        body: JSON.stringify({ binance_api_key: binanceKey, binance_api_secret: binanceSecret }),
+      });
+      toast("Binance API Keys guardadas");
+      setBinanceKey("");
+      setBinanceSecret("");
+      loadKeys();
+      checkApiKeys();
+    } catch (e: any) {
+      toast("Error guardando keys: " + e.message, false);
+    } finally {
+      setSavingKeys(false);
+    }
+  };
+
+  const deleteBinanceKeys = async () => {
+    try {
+      await api<any>("/api/settings/binance-keys", { method: "DELETE" });
+      toast("Binance API Keys eliminadas");
+      setBinanceKeySet(false);
+      setBinanceKeyPreview("");
+      checkApiKeys();
+    } catch (e: any) {
+      toast("Error: " + e.message, false);
+    }
   };
 
   const planLimits = license?.plan_limits || {};
@@ -144,20 +197,64 @@ export function SettingsPage() {
         </p>
       </Card>
 
-      {/* Binance API Keys status */}
+      {/* Binance API Keys */}
       <Card>
         <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-4">
           Binance API Keys
         </h3>
-        <p className="text-sm text-[var(--color-text-muted)] mb-3">
-          Configura tus API keys en el archivo{" "}
-          <b className="text-[var(--color-primary)]">.env</b> (BROKER_API_KEY,
-          BROKER_API_SECRET). Reinicia la app para aplicar cambios.
+
+        {binanceKeySet && (
+          <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-[var(--color-success)]/10">
+            <span className="text-[var(--color-success)]">✓</span>
+            <span className="text-sm text-[var(--color-text)]">
+              Keys configuradas: <code className="text-xs text-[var(--color-text-muted)]">{binanceKeyPreview}</code>
+            </span>
+            <Button variant="danger" size="sm" className="ml-auto" onClick={deleteBinanceKeys}>
+              Eliminar
+            </Button>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-semibold text-[var(--color-text-muted)] mb-1">
+              API Key
+            </label>
+            <Input
+              type="password"
+              value={binanceKey}
+              onChange={(e) => setBinanceKey(e.target.value)}
+              placeholder="Tu Binance API Key"
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-[var(--color-text-muted)] mb-1">
+              API Secret
+            </label>
+            <Input
+              type="password"
+              value={binanceSecret}
+              onChange={(e) => setBinanceSecret(e.target.value)}
+              placeholder="Tu Binance API Secret"
+              className="w-full"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={saveBinanceKeys} disabled={savingKeys}>
+              {savingKeys ? "Guardando..." : "Guardar Keys"}
+            </Button>
+            <Button variant="default" size="sm" onClick={checkApiKeys}>
+              Probar conexión
+            </Button>
+          </div>
+          <div className="text-sm">{apiKeyStatus}</div>
+        </div>
+
+        <p className="text-xs text-[var(--color-text-muted)] mt-3">
+          Las keys se guardan encriptadas localmente. Nunca se envían al cloud.
+          Si no configuras keys aquí, se usarán las del archivo .env.
         </p>
-        <div className="text-sm mb-3">{apiKeyStatus}</div>
-        <Button variant="default" size="sm" onClick={checkApiKeys}>
-          Probar conexión
-        </Button>
       </Card>
 
       {/* AI Keys info */}

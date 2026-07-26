@@ -67,6 +67,7 @@ from app.api.routes import (
     market,
     ml,
     paper_trading,
+    settings,
     stats,
     trading,
 )
@@ -77,6 +78,7 @@ app.include_router(paper_trading.router)
 app.include_router(ml.router)
 app.include_router(stats.router)
 app.include_router(ai_agent.router)
+app.include_router(settings.router)
 
 # ---------------------------------------------------------------------------
 # Startup / Shutdown events
