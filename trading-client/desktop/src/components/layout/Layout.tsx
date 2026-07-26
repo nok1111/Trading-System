@@ -19,7 +19,7 @@ import {
 import { cn, fmtDate } from "../../lib/utils";
 import { api } from "../../lib/api";
 import { useTheme } from "../../theme/ThemeContext";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuthContext } from "../../context/AuthContext";
 import { Badge } from "../ui/Badge";
 
 export type TabId =
@@ -96,7 +96,7 @@ interface LayoutProps {
 
 export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const { theme, toggleTheme } = useTheme();
-  const { user, logout, authServerOk } = useAuth();
+  const { user, logout, authServerOk } = useAuthContext();
 
   const [collapsed, setCollapsed] = useState(false);
   const [query, setQuery] = useState("");

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, authApi, getAuthServerUrl } from "../lib/api";
-import { useAuth } from "../hooks/useAuth";
+import { useAuthContext } from "../context/AuthContext";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -8,7 +8,7 @@ import { Badge } from "../components/ui/Badge";
 import { toast } from "../components/ui/Toast";
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const [license, setLicense] = useState<any>(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<string>("");
   const [authServerConnected, setAuthServerConnected] = useState<boolean | null>(null);

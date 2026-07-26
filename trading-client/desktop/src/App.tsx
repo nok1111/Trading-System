@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "./hooks/useAuth";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Layout, type TabId } from "./components/layout/Layout";
@@ -13,6 +12,7 @@ import { AIAgentPage } from "./pages/AIAgentPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { logger } from "./lib/logger";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AuthProvider, useAuthContext } from "./context/AuthContext";
 
 // Global error handlers
 window.addEventListener("error", (e) => {
@@ -25,7 +25,7 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 function AppContent() {
-  const { user, loading, login, register } = useAuth();
+  const { user, loading, login, register } = useAuthContext();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   if (loading) {
@@ -61,8 +61,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AppContent />
-        <Toast />
+        <AuthProvider>
+          <AppContent />
+          <Toast />
+        </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
