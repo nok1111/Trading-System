@@ -278,10 +278,18 @@ export function OverviewPage() {
     [positions]
   );
   const grossProfit = (closed ?? []).reduce(
-    (a, p) => a + Math.max(p.pnl || 0, 0),
+    (a, p) => a + Math.max(Number(p.realized_pnl || p.pnl || 0), 0),
     0
   );
-  const grossLoss = (closed ?? []).reduce((a, p) => a + Math.min(p.pnl || p.realized_pnl || 0, 0), 0);
+  const grossLoss = (closed ?? []).reduce((a, p) => a + Math.min(Number(p.realized_pnl || p.pnl || 0), 0), 0);
+
+  // When no closed positions, show unrealized PnL from open positions
+  const unrealizedPnl = (openPositions ?? []).reduce(
+    (a, p) => a + Number(p.unrealized_pnl || 0),
+    0
+  );
+  const displayGrossProfit = grossProfit > 0 ? grossProfit : Math.max(unrealizedPnl, 0);
+  const displayGrossLoss = grossLoss < 0 ? grossLoss : Math.min(unrealizedPnl, 0);
 
   const transactions = useMemo(() => {
     const rows = [...openPositions, ...closed]
@@ -502,7 +510,7 @@ export function OverviewPage() {
                 Profit bruto
               </div>
               <div className="num text-[15px] font-bold text-[var(--color-success)] mt-1">
-                ${fmt(grossProfit)}
+                ${fmt(displayGrossProfit)}
               </div>
             </div>
             <div className="pl-3 divider-y">
@@ -514,7 +522,7 @@ export function OverviewPage() {
                 Pérdida bruta
               </div>
               <div className="num text-[15px] font-bold text-[var(--color-danger)] mt-1">
-                ${fmt(Math.abs(grossLoss))}
+                ${fmt(Math.abs(displayGrossLoss))}
               </div>
             </div>
           </div>
