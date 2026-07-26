@@ -5,13 +5,15 @@ Binance Pay payments, and license validation for Trading Clients.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from app.config import get_settings
 from app.database.session import init_db
-from app.routes import ai_grant, auth, license, payments
+from app.routes import admin, ai_grant, auth, license, payments
 
 
 @asynccontextmanager
@@ -43,6 +45,14 @@ app.include_router(auth.router)
 app.include_router(payments.router)
 app.include_router(license.router)
 app.include_router(ai_grant.router)
+app.include_router(admin.router)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel() -> HTMLResponse:
+    """Serve the admin web panel."""
+    html_path = Path(__file__).parent / "admin_panel.html"
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
 @app.get("/health")
