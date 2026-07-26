@@ -9,14 +9,29 @@ from app.services.crypto import decrypt
 
 def resolve_binance_keys(current_user=None) -> tuple[str, str] | None:
     """Resolve Binance API keys: user stored > .env fallback. Returns (key, secret) or None."""
-    if current_user and current_user.binance_api_key_enc:
+    # Check user_settings table first (where keys are stored via Settings UI)
+    if current_user:
         try:
-            key = decrypt(current_user.binance_api_key_enc)
-            secret = decrypt(current_user.binance_api_secret_enc)
-            if key and secret:
-                return (key, secret)
+            session = SessionLocal()
+            from app.database.models.user_settings import UserSettings
+            settings_row = session.query(UserSettings).filter_by(user_id=current_user.id).first()
+            session.close()
+            if settings_row and settings_row.binance_api_key_enc:
+                key = decrypt(settings_row.binance_api_key_enc)
+                secret = decrypt(settings_row.binance_api_secret_enc)
+                if key and secret:
+                    return (key, secret)
         except Exception:
             pass
+        # Fallback: check users table directly
+        if current_user.binance_api_key_enc:
+            try:
+                key = decrypt(current_user.binance_api_key_enc)
+                secret = decrypt(current_user.binance_api_secret_enc)
+                if key and secret:
+                    return (key, secret)
+            except Exception:
+                pass
     settings = get_settings()
     if settings.BROKER_API_KEY and settings.BROKER_API_SECRET:
         return (settings.BROKER_API_KEY, settings.BROKER_API_SECRET)
