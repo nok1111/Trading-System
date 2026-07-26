@@ -85,7 +85,8 @@ export function SettingsPage() {
       loadKeys();
       checkApiKeys();
     } catch (e: any) {
-      toast("Error guardando keys: " + e.message, false);
+      const msg = typeof e === "string" ? e : e?.message || JSON.stringify(e);
+      toast("Error guardando keys: " + msg, false);
     } finally {
       setSavingKeys(false);
     }

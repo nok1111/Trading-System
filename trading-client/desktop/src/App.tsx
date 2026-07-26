@@ -11,6 +11,17 @@ import { PerformancePage } from "./pages/PerformancePage";
 import { MarketPage } from "./pages/MarketPage";
 import { AIAgentPage } from "./pages/AIAgentPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { logger } from "./lib/logger";
+
+// Global error handlers
+window.addEventListener("error", (e) => {
+  logger.error("Uncaught error", e.message + " | " + (e.filename || "") + ":" + (e.lineno || ""));
+});
+
+window.addEventListener("unhandledrejection", (e) => {
+  const reason = e.reason?.message || e.reason || "Unknown";
+  logger.error("Unhandled promise rejection", String(reason));
+});
 
 function AppContent() {
   const { user, loading } = useAuth();

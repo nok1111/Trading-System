@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +16,14 @@ app = FastAPI(
     title="Alvora Trading Client",
     description="Local trading client — AI Agent, broker, dashboard. Requires Auth Server connection.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 _DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
@@ -30,7 +39,7 @@ if _static_path.exists():
 # ---------------------------------------------------------------------------
 
 # Paths that don't require license validation
-_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"}
+_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log"}
 
 
 @app.middleware("http")
@@ -132,3 +141,64 @@ def health() -> HealthOut:
         trading_mode=settings.TRADING_MODE,
         live_trading_enabled=settings.LIVE_TRADING_ENABLED,
     )
+
+
+# ---------------------------------------------------------------------------
+# Frontend log endpoint
+# ---------------------------------------------------------------------------
+
+import json
+from datetime import datetime
+from pydantic import BaseModel
+
+class LogEntry(BaseModel):
+    level: str = "info"
+    message: str
+    data: str | None = None
+    timestamp: str | None = None
+
+_LOG_FILE = Path(__file__).resolve().parent.parent.parent / "frontend.log"
+
+
+@app.post("/api/log")
+def frontend_log(entry: LogEntry) -> dict:
+    """Receive frontend logs and write them to frontend.log file."""
+    try:
+        ts = entry.timestamp or datetime.now().isoformat()
+        line = f"[{ts}] [{entry.level.upper()}] {entry.message}"
+        if entry.data:
+            line += f" | {entry.data}"
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+    return {"logged": True}
+
+
+@app.get("/api/log")
+def get_frontend_log(lines: int = 100) -> dict:
+    """Read recent frontend logs."""
+    try:
+        if _LOG_FILE.exists():
+            all_lines = _LOG_FILE.read_text(encoding="utf-8").strip().split("\n")
+            return {"logs": all_lines[-lines:] if lines < len(all_lines) else all_lines}
+    except Exception:
+        pass
+    return {"logs": []}
+
+
+# ---------------------------------------------------------------------------
+# Global exception handler
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import logging
+    logging.getLogger(__name__).error("Unhandled exception: %s | Path: %s", exc, request.url.path)
+    try:
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat()}] [ERROR] Unhandled: {exc} | Path: {request.url.path}\n")
+    except Exception:
+        pass
+    return JSONResponse(status_code=500, content={"detail": str(exc)})

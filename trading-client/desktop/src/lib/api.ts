@@ -23,6 +23,7 @@ export async function api<T = any>(
     ...(opts.headers as Record<string, string>),
   };
   if (authToken) headers["Authorization"] = "Bearer " + authToken;
+  if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const r = await fetch(API_BASE + path, { ...opts, headers });
 
