@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { authApi, getAuthToken, setAuthToken } from "../lib/api";
 
 export interface User {
@@ -13,7 +13,6 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authServerOk, setAuthServerOk] = useState<boolean | null>(null);
-  const didInit = useRef(false);
 
   const checkAuth = useCallback(async () => {
     const token = getAuthToken();
@@ -72,21 +71,14 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
-
-    // Force login on every app start — clear any stored token
-    setAuthToken(null);
-    setUser(null);
-    setLoading(false);
-
+    checkAuth();
     const handler = () => {
       setUser(null);
       setLoading(false);
     };
     window.addEventListener("auth-logout", handler);
     return () => window.removeEventListener("auth-logout", handler);
-  }, []);
+  }, [checkAuth]);
 
   return {
     user,
