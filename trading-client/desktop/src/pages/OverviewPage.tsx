@@ -198,13 +198,13 @@ export function OverviewPage() {
   const ranged = useMemo(() => (snapshots ?? []).slice(-rangeN), [snapshots, rangeN]);
 
   const equityData = useMemo(
-    () => ranged.map((s, i) => ({ i, v: s.total_equity ?? 0 })),
+    () => (ranged ?? []).map((s, i) => ({ i, v: s.total_equity ?? 0 })),
     [ranged]
   );
 
   const growthData = useMemo(
     () =>
-      ranged.map((s, i) => ({
+      (ranged ?? []).map((s, i) => ({
         i: i + 1,
         cash: s.cash ?? 0,
         pos: s.positions_value ?? 0,
@@ -222,15 +222,15 @@ export function OverviewPage() {
   const priceOf = useCallback(
     (asset: string) => {
       if (asset === "USDT" || asset === "BUSD" || asset === "USDC") return 1;
-      const t = prices.find((p) => p.symbol === `${asset}USDT`);
+      const t = (prices ?? []).find((p) => p.symbol === `${asset}USDT`);
       return t ? Number(t.price) || 0 : 0;
     },
     [prices]
   );
 
   const walletAssets = useMemo(() => {
-    if (!balance) return [];
-    return balance.balances
+    if (!balance?.balances) return [];
+    return (balance.balances ?? [])
       .map((b) => {
         const qty = parseFloat(b.free) + parseFloat(b.locked || "0");
         const px = priceOf(b.asset);
@@ -247,7 +247,7 @@ export function OverviewPage() {
   );
 
   const allocation = useMemo(() => {
-    const items = openPositions.map((p) => ({
+    const items = (openPositions ?? []).map((p) => ({
       name: p.symbol as string,
       value: (p.quantity || 0) * (p.entry_price || 0),
     }));
