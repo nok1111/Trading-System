@@ -43,6 +43,10 @@ async def license_check(request: Request, call_next):
     if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images"):
         return await call_next(request)
 
+    # Allow CORS preflight requests without auth
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if not token:
         return JSONResponse(status_code=401, content={"detail": "No autenticado"})
