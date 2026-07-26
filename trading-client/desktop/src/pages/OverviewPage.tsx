@@ -110,8 +110,9 @@ export function OverviewPage() {
     } catch {}
     try {
       const s = await api<any>("/api/snapshots");
+      console.log("SNAPSHOTS:", Array.isArray(s) ? s.length : typeof s, s?.[0]);
       setSnapshots(Array.isArray(s) ? s.slice(-200) : []);
-    } catch {}
+    } catch (e) { console.log("SNAPSHOTS ERROR:", e); }
     try {
       const p = await api<any>("/api/positions");
       setPositions(Array.isArray(p) ? p : []);
@@ -150,9 +151,10 @@ export function OverviewPage() {
       setAiLog(logArr.slice(-10).reverse());
     } catch {}
     try {
-      const cap = await api<any>("/api/ai-agent/trading-mode");
+      const cap = await api<any>("/api/trading-mode");
+      console.log("TRADING-MODE:", cap);
       setAllocatedCapital(cap?.allocated_capital ?? 0);
-    } catch {}
+    } catch (e) { console.log("TRADING-MODE ERROR:", e); }
   }, []);
 
   useEffect(() => {
