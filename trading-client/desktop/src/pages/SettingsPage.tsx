@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, authApi, getAuthServerUrl, setAuthServerUrl } from "../lib/api";
+import { api, authApi, getAuthServerUrl } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -11,7 +11,7 @@ export function SettingsPage() {
   const { user } = useAuth();
   const [license, setLicense] = useState<any>(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<string>("");
-  const [authUrl, setAuthUrl] = useState(getAuthServerUrl());
+  const [authServerConnected, setAuthServerConnected] = useState<boolean | null>(null);
 
   // Binance keys
   const [binanceKey, setBinanceKey] = useState("");
@@ -52,16 +52,21 @@ export function SettingsPage() {
     }
   }, []);
 
+  const checkAuthServer = useCallback(async () => {
+    try {
+      const resp = await fetch(`${getAuthServerUrl()}/health`, { timeout: 5000 } as any);
+      setAuthServerConnected(resp.ok);
+    } catch {
+      setAuthServerConnected(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadLicense();
     checkApiKeys();
     loadKeys();
-  }, [loadLicense, checkApiKeys, loadKeys]);
-
-  const saveAuthUrl = () => {
-    setAuthServerUrl(authUrl);
-    toast("Auth Server URL guardado");
-  };
+    checkAuthServer();
+  }, [loadLicense, checkApiKeys, loadKeys, checkAuthServer]);
 
   const saveBinanceKeys = async () => {
     if (!binanceKey || !binanceSecret) {
@@ -175,25 +180,23 @@ export function SettingsPage() {
         </div>
       </Card>
 
-      {/* Auth Server URL */}
+      {/* Auth Server status */}
       <Card>
         <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-4">
           Auth Server
         </h3>
-        <div className="flex gap-2 items-center">
-          <Input
-            value={authUrl}
-            onChange={(e) => setAuthUrl(e.target.value)}
-            placeholder="http://localhost:8000"
-            className="w-80"
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-block w-2.5 h-2.5 rounded-full ${
+              authServerConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"
+            }`}
           />
-          <Button variant="primary" size="sm" onClick={saveAuthUrl}>
-            Guardar
-          </Button>
+          <span className="text-sm text-[var(--color-text)]">
+            {authServerConnected ? "Conectado" : "Sin conexión"}
+          </span>
         </div>
         <p className="text-xs text-[var(--color-text-muted)] mt-2">
-          URL del servidor de autenticación. Cambia esto si el Auth Server está
-          en otro host.
+          Estado de la conexión con el servidor de autenticación.
         </p>
       </Card>
 
