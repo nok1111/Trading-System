@@ -1,8 +1,7 @@
 const API_BASE = "http://localhost:18652";
 
-// Force login on every app start — clear any stored token
-localStorage.removeItem("jwt");
-let authToken: string | null = null;
+// Read token from localStorage on module init (survives Vite hot reloads)
+let authToken: string | null = localStorage.getItem("jwt");
 
 export function setAuthToken(token: string | null) {
   authToken = token;
@@ -30,6 +29,7 @@ export async function api<T = any>(
   const r = await fetch(API_BASE + path, { ...opts, headers });
 
   if (r.status === 401) {
+    console.log("API 401 on", path, "token:", authToken ? "yes" : "no");
     setAuthToken(null);
     window.dispatchEvent(new CustomEvent("auth-logout"));
     throw new Error("Sesión expirada");
