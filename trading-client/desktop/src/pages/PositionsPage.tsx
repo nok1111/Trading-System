@@ -185,7 +185,7 @@ export function PositionsPage() {
                   {/* Mini chart with Entry/SL/TP lines */}
                   <div className="h-[120px] mb-3 -mx-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={chartData} margin={{ top: 5, right: 8, bottom: 5, left: 8 }}>
+                      <ComposedChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
                         <defs>
                           <linearGradient id={`grad-${p.id}`} x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor={isProfit ? "var(--color-success)" : "var(--color-danger)"} stopOpacity={0.25} />
@@ -227,7 +227,7 @@ export function PositionsPage() {
                           stroke="var(--color-text-muted)"
                           strokeDasharray="4 4"
                           strokeWidth={1}
-                          label={{ value: "Entry", position: "left", fill: "var(--color-text-muted)", fontSize: 9 }}
+                          label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }}
                         />
                         {/* SL line */}
                         {sl > 0 && (
@@ -236,7 +236,7 @@ export function PositionsPage() {
                             stroke="var(--color-danger)"
                             strokeDasharray="3 3"
                             strokeWidth={1}
-                            label={{ value: "SL", position: "left", fill: "var(--color-danger)", fontSize: 9 }}
+                            label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }}
                           />
                         )}
                         {/* TP line */}
@@ -246,7 +246,7 @@ export function PositionsPage() {
                             stroke="var(--color-success)"
                             strokeDasharray="3 3"
                             strokeWidth={1}
-                            label={{ value: "TP", position: "left", fill: "var(--color-success)", fontSize: 9 }}
+                            label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }}
                           />
                         )}
                         {/* Current price line */}
