@@ -290,24 +290,11 @@ export function WalletPage() {
             })}
           </div>
           <div className="flex flex-wrap gap-3 mt-3">
-            {enrichedAssets.slice(0, 8).map((a, i) => {
-              const colors = [
-                "var(--color-primary)",
-                "var(--color-success)",
-                "var(--color-accent)",
-                "var(--color-warning)",
-                "var(--color-danger)",
-                "#8b5cf6",
-                "#ec4899",
-                "#14b8a6",
-              ];
+            {enrichedAssets.slice(0, 8).map((a) => {
               const pct = (a.usd / totalUsd) * 100;
               return (
                 <div key={a.asset} className="flex items-center gap-1.5">
-                  <div
-                    className="w-2.5 h-2.5 rounded-sm"
-                    style={{ backgroundColor: colors[i % colors.length] }}
-                  />
+                  <CryptoIcon symbol={a.asset} size={16} />
                   <span className="text-xs text-[var(--color-text-muted)] font-medium">
                     {a.asset.replace("USDT", "")} {pct.toFixed(1)}%
                   </span>
