@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     # Intelligence API (Phase F)
     USE_INTELLIGENCE_API: bool = False
+    INTELLIGENCE_REQUIRE_JWT: bool = False
 
     # Database (Phase C — Market Knowledge Base)
     DATABASE_URL: str = "sqlite:///./data/ai_server.db"

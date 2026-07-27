@@ -19,11 +19,13 @@ import logging
 from datetime import UTC
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.database.models import (
     MarketAlert,
@@ -38,6 +40,51 @@ from app.services.portfolio_matcher import PortfolioMatcher, UserPortfolio
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/intelligence", tags=["intelligence"])
+settings = get_settings()
+
+
+# --- JWT Dependency (optional, controlled by INTELLIGENCE_REQUIRE_JWT flag) ---
+
+def _validate_jwt(jwt_token: str) -> dict | None:
+    """Validate JWT against the Auth Server."""
+    try:
+        resp = httpx.post(
+            f"{settings.AUTH_SERVER_URL}/api/license/validate",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        return None
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"JWT validation failed: {exc}")
+        return None
+
+
+async def optional_verify_jwt(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict | None:
+    """Verify JWT only when INTELLIGENCE_REQUIRE_JWT=True.
+
+    When False (default for dev/testing), returns None and allows all requests.
+    When True, validates the JWT against the Auth Server.
+    """
+    if not settings.INTELLIGENCE_REQUIRE_JWT:
+        return None
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+        )
+    token = authorization.removeprefix("Bearer ")
+    payload = _validate_jwt(token)
+    if not payload or not payload.get("valid"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT invalid or expired",
+        )
+    return payload
 
 
 # --- Models ---
@@ -137,6 +184,7 @@ class SchedulerStatusResponse(BaseModel):
 @router.get("/signals", response_model=SignalResponse)
 async def get_signals(
     db: Annotated[Session, Depends(get_db)],
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
     asset: str | None = None,
     limit: int = 20,
 ) -> SignalResponse:
@@ -180,6 +228,7 @@ async def get_signals(
 @router.get("/alerts", response_model=AlertResponse)
 async def get_alerts(
     db: Annotated[Session, Depends(get_db)],
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
     asset: str | None = None,
     severity: str | None = None,
     limit: int = 20,
@@ -220,6 +269,7 @@ async def get_alerts(
 async def get_scenarios(
     asset: str,
     db: Annotated[Session, Depends(get_db)],
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
     limit: int = 5,
 ) -> ScenarioResponse:
     """Obtiene escenarios probabilísticos para un activo."""
@@ -251,6 +301,7 @@ async def get_scenarios(
 async def get_pending(
     user_id_hash: str,
     db: Annotated[Session, Depends(get_db)],
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
     limit: int = 50,
 ) -> PendingNotificationResponse:
     """Obtiene notificaciones pendientes del usuario."""
@@ -279,6 +330,7 @@ async def mark_notification_read(
     notification_id: int,
     user_id_hash: str,
     db: Annotated[Session, Depends(get_db)],
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
 ) -> dict:
     """Marca una notificación como leída."""
     queue = PendingQueue(db)
@@ -298,6 +350,7 @@ async def mark_notification_read(
 @router.post("/portfolio-match", response_model=PortfolioMatchResponse)
 async def portfolio_match(
     req: PortfolioMatchRequest,
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
 ) -> PortfolioMatchResponse:
     """Personaliza una señal global según el portafolio del usuario.
 
@@ -341,6 +394,7 @@ async def portfolio_match(
 async def get_reports(
     asset: str,
     db: Annotated[Session, Depends(get_db)],
+    _user: Annotated[dict | None, Depends(optional_verify_jwt)] = None,
     report_type: str | None = None,
     limit: int = 10,
 ) -> ReportResponse:

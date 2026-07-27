@@ -429,3 +429,57 @@ class TestCreateAlertEndpoint:
             },
         )
         assert resp.status_code == 422
+
+
+class TestJWTEnforcement:
+    """Tests that JWT is enforced when INTELLIGENCE_REQUIRE_JWT=True."""
+
+    @pytest.fixture
+    def jwt_enabled(self):
+        """Temporarily enable JWT requirement."""
+        from app.routes.intelligence import settings as route_settings
+        original = route_settings.INTELLIGENCE_REQUIRE_JWT
+        route_settings.INTELLIGENCE_REQUIRE_JWT = True
+        yield
+        route_settings.INTELLIGENCE_REQUIRE_JWT = original
+
+    def test_signals_requires_jwt(self, client, test_db, jwt_enabled):
+        resp = client.get("/v1/intelligence/signals")
+        assert resp.status_code == 401
+
+    def test_alerts_requires_jwt(self, client, test_db, jwt_enabled):
+        resp = client.get("/v1/intelligence/alerts")
+        assert resp.status_code == 401
+
+    def test_pending_requires_jwt(self, client, test_db, jwt_enabled):
+        resp = client.get("/v1/intelligence/pending", params={"user_id_hash": "test123hash"})
+        assert resp.status_code == 401
+
+    def test_portfolio_match_requires_jwt(self, client, test_db, jwt_enabled):
+        resp = client.post(
+            "/v1/intelligence/portfolio-match",
+            json={
+                "user_id_hash": "user123hash123",
+                "signal": {"asset": "BTC", "decision": "BUY", "confidence": 0.79},
+                "portfolio": {"positions": []},
+            },
+        )
+        assert resp.status_code == 401
+
+    def test_scheduler_endpoints_no_jwt_required(self, client, test_db, jwt_enabled):
+        """Scheduler control endpoints should NOT require JWT (internal)."""
+        resp = client.get("/v1/intelligence/scheduler/status")
+        assert resp.status_code == 200
+
+    def test_create_signal_no_jwt_required(self, client, test_db, jwt_enabled):
+        """Scheduler POST endpoints should NOT require JWT (internal)."""
+        resp = client.post(
+            "/v1/intelligence/signals",
+            json={
+                "asset": "BTC",
+                "signal_type": "BUY",
+                "decision": "BUY",
+                "confidence": 0.70,
+            },
+        )
+        assert resp.status_code == 201
