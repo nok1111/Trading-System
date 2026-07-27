@@ -30,6 +30,12 @@ class SellRequest(BaseModel):
     symbol: str
 
 
+class HoldRequest(BaseModel):
+    """Payload para togglear hold en una posicion."""
+    symbol: str
+    hold: bool = True
+
+
 class IntervalRequest(BaseModel):
     """Payload para cambiar el intervalo de ticks."""
     interval_seconds: int
@@ -166,3 +172,27 @@ def paper_trading_sell(req: SellRequest) -> dict:
         result = scheduler.manual_sell(req.symbol)
         results.append(result)
     return {"status": "sell_completed", "symbol": req.symbol, "results": results}
+
+
+@router.post("/hold")
+def paper_trading_hold(req: HoldRequest) -> dict:
+    """Togglear hold en una posicion para que la IA no la venda."""
+    from app.database.models.position import Position as PosModel
+    session = SessionLocal()
+    try:
+        pos = session.query(PosModel).filter_by(symbol=req.symbol, status="open").first()
+        if pos is None:
+            raise HTTPException(status_code=404, detail=f"No hay posicion abierta en {req.symbol}")
+        meta = pos.metadata_json or {}
+        meta["hold"] = req.hold
+        pos.metadata_json = meta
+        session.add(pos)
+        session.commit()
+        return {"status": "ok", "symbol": req.symbol, "hold": req.hold}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()

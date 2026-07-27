@@ -279,6 +279,12 @@ class PaperTradingScheduler:
             if signal.signal_type == "HOLD":
                 hold_symbols_this_tick.add(symbol)
             elif signal.signal_type != "HOLD":
+                # Skip SELL signals for held positions (user manually set hold)
+                if signal.signal_type == "SELL" and has_position:
+                    pos_meta = position_map.get(symbol)
+                    if pos_meta and (pos_meta.metadata_json or {}).get("hold"):
+                        hold_symbols_this_tick.add(symbol)
+                        continue
                 # Enforce cooldown for BUY signals (not for SELL — we always want to allow exits)
                 if signal.signal_type == "BUY" and self._is_in_cooldown(symbol):
                     hold_symbols_this_tick.add(symbol)
@@ -456,13 +462,12 @@ class PaperTradingScheduler:
         """If more than MAX_HOLD_SYMBOLS positions are open, sell the one with least loss."""
         import logging
         max_hold = self.settings.MAX_HOLD_SYMBOLS
-        if len(open_positions) <= max_hold:
+        # Filter out held positions (user set hold to prevent auto-sell)
+        sellable = [p for p in open_positions if not (p.metadata_json or {}).get("hold")]
+        if len(sellable) <= max_hold:
             return
-        # Sort by unrealized PnL descending (least loss = most negative = first to sell)
-        # Actually we want least loss = closest to 0 or most positive = sell the best one to free space
-        # User said: "vendemos la de menos perdida" = sell the one with least loss
-        sorted_positions = sorted(open_positions, key=lambda p: p.unrealized_pnl, reverse=True)
-        excess = len(open_positions) - max_hold
+        sorted_positions = sorted(sellable, key=lambda p: p.unrealized_pnl, reverse=True)
+        excess = len(sellable) - max_hold
         for pos in sorted_positions[:excess]:
             try:
                 from app.models.signal import SignalCreate

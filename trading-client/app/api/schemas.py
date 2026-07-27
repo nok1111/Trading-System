@@ -58,6 +58,7 @@ class PositionOut(BaseModel):
     realized_pnl: Decimal
     status: str
     strategy_name: str
+    metadata_json: dict = {}
     created_at: datetime
 
 
