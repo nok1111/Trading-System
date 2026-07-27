@@ -42,9 +42,11 @@ export function useAuth() {
         body: JSON.stringify({ email, password }),
       }
     );
+    console.log("LOGIN RESPONSE:", JSON.stringify(data));
     setAuthToken(data.token);
-    setUser(data.user);
+    setUser(data.user ?? { id: 0, email, username: "", subscription: "free" });
     setAuthServerOk(true);
+    setLoading(false);
     return data.user;
   }, []);
 
