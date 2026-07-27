@@ -14,6 +14,7 @@ from typing import Any
 from jsonschema import ValidationError, validate
 
 from app.services.agents import AGENTS
+from app.services.intelligence_agents import INTELLIGENCE_AGENTS
 
 # Envelope estándar para mensajes entre agentes (del documento 11_JSON_CONTRACT_EXAMPLE)
 ENVELOPE_SCHEMA: dict[str, Any] = {
@@ -83,17 +84,31 @@ def validate_analysis_response(data: dict) -> tuple[bool, str | None]:
 def validate_agent_response(agent_id: str, data: dict) -> tuple[bool, str | None]:
     """Valida la respuesta de un agente específico contra su JSON Schema.
 
+    Soporta tanto los agentes legacy (agents.py) como los nuevos agentes
+    de inteligencia (intelligence_agents.py).
+
     Returns:
         (True, None) si valida, (False, error_message) si no.
     """
+    # Try legacy agents first
     agent = AGENTS.get(agent_id)
-    if agent is None:
-        return False, f"Agente desconocido: {agent_id}"
-    try:
-        validate(instance=data, schema=agent.output_schema)
-        return True, None
-    except ValidationError as exc:
-        return False, exc.message
+    if agent is not None:
+        try:
+            validate(instance=data, schema=agent.output_schema)
+            return True, None
+        except ValidationError as exc:
+            return False, exc.message
+
+    # Try intelligence agents
+    intel_agent = INTELLIGENCE_AGENTS.get(agent_id)
+    if intel_agent is not None:
+        try:
+            validate(instance=data, schema=intel_agent.output_schema)
+            return True, None
+        except ValidationError as exc:
+            return False, exc.message
+
+    return False, f"Agente desconocido: {agent_id}"
 
 
 def validate_envelope(data: dict) -> tuple[bool, str | None]:
