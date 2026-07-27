@@ -274,12 +274,14 @@ function MarketsModule() {
 
 function OrdersModule({ orders }: { orders: any[] }) {
   const active = orders.filter((o) => o.status === "SUBMITTED" || o.status === "PARTIALLY_FILLED" || o.status === "PENDING_APPROVAL" || o.status === "APPROVED");
+  const filled = orders.filter((o) => o.status === "filled" || o.status === "FILLED");
   return (
-    <div className="panel p-4">
-      <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Órdenes Activas ({active.length})</h3>
-      {active.length === 0 ? (
-        <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin órdenes activas</p>
-      ) : (
+    <div className="space-y-4">
+      <div className="panel p-4">
+        <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Órdenes Activas ({active.length})</h3>
+        {active.length === 0 ? (
+          <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin órdenes activas</p>
+        ) : (
         <table className="w-full text-[12px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
@@ -306,6 +308,39 @@ function OrdersModule({ orders }: { orders: any[] }) {
             ))}
           </tbody>
         </table>
+        )}
+      </div>
+
+      {filled.length > 0 && (
+        <div className="panel p-4">
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Órdenes Ejecutadas ({filled.length})</h3>
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                <th className="text-left pb-2">Symbol</th>
+                <th className="text-left pb-2">Side</th>
+                <th className="text-left pb-2">Type</th>
+                <th className="text-right pb-2">Qty</th>
+                <th className="text-right pb-2">Filled</th>
+                <th className="text-right pb-2">Price</th>
+                <th className="text-right pb-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filled.map((o, i) => (
+                <tr key={i} className="border-b border-[var(--color-border)]/50">
+                  <td className="py-2 font-bold text-[var(--color-text)]">{o.symbol}</td>
+                  <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
+                  <td className="text-[var(--color-text-muted)]">{o.order_type}</td>
+                  <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{fmt(o.filled_quantity)}</td>
+                  <td className="text-right text-[var(--color-text)]">{o.price ? fmt(o.price) : "—"}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{o.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
