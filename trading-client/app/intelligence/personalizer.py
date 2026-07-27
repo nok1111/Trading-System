@@ -127,6 +127,8 @@ def _format_change(event: IntelligenceEvent) -> dict[str, Any]:
 def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, Any]:
     """Build the 'Since Last Visit' payload for a user."""
     last_login = _get_last_login(session, user_id)
+    # SQLite stores naive datetimes — make last_login naive for comparison
+    last_login_naive = last_login.replace(tzinfo=None) if last_login.tzinfo else last_login
     user_assets = _get_user_assets(session, user_id)
 
     # 1. Events from journal
@@ -141,7 +143,7 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
     )
     portfolio_changes: list[dict[str, Any]] = []
     for p in positions:
-        if p.updated_at and p.updated_at > last_login:
+        if p.updated_at and p.updated_at > last_login_naive:
             pnl = float(p.unrealized_pnl) if p.unrealized_pnl else 0.0
             asset = p.symbol.upper().replace("USDT", "").replace("USDC", "")
             portfolio_changes.append({
