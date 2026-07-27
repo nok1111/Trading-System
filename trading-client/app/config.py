@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     LIVE_DAILY_LOSS_LIMIT_USD: float = Field(default=100.0, gt=0.0)
     LIVE_KILL_SWITCH: bool = False
     LIVE_CONFIRMATION_REQUIRED: bool = True
+    # Multi-broker feature flag
+    ENABLE_MULTI_BROKER: bool = False
 
     @field_validator("DEFAULT_SYMBOLS")
     @classmethod
