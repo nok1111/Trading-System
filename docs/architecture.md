@@ -1,3 +1,7 @@
+> **OBSOLETO** — Este documento describe el monolito legacy (`app/` en la raíz) y no refleja la arquitectura actual del proyecto.  
+> La arquitectura real está documentada en [`CURRENT_ARCHITECTURE_AUDIT.md`](./CURRENT_ARCHITECTURE_AUDIT.md) y la arquitectura objetivo en [`TARGET_ARCHITECTURE.md`](./TARGET_ARCHITECTURE.md).  
+> **No actualizar este archivo.** Consultar `MIGRATION_PLAN.md` para el plan de evolución.
+
 # Arquitectura del sistema
 
 ## Principios

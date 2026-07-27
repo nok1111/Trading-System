@@ -1,3 +1,7 @@
+> **OBSOLETO** — Este documento describe la instalación del monolito legacy (`app/` en la raíz) y no aplica al cliente activo (`trading-client/`).  
+> Para la arquitectura actual, consultar [`CURRENT_ARCHITECTURE_AUDIT.md`](./CURRENT_ARCHITECTURE_AUDIT.md).  
+> **No actualizar este archivo.**
+
 # Instalación local
 
 ## Requisitos

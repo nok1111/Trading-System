@@ -1,5 +1,9 @@
 # Sistema de Trading Algorítmico
 
+> **NOTA**: Este README describe el monolito legacy (`app/` en la raíz), que está congelado.  
+> El cliente activo vive en `trading-client/` y es la fuente de verdad.  
+> Consultar `docs/CURRENT_ARCHITECTURE_AUDIT.md` para la arquitectura real y `docs/MIGRATION_PLAN.md` para el plan de evolución.
+
 > **ADVERTENCIA**: Este proyecto es un marco de trabajo educativo y experimental. No garantiza rentabilidad. El trading con dinero real conlleva riesgo de pérdida total. El modo live está **deshabilitado por defecto** y requiere confirmación explícita.
 
 ## Estado
