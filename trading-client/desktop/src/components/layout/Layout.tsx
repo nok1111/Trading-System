@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   LayoutDashboard,
-  Activity,
-  Wallet,
-  Layers,
-  TrendingUp,
-  Store as MarketIcon,
-  Bot,
+  Brain,
+  Target,
+  ShieldAlert,
+  Newspaper,
+  FileText,
+  Bell,
+  Plug,
+  Shield,
   Settings as SettingsIcon,
   Sun,
   Moon,
   LogOut,
   Search,
-  Bell,
   PanelLeftClose,
   PanelLeftOpen,
   CircleUser,
@@ -21,80 +22,66 @@ import { cn, fmtDate } from "../../lib/utils";
 import { api } from "../../lib/api";
 import { useTheme } from "../../theme/ThemeContext";
 import { useAuthContext } from "../../context/AuthContext";
+import { useBrokerContext } from "../../context/BrokerContext";
 import { Badge } from "../ui/Badge";
+import { MarketStatusBar } from "./MarketStatusBar";
+import { BrokerListGroup } from "../brokers/BrokerListGroup";
+import { BrokerConnectModal } from "../brokers/BrokerConnectModal";
+import {
+  isBrokerConnected,
+  isBrokerDegraded,
+  type SupportedBroker,
+  type BrokerAccount,
+} from "../../lib/brokerTypes";
 
 export type TabId =
-  | "overview"
-  | "wallet"
-  | "activity"
-  | "positions"
-  | "performance"
-  | "market"
-  | "ai"
-  | "settings";
+  | "dashboard"
+  | "intelligence"
+  | "opportunities"
+  | "risks"
+  | "news"
+  | "reports"
+  | "alerts"
+  | "connections"
+  | "security"
+  | "preferences"
+  | "broker";
 
 interface NavItem {
   id: TabId;
   label: string;
   icon: ReactNode;
-  group: "trading" | "cuenta";
+  group: "general" | "sistema";
 }
 
-const navItems: NavItem[] = [
-  {
-    id: "overview",
-    label: "Dashboard",
-    icon: <LayoutDashboard size={17} />,
-    group: "trading",
-  },
-  {
-    id: "market",
-    label: "Mercado",
-    icon: <MarketIcon size={17} />,
-    group: "trading",
-  },
-  {
-    id: "wallet",
-    label: "Wallet",
-    icon: <Wallet size={17} />,
-    group: "trading",
-  },
-  {
-    id: "positions",
-    label: "Posiciones",
-    icon: <Layers size={17} />,
-    group: "trading",
-  },
-  {
-    id: "activity",
-    label: "Actividad",
-    icon: <Activity size={17} />,
-    group: "trading",
-  },
-  {
-    id: "performance",
-    label: "Performance",
-    icon: <TrendingUp size={17} />,
-    group: "trading",
-  },
-  { id: "ai", label: "AI Agent", icon: <Bot size={17} />, group: "trading" },
-  {
-    id: "settings",
-    label: "Ajustes",
-    icon: <SettingsIcon size={17} />,
-    group: "cuenta",
-  },
+const generalItems: NavItem[] = [
+  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} />, group: "general" },
+  { id: "intelligence", label: "Market Intelligence", icon: <Brain size={17} />, group: "general" },
+  { id: "opportunities", label: "Oportunidades", icon: <Target size={17} />, group: "general" },
+  { id: "risks", label: "Riesgos", icon: <ShieldAlert size={17} />, group: "general" },
+  { id: "news", label: "Noticias", icon: <Newspaper size={17} />, group: "general" },
+  { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
+];
+
+const sistemaItems: NavItem[] = [
+  { id: "alerts", label: "Alertas", icon: <Bell size={17} />, group: "sistema" },
+  { id: "connections", label: "Conexiones", icon: <Plug size={17} />, group: "sistema" },
+  { id: "security", label: "Seguridad", icon: <Shield size={17} />, group: "sistema" },
+  { id: "preferences", label: "Preferencias", icon: <SettingsIcon size={17} />, group: "sistema" },
 ];
 
 const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
-  overview: { title: "Dashboard", subtitle: "Vista general de la operación" },
-  market: { title: "Mercado", subtitle: "Movers y precios en vivo" },
-  wallet: { title: "Wallet", subtitle: "Balance detallado y exposición" },
-  positions: { title: "Posiciones", subtitle: "Exposición abierta y órdenes" },
-  activity: { title: "Actividad", subtitle: "Señales, trades y eventos" },
-  performance: { title: "Performance", subtitle: "Métricas y equity" },
-  ai: { title: "AI Agent", subtitle: "Configuración y bitácora del agente" },
-  settings: { title: "Ajustes", subtitle: "Cuenta, riesgo y conexiones" },
+  dashboard: { title: "Dashboard", subtitle: "Vista general del mercado e inteligencia" },
+  intelligence: { title: "Market Intelligence", subtitle: "Análisis profundo de mercado" },
+  opportunities: { title: "Oportunidades", subtitle: "Señales activas del Consensus" },
+  risks: { title: "Riesgos", subtitle: "Alertas de riesgo y monitor de crash" },
+  news: { title: "Noticias", subtitle: "Feed de noticias con sentiment" },
+  reports: { title: "Reportes", subtitle: "Reportes periódicos generados por IA" },
+  alerts: { title: "Alertas", subtitle: "Centro de notificaciones" },
+  connections: { title: "Conexiones", subtitle: "Gestión de brokers" },
+  security: { title: "Seguridad", subtitle: "Configuración de seguridad" },
+  preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
+  broker: { title: "Broker", subtitle: "Vista de broker" },
 };
 
 interface LayoutProps {
@@ -106,12 +93,15 @@ interface LayoutProps {
 export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const { user, logout, authServerOk } = useAuthContext();
+  const { supportedBrokers, connectedAccounts } = useBrokerContext();
 
   const [collapsed, setCollapsed] = useState(false);
   const [query, setQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [signals, setSignals] = useState<any[]>([]);
+  const [expandedBrokers, setExpandedBrokers] = useState<Set<string>>(new Set());
+  const [connectModalBroker, setConnectModalBroker] = useState<SupportedBroker | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
@@ -142,17 +132,52 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  useEffect(() => {
+    if (connectedAccounts.length > 0 && expandedBrokers.size === 0) {
+      setExpandedBrokers(new Set([connectedAccounts[0].brokerId]));
+    }
+  }, [connectedAccounts, expandedBrokers.size]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return navItems.filter((n) => n.label.toLowerCase().includes(q));
+    return [...generalItems, ...sistemaItems].filter((n) =>
+      n.label.toLowerCase().includes(q)
+    );
   }, [query]);
 
-  const meta = pageMeta[activeTab];
-  const groups: { key: NavItem["group"]; label: string }[] = [
-    { key: "trading", label: "Trading" },
-    { key: "cuenta", label: "Cuenta" },
-  ];
+  const sortedBrokers = useMemo(() => {
+    const accountMap = new Map<string, BrokerAccount>();
+    for (const acc of connectedAccounts) {
+      if (!accountMap.has(acc.brokerId)) {
+        accountMap.set(acc.brokerId, acc);
+      }
+    }
+    return [...supportedBrokers].sort((a, b) => {
+      const aStatus = accountMap.get(a.brokerId)?.status || "NOT_CONNECTED";
+      const bStatus = accountMap.get(b.brokerId)?.status || "NOT_CONNECTED";
+      const aConnected = isBrokerConnected(aStatus);
+      const bConnected = isBrokerConnected(bStatus);
+      const aDegraded = isBrokerDegraded(aStatus);
+      const bDegraded = isBrokerDegraded(bStatus);
+      if (aConnected && !bConnected) return -1;
+      if (!aConnected && bConnected) return 1;
+      if (aDegraded && !bDegraded) return -1;
+      if (!aDegraded && bDegraded) return 1;
+      return 0;
+    });
+  }, [supportedBrokers, connectedAccounts]);
+
+  const toggleBroker = (brokerId: string) => {
+    setExpandedBrokers((prev) => {
+      const next = new Set(prev);
+      if (next.has(brokerId)) next.delete(brokerId);
+      else next.add(brokerId);
+      return next;
+    });
+  };
+
+  const meta = pageMeta[activeTab] || { title: "", subtitle: "" };
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
@@ -187,44 +212,104 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-          {groups.map((g) => (
-            <div key={g.key}>
-              {!collapsed && (
-                <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
-                  {g.label}
-                </div>
-              )}
-              <div className="space-y-0.5">
-                {navItems
-                  .filter((n) => n.group === g.key)
-                  .map((item) => {
-                    const active = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => onTabChange(item.id)}
-                        title={collapsed ? item.label : undefined}
-                        className={cn(
-                          "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
-                          collapsed
-                            ? "justify-center h-10"
-                            : "gap-2.5 px-2.5 h-10",
-                          active
-                            ? "bg-[var(--color-primary)]/12 text-[var(--color-primary)]"
-                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
-                        )}
-                      >
-                        {active && (
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[var(--color-primary)]" />
-                        )}
-                        {item.icon}
-                        {!collapsed && <span>{item.label}</span>}
-                      </button>
-                    );
-                  })}
+          {/* GENERAL */}
+          <div>
+            {!collapsed && (
+              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+                General
               </div>
+            )}
+            <div className="space-y-0.5">
+              {generalItems.map((item) => {
+                const active = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onTabChange(item.id)}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
+                      collapsed ? "justify-center h-10" : "gap-2.5 px-2.5 h-10",
+                      active
+                        ? "bg-[var(--color-primary)]/12 text-[var(--color-primary)]"
+                        : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                    )}
+                  >
+                    {active && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[var(--color-primary)]" />
+                    )}
+                    {item.icon}
+                    {!collapsed && <span>{item.label}</span>}
+                  </button>
+                );
+              })}
             </div>
-          ))}
+          </div>
+
+          {/* MIS BROKERS */}
+          <div>
+            {!collapsed && (
+              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+                Mis Brokers
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {sortedBrokers.map((broker) => {
+                const account = connectedAccounts.find((a) => a.brokerId === broker.brokerId) || null;
+                return (
+                  <BrokerListGroup
+                    key={broker.brokerId}
+                    broker={broker}
+                    account={account}
+                    expanded={expandedBrokers.has(broker.brokerId)}
+                    onToggle={() => toggleBroker(broker.brokerId)}
+                    onConnect={() => {
+                      if (broker.implemented) {
+                        setConnectModalBroker(broker);
+                      }
+                    }}
+                    selectedModule={null}
+                    onSelectModule={() => onTabChange("broker")}
+                    collapsed={collapsed}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* SISTEMA */}
+          <div>
+            {!collapsed && (
+              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+                Sistema
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {sistemaItems.map((item) => {
+                const active = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onTabChange(item.id)}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
+                      collapsed ? "justify-center h-10" : "gap-2.5 px-2.5 h-10",
+                      active
+                        ? "bg-[var(--color-primary)]/12 text-[var(--color-primary)]"
+                        : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                    )}
+                  >
+                    {active && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[var(--color-primary)]" />
+                    )}
+                    {item.icon}
+                    {!collapsed && <span>{item.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </nav>
 
         {/* Sidebar footer */}
@@ -271,7 +356,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
       {/* ---------- Main ---------- */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="flex-shrink-0 h-16 flex items-center gap-4 px-5 bg-[var(--color-surface)]">
+        <MarketStatusBar />
+        <header className="flex-shrink-0 h-14 flex items-center gap-4 px-5 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
           <div className="min-w-0">
             <h1 className="text-[18px] font-extrabold text-[var(--color-text)] tracking-tight leading-none truncate">
               {meta.title}
@@ -362,7 +448,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                         <button
                           key={s.id}
                           onClick={() => {
-                            onTabChange("activity");
+                            onTabChange("opportunities");
                             setNotifOpen(false);
                           }}
                           className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--color-surface-hover)] text-left"
@@ -435,7 +521,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                   </div>
                   <button
                     onClick={() => {
-                      onTabChange("settings");
+                      onTabChange("preferences");
                       setUserOpen(false);
                     }}
                     className="w-full flex items-center gap-2.5 px-3 h-10 text-[13px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
@@ -458,6 +544,14 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
         <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
       </div>
+
+      {/* Connect modal */}
+      {connectModalBroker && (
+        <BrokerConnectModal
+          broker={connectModalBroker}
+          onClose={() => setConnectModalBroker(null)}
+        />
+      )}
     </div>
   );
 }

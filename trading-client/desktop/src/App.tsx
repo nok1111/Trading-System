@@ -9,7 +9,6 @@ import { PositionsPage } from "./pages/PositionsPage";
 import { PerformancePage } from "./pages/PerformancePage";
 import { MarketPage } from "./pages/MarketPage";
 import { WalletPage } from "./pages/WalletPage";
-import { AIAgentPage } from "./pages/AIAgentPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { logger } from "./lib/logger";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -28,7 +27,7 @@ window.addEventListener("unhandledrejection", (e) => {
 
 function AppContent() {
   const { user, loading, login, register } = useAuthContext();
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   if (loading) {
@@ -80,17 +79,20 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} />;
   }
 
-  const tabs: TabId[] = ["overview", "wallet", "activity", "positions", "performance", "market", "ai", "settings"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "opportunities", "risks", "news", "reports", "alerts", "connections", "security", "preferences"];
 
   const pages: Record<TabId, React.ReactNode> = {
-    overview: <OverviewPage />,
-    wallet: <WalletPage />,
-    activity: <ActivityPage />,
-    positions: <PositionsPage />,
-    performance: <PerformancePage />,
-    market: <MarketPage />,
-    ai: <AIAgentPage />,
-    settings: <SettingsPage />,
+    dashboard: <OverviewPage />,
+    intelligence: <MarketPage />,
+    opportunities: <ActivityPage />,
+    risks: <PositionsPage />,
+    news: <MarketPage />,
+    reports: <PerformancePage />,
+    alerts: <ActivityPage />,
+    connections: <SettingsPage />,
+    security: <SettingsPage />,
+    preferences: <SettingsPage />,
+    broker: <WalletPage />,
   };
 
   return (
