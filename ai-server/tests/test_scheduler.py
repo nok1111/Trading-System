@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.database.models import MarketAlert, MarketSignal
 from app.services.market_data import MarketDataEngine
 from app.services.scheduler import (
     EVENT_AGENT_MAP,
@@ -343,3 +345,120 @@ class TestSchedulerPersistence:
             results = scheduler.process_event(event, session=None)
         # Should still return results, just not persist
         assert len(results) > 0
+
+    def test_persist_signal_generates_notification(self, scheduler, db_session):
+        """#3: Persisting a signal should also create a PendingNotification."""
+        from sqlalchemy import select
+
+        from app.database.models import PendingNotification
+
+        consensus_result = {
+            "asset": "BTC",
+            "decision": "BUY",
+            "confidence": 0.80,
+            "agreement": {"positive": 6, "neutral": 1, "negative": 1},
+            "mainReasons": ["Bullish trend"],
+            "mainRisks": ["Resistance nearby"],
+        }
+        signal = scheduler._persist_signal(db_session, consensus_result, {})
+        assert signal is not None
+
+        # Check that a PendingNotification was created
+        notifs = db_session.execute(
+            select(PendingNotification)
+            .where(PendingNotification.user_id_hash == "broadcast")
+        ).scalars().all()
+        assert len(notifs) == 1
+        assert notifs[0].notification_type == "signal"
+        assert notifs[0].asset == "BTC"
+        assert notifs[0].status == "PENDING"
+        assert notifs[0].content["signal_id"] == signal.id
+
+    def test_expire_stale_signals(self, scheduler, db_session):
+        """#5: _expire_stale marks expired signals as EXPIRED."""
+        from datetime import datetime as dt
+        from datetime import timedelta
+
+        # Create an expired signal
+        signal = MarketSignal(
+            asset="ETH",
+            signal_type="BUY",
+            decision="BUY",
+            confidence=0.70,
+            status="ACTIVE",
+            expires_at=dt.now(UTC) - timedelta(hours=1),
+        )
+        db_session.add(signal)
+        db_session.commit()
+
+        # Run expire
+        scheduler._expire_stale(db_session)
+
+        # Verify it's expired
+        db_session.refresh(signal)
+        assert signal.status == "EXPIRED"
+
+    def test_expire_stale_notifications(self, scheduler, db_session):
+        """#5: _expire_stale marks expired pending notifications as EXPIRED."""
+        from datetime import datetime as dt
+        from datetime import timedelta
+
+        from app.database.models import PendingNotification
+
+        notif = PendingNotification(
+            user_id_hash="test_user",
+            notification_type="signal",
+            asset="BTC",
+            content={},
+            status="PENDING",
+            expires_at=dt.now(UTC) - timedelta(hours=1),
+        )
+        db_session.add(notif)
+        db_session.commit()
+
+        scheduler._expire_stale(db_session)
+
+        db_session.refresh(notif)
+        assert notif.status == "EXPIRED"
+
+    def test_expire_stale_keeps_active(self, scheduler, db_session):
+        """#5: _expire_stale does NOT touch active (non-expired) items."""
+        from datetime import datetime as dt
+        from datetime import timedelta
+
+        signal = MarketSignal(
+            asset="SOL",
+            signal_type="BUY",
+            decision="BUY",
+            confidence=0.75,
+            status="ACTIVE",
+            expires_at=dt.now(UTC) + timedelta(hours=12),
+        )
+        db_session.add(signal)
+        db_session.commit()
+
+        scheduler._expire_stale(db_session)
+
+        db_session.refresh(signal)
+        assert signal.status == "ACTIVE"
+
+    def test_expire_stale_alerts(self, scheduler, db_session):
+        """#5: _expire_stale marks expired alerts as EXPIRED."""
+        from datetime import datetime as dt
+        from datetime import timedelta
+
+        alert = MarketAlert(
+            asset="SOL",
+            alert_type="crash_risk",
+            severity="high",
+            message="Test alert",
+            status="ACTIVE",
+            expires_at=dt.now(UTC) - timedelta(hours=1),
+        )
+        db_session.add(alert)
+        db_session.commit()
+
+        scheduler._expire_stale(db_session)
+
+        db_session.refresh(alert)
+        assert alert.status == "EXPIRED"

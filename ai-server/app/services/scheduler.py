@@ -325,13 +325,17 @@ class EventScheduler:
 
     def _run_loop(self) -> None:
         """Loop principal del scheduler — corre en background."""
+        from app.database.session import SessionLocal
+
         logger.info("Scheduler loop started")
         while not self._stop_event.is_set():
+            session = None
             try:
+                session = SessionLocal()
                 for symbol in self.symbols:
                     events = self.detect_events(symbol)
                     for event in events:
-                        self.process_event(event)
+                        self.process_event(event, session=session)
 
                     # Scheduled run if no events and enough time passed
                     if not events:
@@ -343,10 +347,18 @@ class EventScheduler:
                             self.process_event(SchedulerEvent(
                                 event_type=EventType.SCHEDULED,
                                 asset=symbol,
-                            ))
+                            ), session=session)
+
+                # Expire stale signals and notifications each cycle
+                self._expire_stale(session)
 
             except Exception as exc:  # noqa: BLE001
                 logger.error("Scheduler loop error: %s", exc)
+                if session:
+                    session.rollback()
+            finally:
+                if session:
+                    session.close()
 
             self._stop_event.wait(settings.SCHEDULER_INTERVAL_SECONDS)
 
@@ -501,6 +513,10 @@ class EventScheduler:
             session.commit()
             session.refresh(signal)
             logger.info("Persisted signal %d for %s — decision=%s", signal.id, asset, decision)
+
+            # Generate pending notifications for subscribed users
+            self._generate_notifications_for_signal(session, signal)
+
             return signal
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to persist signal: %s", exc)
@@ -537,6 +553,98 @@ class EventScheduler:
             logger.error("Failed to persist alert: %s", exc)
             session.rollback()
             return None
+
+    def _generate_notifications_for_signal(
+        self,
+        session: Session,
+        signal: MarketSignal,
+    ) -> None:
+        """Genera PendingNotifications for a new signal for all subscribed users.
+
+        In the current architecture, the ai-server doesn't store user portfolios.
+        Instead, it creates a generic 'signal' notification that the trading-client
+        will personalize via /portfolio-match when the user polls /pending.
+
+        Future: if user subscriptions are stored server-side, this method
+        will iterate over subscribed users and create personalized notifications.
+        """
+        try:
+            from app.database.models import PendingNotification
+
+            # Create a generic signal notification for the "broadcast" user
+            # Trading-client users will see this and personalize via portfolio-match
+            notif = PendingNotification(
+                user_id_hash="broadcast",
+                notification_type="signal",
+                asset=signal.asset,
+                content={
+                    "signal_id": signal.id,
+                    "decision": signal.decision,
+                    "confidence": signal.confidence,
+                    "main_reasons": signal.main_reasons,
+                    "main_risks": signal.main_risks,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+                status="PENDING",
+                expires_at=signal.expires_at,
+            )
+            session.add(notif)
+            session.commit()
+            logger.info(
+                "Generated pending notification for signal %d (%s)",
+                signal.id, signal.asset,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to generate notifications: %s", exc)
+            session.rollback()
+
+    def _expire_stale(self, session: Session) -> None:
+        """#5: Mark expired signals and notifications as EXPIRED.
+
+        Called every scheduler cycle to clean up stale data.
+        """
+        try:
+            now = datetime.now(UTC)
+
+            # Expire stale signals
+            stale_signals = session.execute(
+                select(MarketSignal)
+                .where(MarketSignal.status == "ACTIVE")
+                .where(MarketSignal.expires_at < now)
+            ).scalars().all()
+            for sig in stale_signals:
+                sig.status = "EXPIRED"
+            if stale_signals:
+                logger.info("Expired %d stale signals", len(stale_signals))
+
+            # Expire stale alerts
+            stale_alerts = session.execute(
+                select(MarketAlert)
+                .where(MarketAlert.status == "ACTIVE")
+                .where(MarketAlert.expires_at < now)
+            ).scalars().all()
+            for alert in stale_alerts:
+                alert.status = "EXPIRED"
+            if stale_alerts:
+                logger.info("Expired %d stale alerts", len(stale_alerts))
+
+            # Expire stale pending notifications
+            from app.database.models import PendingNotification
+            stale_notifs = session.execute(
+                select(PendingNotification)
+                .where(PendingNotification.status == "PENDING")
+                .where(PendingNotification.expires_at < now)
+            ).scalars().all()
+            for notif in stale_notifs:
+                notif.status = "EXPIRED"
+            if stale_notifs:
+                logger.info("Expired %d stale notifications", len(stale_notifs))
+
+            if stale_signals or stale_alerts or stale_notifs:
+                session.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to expire stale items: %s", exc)
+            session.rollback()
 
     def _build_agent_input(
         self,
