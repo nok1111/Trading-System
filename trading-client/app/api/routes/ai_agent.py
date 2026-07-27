@@ -487,6 +487,62 @@ def get_binance_account(
     }
 
 
+@router.get("/binance/positions")
+def get_binance_positions(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Consulta posiciones abiertas desde la DB con precios en vivo de Binance."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from app.brokers.adapters.binance_adapter import BinanceAdapter
+    from app.brokers.models import BrokerCredentials, normalize_symbol
+    from decimal import Decimal as Dec
+
+    creds = resolve_broker_credentials("binance", current_user)
+    if not creds:
+        return {"error": "No tienes API keys de Binance configuradas.", "positions": []}
+
+    db = SessionLocal()
+    try:
+        positions = db.query(Position).filter(Position.status == "open").all()
+        if not positions:
+            return {"positions": [], "count": 0}
+
+        adapter = BinanceAdapter(creds)
+        result = []
+        for p in positions:
+            current_price = None
+            unrealized = 0.0
+            try:
+                ticker = adapter.get_ticker(normalize_symbol(p.symbol))
+                current_price = float(ticker.price)
+                unrealized = (float(ticker.price) - float(p.entry_price)) * float(p.quantity)
+            except Exception:
+                pass
+
+            if current_price:
+                p.current_price = Dec(str(current_price))
+                p.unrealized_pnl = Dec(str(unrealized))
+            result.append({
+                "id": p.id,
+                "symbol": p.symbol,
+                "side": p.side,
+                "quantity": float(p.quantity),
+                "entry_price": float(p.entry_price),
+                "current_price": current_price,
+                "unrealized_pnl": round(unrealized, 4),
+                "stop_loss": float(p.stop_loss) if p.stop_loss else None,
+                "take_profit": float(p.take_profit) if p.take_profit else None,
+                "status": p.status,
+                "strategy_name": p.strategy_name,
+                "opened_at": p.opened_at.isoformat() if p.opened_at else None,
+            })
+        db.commit()
+        return {"positions": result, "count": len(result)}
+    finally:
+        db.close()
+
+
 @router.patch("/ai-agent/auto-trade")
 def ai_agent_set_auto_trade(enabled: bool = Query(True)) -> dict:
     """Habilita o deshabilita la ejecución automática de trades."""

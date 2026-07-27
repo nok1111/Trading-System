@@ -55,16 +55,16 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
     const load = async () => {
       setLoading(true);
       try {
-        const [bal, pos, ord, tr, binOrders] = await Promise.all([
+        const [bal, binPos, ord, tr, binOrders] = await Promise.all([
           api<any>("/api/binance/balance").catch(() => null),
-          api<any[]>("/api/positions").catch(() => []),
+          api<any>("/api/binance/positions").catch(() => null),
           api<any[]>("/api/orders").catch(() => []),
           api<any[]>("/api/trades?limit=20").catch(() => []),
           api<any>("/api/binance/open-orders").catch(() => null),
         ]);
         if (!alive) return;
         setBalanceData(bal);
-        setPositions(pos);
+        setPositions(binPos?.positions || []);
         setOrders(ord);
         setTrades(tr);
         setBinanceOpenOrders(binOrders?.orders || []);

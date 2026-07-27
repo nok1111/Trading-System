@@ -103,7 +103,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         if (!alive) return;
 
         const candles = data.map((k) => ({
-          time: Math.floor(new Date(k.timestamp).getTime() / 1000) as any,
+          time: Math.floor(k.time / 1000) as any,
           open: Number(k.open),
           high: Number(k.high),
           low: Number(k.low),
@@ -111,7 +111,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         }));
 
         const volumes = data.map((k) => ({
-          time: Math.floor(new Date(k.timestamp).getTime() / 1000) as any,
+          time: Math.floor(k.time / 1000) as any,
           value: Number(k.volume),
           color: Number(k.close) >= Number(k.open)
             ? "rgba(var(--color-success-rgb), 0.3)"
