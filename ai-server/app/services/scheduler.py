@@ -19,11 +19,15 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
+from app.database.models import MarketAlert, MarketSignal
 from app.services.consensus import (
     compute_agreement,
     generate_default_scenarios,
@@ -163,7 +167,11 @@ class EventScheduler:
             "interval_seconds": settings.SCHEDULER_INTERVAL_SECONDS,
         }
 
-    def process_event(self, event: SchedulerEvent) -> list[AgentExecutionResult]:
+    def process_event(
+        self,
+        event: SchedulerEvent,
+        session: Session | None = None,
+    ) -> list[AgentExecutionResult]:
         """Procesa un evento ejecutando los agentes relevantes.
 
         Este método es síncrono y puede llamarse directamente (sin el loop)
@@ -171,6 +179,8 @@ class EventScheduler:
 
         Args:
             event: Evento a procesar.
+            session: SQLAlchemy session opcional para persistir resultados.
+                Si es None, no se persiste en BD.
 
         Returns:
             Lista de resultados de ejecución por agente.
@@ -195,11 +205,33 @@ class EventScheduler:
             agent_results[agent_id] = result.result
             self._last_run[agent_id] = time.time()
 
+            # Persistir alerta si crash_detector tiene riesgo elevado
+            if (
+                session is not None
+                and agent_id == "crash_detector"
+                and result.success
+                and result.result
+                and result.result.get("riskLevel") in ("medium", "high")
+            ):
+                self._persist_alert(session, result.result)
+
         # Ejecutar consensus si es necesario
         if needs_consensus:
             consensus_result = self._execute_consensus(agent_results, event)
             results.append(consensus_result)
             self._last_run["consensus_agent"] = time.time()
+
+            # Persistir señal si consensus fue exitoso
+            if (
+                session is not None
+                and consensus_result.success
+                and consensus_result.result
+            ):
+                self._persist_signal(
+                    session,
+                    consensus_result.result,
+                    agent_results,
+                )
 
         return results
 
@@ -424,6 +456,87 @@ class EventScheduler:
             agent_id="consensus_agent", success=True,
             result=result, duration_seconds=duration,
         )
+
+    def _persist_signal(
+        self,
+        session: Session,
+        consensus_result: dict[str, Any],
+        agent_results: dict[str, dict | None],
+    ) -> MarketSignal | None:
+        """Persiste el resultado del Consensus Agent como MarketSignal en BD."""
+        try:
+            asset = consensus_result.get("asset", "")
+            decision = consensus_result.get("decision", "NO_ACTION")
+            confidence = consensus_result.get("confidence", 0.0)
+            agreement = consensus_result.get("agreement", {})
+            reasons = consensus_result.get("mainReasons", consensus_result.get("main_reasons", []))
+            risks = consensus_result.get("mainRisks", consensus_result.get("main_risks", []))
+
+            # Mapear decision a signal_type
+            signal_type = decision if decision in ("BUY", "SELL", "HOLD", "TAKE_PROFIT", "AVOID") else "HOLD"
+
+            # Marcar señales anteriores del mismo asset como SUPERSEDED
+            old_signals = session.execute(
+                select(MarketSignal)
+                .where(MarketSignal.asset == asset, MarketSignal.status == "ACTIVE")
+            ).scalars().all()
+            for old in old_signals:
+                old.status = "SUPERSEDED"
+
+            signal = MarketSignal(
+                asset=asset,
+                signal_type=signal_type,
+                decision=decision,
+                confidence=confidence,
+                agreement_positive=agreement.get("positive", 0) if isinstance(agreement, dict) else 0,
+                agreement_neutral=agreement.get("neutral", 0) if isinstance(agreement, dict) else 0,
+                agreement_negative=agreement.get("negative", 0) if isinstance(agreement, dict) else 0,
+                main_reasons=reasons,
+                main_risks=risks,
+                consensus_data=consensus_result,
+                status="ACTIVE",
+                expires_at=datetime.now(UTC) + timedelta(hours=24),
+            )
+            session.add(signal)
+            session.commit()
+            session.refresh(signal)
+            logger.info("Persisted signal %d for %s — decision=%s", signal.id, asset, decision)
+            return signal
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to persist signal: %s", exc)
+            session.rollback()
+            return None
+
+    def _persist_alert(
+        self,
+        session: Session,
+        crash_result: dict[str, Any],
+    ) -> MarketAlert | None:
+        """Persiste el resultado del Crash Detector como MarketAlert en BD."""
+        try:
+            asset = crash_result.get("asset", "")
+            risk_level = crash_result.get("riskLevel", "medium")
+            crash_risk = crash_result.get("crashRisk", 0.5)
+            reasons = crash_result.get("reasons", [])
+
+            alert = MarketAlert(
+                asset=asset,
+                alert_type="crash_risk",
+                severity=risk_level,
+                message="; ".join(reasons[:3]) if reasons else f"Crash risk elevated ({crash_risk:.0%})",
+                details=crash_result,
+                status="ACTIVE",
+                expires_at=datetime.now(UTC) + timedelta(hours=12),
+            )
+            session.add(alert)
+            session.commit()
+            session.refresh(alert)
+            logger.info("Persisted alert %d for %s — severity=%s", alert.id, asset, risk_level)
+            return alert
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to persist alert: %s", exc)
+            session.rollback()
+            return None
 
     def _build_agent_input(
         self,

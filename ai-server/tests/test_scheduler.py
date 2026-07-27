@@ -259,3 +259,87 @@ class TestAgentExecutionResult:
         )
         assert result.success is False
         assert result.result is None
+
+
+class TestSchedulerPersistence:
+    """Tests that scheduler persists results to the Knowledge Base."""
+
+    @pytest.fixture
+    def db_session(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        from app.database.base import Base
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        session_local = sessionmaker(bind=engine)
+        session = session_local()
+        yield session
+        session.close()
+
+    def test_persist_signal(self, scheduler, db_session):
+        consensus_result = {
+            "asset": "BTC",
+            "decision": "BUY_ON_PULLBACK",
+            "confidence": 0.79,
+            "agreement": {"positive": 5, "neutral": 2, "negative": 1},
+            "mainReasons": ["Tendencia alcista"],
+            "mainRisks": ["Resistencia cercana"],
+            "scenarios": [],
+        }
+        signal = scheduler._persist_signal(db_session, consensus_result, {})
+        assert signal is not None
+        assert signal.asset == "BTC"
+        assert signal.decision == "BUY_ON_PULLBACK"
+        assert signal.confidence == 0.79
+        assert signal.status == "ACTIVE"
+
+    def test_persist_signal_supersedes_old(self, scheduler, db_session):
+        from app.database.models import MarketSignal
+
+        # First signal
+        result1 = {"asset": "BTC", "decision": "BUY", "confidence": 0.70, "agreement": {}}
+        scheduler._persist_signal(db_session, result1, {})
+
+        # Second signal for same asset
+        result2 = {"asset": "BTC", "decision": "HOLD", "confidence": 0.50, "agreement": {}}
+        scheduler._persist_signal(db_session, result2, {})
+
+        # Verify only 1 ACTIVE
+        from sqlalchemy import select
+        active = db_session.execute(
+            select(MarketSignal).where(MarketSignal.asset == "BTC", MarketSignal.status == "ACTIVE")
+        ).scalars().all()
+        assert len(active) == 1
+        assert active[0].decision == "HOLD"
+
+    def test_persist_alert(self, scheduler, db_session):
+        crash_result = {
+            "asset": "SOL",
+            "crashRisk": 0.68,
+            "riskLevel": "high",
+            "reasons": ["Open interest elevado", "Funding extremo"],
+        }
+        alert = scheduler._persist_alert(db_session, crash_result)
+        assert alert is not None
+        assert alert.asset == "SOL"
+        assert alert.severity == "high"
+        assert alert.status == "ACTIVE"
+
+    def test_persist_signal_with_session_none(self, scheduler):
+        """process_event with session=None should not crash."""
+        event = SchedulerEvent(
+            event_type=EventType.MANUAL,
+            asset="BTCUSDT",
+        )
+        with patch("app.services.consensus._call_llm") as mock_llm:
+            mock_llm.return_value = (None, 0)
+            results = scheduler.process_event(event, session=None)
+        # Should still return results, just not persist
+        assert len(results) > 0

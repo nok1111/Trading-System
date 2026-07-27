@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 
+from app.ai.intelligence_provider import IntelligenceProvider, create_intelligence_provider
 from app.ai.local_provider import LocalAIProvider
 from app.ai.provider import AIProvider, AIProviderConfig, AIResponse
 from app.ai.remote_provider import RemoteAIProvider
@@ -91,6 +92,7 @@ class AITradingAgent:
         self._jwt_token = jwt_token
         self._auth_server_url = auth_server_url
         self._grant_fail_streak = 0  # consecutive grant failures
+        self._intelligence_provider: IntelligenceProvider | None = None
 
         # AI provider: use injected or build from config
         if ai_provider is not None:
@@ -111,6 +113,13 @@ class AITradingAgent:
             try:
                 from app.config import get_settings
                 settings = get_settings()
+
+                # Intelligence Platform mode (new architecture)
+                if settings.USE_INTELLIGENCE_API:
+                    self._intelligence_provider = create_intelligence_provider(settings)
+                    if self._intelligence_provider:
+                        self._add_log("info", "Intelligence Platform mode enabled — using /v1/intelligence endpoints")
+
                 if settings.USE_REMOTE_AI and settings.REMOTE_AI_URL:
                     provider_config = AIProviderConfig(
                         provider=provider,
@@ -151,6 +160,7 @@ class AITradingAgent:
             "cycles": self._cycle,
             "last_log_count": len(self._log),
             "grant_authorized": self._jwt_token is not None,
+            "intelligence_mode": self._intelligence_provider is not None,
         }
 
     def start(self) -> None:
@@ -387,7 +397,12 @@ class AITradingAgent:
     def _tick(self) -> None:
         self._add_log("info", f"--- Ciclo {self._cycle} iniciado ---", {"cycle": self._cycle, "phase": "start"})
 
-        # 1. Gather context from the trading system
+        # Route to intelligence platform mode if enabled
+        if self._intelligence_provider is not None:
+            self._tick_intelligence()
+            return
+
+        # Legacy mode: gather context → ask LLM → execute
         self._add_log("info", "Recopilando datos del sistema...", {"cycle": self._cycle, "phase": "gathering"})
         context = self._gather_context()
         if not context:
@@ -456,6 +471,170 @@ class AITradingAgent:
             self._execute_action(action)
 
         self._add_log("info", f"--- Ciclo {self._cycle} completado ---", {"cycle": self._cycle, "phase": "end"})
+
+    def _tick_intelligence(self) -> None:
+        """Intelligence Platform mode: consume signals from ai-server instead of calling LLM.
+
+        Flow:
+        1. Get active signals from /v1/intelligence/signals
+        2. Get active alerts from /v1/intelligence/alerts
+        3. For each signal, portfolio-match with user's positions
+        4. Execute actions based on personal recommendations
+        5. Log alerts as warnings
+        """
+        provider = self._intelligence_provider
+        assert provider is not None
+
+        self._add_log("info", "Consultando Intelligence Platform...", {"cycle": self._cycle, "phase": "intelligence_fetch"})
+
+        # 1. Get active alerts (always fetch, even if no signals)
+        alerts = provider.get_alerts(limit=5)
+        for alert in alerts:
+            self._add_log("warn", f"Alerta {alert.asset}: {alert.message} (severity={alert.severity})", {
+                "cycle": self._cycle, "phase": "alert", "alert_type": alert.alert_type,
+            })
+
+        # 2. Get global signals
+        signals = provider.get_signals(limit=10)
+        if not signals:
+            self._add_log("info", "No hay señales activas del Intelligence Platform", {"cycle": self._cycle, "phase": "no_signals"})
+            self._hold_streak += 1
+            self._adjust_interval()
+            return
+
+        # 3. Gather user portfolio for personalization
+        positions = self._api_get("/api/positions?status=open&limit=20")
+        portfolio_data = self._build_portfolio_for_match(positions)
+
+        # 4. Match each signal to user portfolio
+        actions: list[dict] = []
+        for signal in signals:
+            signal_dict = {
+                "asset": signal.asset,
+                "decision": signal.decision,
+                "confidence": signal.confidence,
+            }
+            recommendation = provider.portfolio_match(
+                user_id_hash=self._get_user_hash(),
+                signal=signal_dict,
+                portfolio=portfolio_data,
+            )
+            if recommendation is None:
+                continue
+
+            self._add_log("info", f"Signal {signal.asset}: market={recommendation.market_decision} → personal={recommendation.personal_recommendation} ({recommendation.reason})", {
+                "cycle": self._cycle, "phase": "portfolio_match",
+                "asset": signal.asset, "recommendation": recommendation.personal_recommendation,
+                "confidence": recommendation.confidence,
+            })
+
+            # Convert recommendation to action
+            action = self._recommendation_to_action(recommendation)
+            if action:
+                actions.append(action)
+
+        # 5. Execute actions
+        if not actions:
+            self._add_log("info", "Sin acciones personales tras portfolio match", {"cycle": self._cycle, "phase": "no_actions"})
+            self._hold_streak += 1
+            self._adjust_interval()
+            return
+
+        self._hold_streak = 0
+        self._current_interval = self._base_interval
+
+        if not self.auto_trade:
+            self._add_log("info", f"Auto-trade deshabilitado. {len(actions)} acciones propuestas", {"cycle": self._cycle, "phase": "proposed"})
+            return
+
+        for action in actions:
+            self._execute_action(action)
+
+        self._add_log("info", f"--- Ciclo {self._cycle} completado (intelligence mode) ---", {"cycle": self._cycle, "phase": "end"})
+
+    def _build_portfolio_for_match(self, positions: list | None) -> dict:
+        """Build portfolio dict for the Portfolio Matcher from open positions."""
+        if not isinstance(positions, list):
+            positions = []
+
+        total_value = 0.0
+        position_list = []
+        for p in positions:
+            symbol = p.get("symbol", "")
+            qty = float(p.get("quantity", 0))
+            entry = float(p.get("entry_price", 0))
+            current = float(p.get("current_price", entry))
+            value = qty * current
+            total_value += value
+            position_list.append({
+                "symbol": symbol,
+                "quantity": qty,
+                "entry_price": entry,
+                "current_price": current,
+                "value": value,
+                "allocation_pct": 0,  # calculated below
+            })
+
+        # Calculate allocation percentages
+        if total_value > 0:
+            for pos in position_list:
+                pos["allocation_pct"] = (pos["value"] / total_value) * 100
+
+        # Get account snapshot for total portfolio value
+        snapshots = self._api_get("/api/snapshots?limit=1")
+        total_portfolio = total_value
+        cash_pct = 100.0
+        if isinstance(snapshots, list) and snapshots:
+            snap = snapshots[0]
+            equity = float(snap.get("equity", 0))
+            cash = float(snap.get("cash", 0))
+            if equity > 0:
+                total_portfolio = equity
+                cash_pct = (cash / equity) * 100
+
+        return {
+            "broker": "binance",
+            "risk_profile": "intermediate",
+            "positions": position_list,
+            "total_portfolio_value": total_portfolio,
+            "cash_pct": cash_pct,
+        }
+
+    def _get_user_hash(self) -> str:
+        """Get a hash identifying the current user for personalization."""
+        if self._jwt_token:
+            import hashlib as _hashlib
+            return _hashlib.sha256(self._jwt_token.encode()).hexdigest()[:32]
+        return "anonymous_user_hash_000000"
+
+    def _recommendation_to_action(self, rec: Any) -> dict | None:
+        """Convert a PersonalRecommendation to an action dict for execution."""
+        rec_type = rec.personal_recommendation
+        asset = rec.asset
+
+        # Map asset to trading symbol (add USDT suffix if needed)
+        symbol = asset.upper()
+        if not symbol.endswith("USDT"):
+            symbol = symbol + "USDT"
+
+        if rec_type == "BUY":
+            return {
+                "type": "buy",
+                "symbol": symbol,
+                "confidence": rec.confidence,
+                "stop_loss_pct": 3,
+                "take_profit_pct": 8,
+                "reason": rec.reason,
+            }
+        elif rec_type in ("TAKE_PARTIAL_PROFIT", "SELL_FULL"):
+            return {
+                "type": "sell",
+                "symbol": symbol,
+                "confidence": rec.confidence,
+                "reason": rec.reason,
+            }
+        # HOLD, AVOID, WAIT → no action
+        return None
 
     def _adjust_interval(self) -> None:
         """Adjust interval based on hold streak to save tokens."""
