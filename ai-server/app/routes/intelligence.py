@@ -8,11 +8,15 @@ Nuevos endpoints para la arquitectura autónoma 24/7:
 - POST /v1/intelligence/pending/{id}/read — marcar como leída
 - POST /v1/intelligence/portfolio-match — personalización por usuario
 - GET  /v1/intelligence/agents — listar agentes de inteligencia
+- GET  /v1/intelligence/reports/{asset} — reportes periódicos
+- POST /v1/intelligence/signals — guardar señal del scheduler en BD
+- POST /v1/intelligence/alerts — guardar alerta del scheduler en BD
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.database.models import (
     MarketAlert,
+    MarketReport,
     MarketScenario,
     MarketSignal,
     PendingNotification,
@@ -83,6 +88,40 @@ class ScenarioResponse(BaseModel):
 
     asset: str
     scenarios: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ReportResponse(BaseModel):
+    """Respuesta con reportes de mercado."""
+
+    asset: str
+    reports: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateSignalRequest(BaseModel):
+    """Request para guardar una señal del scheduler."""
+
+    asset: str
+    signal_type: str
+    decision: str
+    confidence: float = Field(ge=0, le=1)
+    agreement_positive: int = 0
+    agreement_neutral: int = 0
+    agreement_negative: int = 0
+    main_reasons: list[str] = Field(default_factory=list)
+    main_risks: list[str] = Field(default_factory=list)
+    consensus_data: dict[str, Any] = Field(default_factory=dict)
+    expires_hours: int = 24
+
+
+class CreateAlertRequest(BaseModel):
+    """Request para guardar una alerta del scheduler."""
+
+    asset: str
+    alert_type: str
+    severity: str = Field(pattern="^(low|medium|high)$")
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    expires_hours: int = 12
 
 
 class SchedulerStatusResponse(BaseModel):
@@ -296,6 +335,106 @@ async def portfolio_match(
         confidence=recommendation.confidence,
         notification=notification,
     )
+
+
+@router.get("/reports/{asset}", response_model=ReportResponse)
+async def get_reports(
+    asset: str,
+    db: Annotated[Session, Depends(get_db)],
+    report_type: str | None = None,
+    limit: int = 10,
+) -> ReportResponse:
+    """Obtiene reportes periódicos de un activo."""
+    query = (
+        select(MarketReport)
+        .where(MarketReport.asset == asset.upper())
+        .order_by(MarketReport.timestamp.desc())
+        .limit(limit)
+    )
+    if report_type:
+        query = query.where(MarketReport.report_type == report_type)
+
+    result = db.execute(query)
+    reports = result.scalars().all()
+
+    return ReportResponse(
+        asset=asset.upper(),
+        reports=[
+            {
+                "id": r.id,
+                "report_type": r.report_type,
+                "content": r.content,
+                "period": r.period,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            }
+            for r in reports
+        ],
+    )
+
+
+@router.post("/signals", status_code=status.HTTP_201_CREATED)
+async def create_signal(
+    req: CreateSignalRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Guarda una señal global en el Market Knowledge Base.
+
+    Usado por el scheduler cuando el Consensus Agent produce una nueva señal.
+    """
+    from datetime import datetime, timedelta
+
+    # Marcar señales anteriores del mismo asset como SUPERSEDED
+    old_signals = db.execute(
+        select(MarketSignal)
+        .where(MarketSignal.asset == req.asset.upper(), MarketSignal.status == "ACTIVE")
+    ).scalars().all()
+    for old in old_signals:
+        old.status = "SUPERSEDED"
+
+    signal = MarketSignal(
+        asset=req.asset.upper(),
+        signal_type=req.signal_type,
+        decision=req.decision,
+        confidence=req.confidence,
+        agreement_positive=req.agreement_positive,
+        agreement_neutral=req.agreement_neutral,
+        agreement_negative=req.agreement_negative,
+        main_reasons=req.main_reasons,
+        main_risks=req.main_risks,
+        consensus_data=req.consensus_data,
+        status="ACTIVE",
+        expires_at=datetime.now(UTC) + timedelta(hours=req.expires_hours),
+    )
+    db.add(signal)
+    db.commit()
+    db.refresh(signal)
+    return {"id": signal.id, "status": "created", "asset": signal.asset}
+
+
+@router.post("/alerts", status_code=status.HTTP_201_CREATED)
+async def create_alert(
+    req: CreateAlertRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Guarda una alerta de mercado en el Knowledge Base.
+
+    Usado por el scheduler cuando el Crash Risk Detector detecta riesgo elevado.
+    """
+    from datetime import datetime, timedelta
+
+    alert = MarketAlert(
+        asset=req.asset.upper(),
+        alert_type=req.alert_type,
+        severity=req.severity,
+        message=req.message,
+        details=req.details,
+        status="ACTIVE",
+        expires_at=datetime.now(UTC) + timedelta(hours=req.expires_hours),
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    return {"id": alert.id, "status": "created", "asset": alert.asset}
 
 
 @router.get("/agents")

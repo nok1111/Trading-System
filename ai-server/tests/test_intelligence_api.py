@@ -319,3 +319,113 @@ class TestSchedulerEndpoints:
     def test_scheduler_stop_when_not_running(self, client, test_db):
         resp = client.post("/v1/intelligence/scheduler/stop")
         assert resp.status_code == 400
+
+
+class TestReportsEndpoint:
+    def test_get_reports_empty(self, client, test_db):
+        resp = client.get("/v1/intelligence/reports/BTC")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["asset"] == "BTC"
+        assert data["reports"] == []
+
+    def test_get_reports_with_data(self, client, test_db):
+        from app.database.models import MarketReport
+        report = MarketReport(
+            asset="BTC",
+            report_type="daily",
+            content={"summary": "Market bullish"},
+            period="2025-07-27",
+        )
+        test_db.add(report)
+        test_db.commit()
+
+        resp = client.get("/v1/intelligence/reports/BTC")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["reports"]) == 1
+        assert data["reports"][0]["report_type"] == "daily"
+
+
+class TestCreateSignalEndpoint:
+    def test_create_signal(self, client, test_db):
+        resp = client.post(
+            "/v1/intelligence/signals",
+            json={
+                "asset": "BTC",
+                "signal_type": "BUY",
+                "decision": "BUY_ON_PULLBACK",
+                "confidence": 0.79,
+                "agreement_positive": 5,
+                "agreement_neutral": 2,
+                "agreement_negative": 1,
+                "main_reasons": ["Tendencia alcista"],
+                "main_risks": ["Resistencia cercana"],
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "created"
+        assert data["asset"] == "BTC"
+        assert data["id"] is not None
+
+    def test_create_signal_supersedes_old(self, client, test_db):
+        # Create first signal
+        resp1 = client.post(
+            "/v1/intelligence/signals",
+            json={
+                "asset": "ETH",
+                "signal_type": "BUY",
+                "decision": "BUY",
+                "confidence": 0.70,
+            },
+        )
+        assert resp1.status_code == 201
+
+        # Create second signal for same asset
+        resp2 = client.post(
+            "/v1/intelligence/signals",
+            json={
+                "asset": "ETH",
+                "signal_type": "HOLD",
+                "decision": "HOLD",
+                "confidence": 0.50,
+            },
+        )
+        assert resp2.status_code == 201
+
+        # Verify only 1 ACTIVE signal
+        resp3 = client.get("/v1/intelligence/signals", params={"asset": "ETH"})
+        data = resp3.json()
+        assert data["count"] == 1
+        assert data["signals"][0]["decision"] == "HOLD"
+
+
+class TestCreateAlertEndpoint:
+    def test_create_alert(self, client, test_db):
+        resp = client.post(
+            "/v1/intelligence/alerts",
+            json={
+                "asset": "SOL",
+                "alert_type": "crash_risk",
+                "severity": "high",
+                "message": "Open interest elevado",
+                "details": {"crash_risk": 0.68},
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "created"
+        assert data["asset"] == "SOL"
+
+    def test_create_alert_invalid_severity(self, client, test_db):
+        resp = client.post(
+            "/v1/intelligence/alerts",
+            json={
+                "asset": "SOL",
+                "alert_type": "crash_risk",
+                "severity": "critical",
+                "message": "Test",
+            },
+        )
+        assert resp.status_code == 422

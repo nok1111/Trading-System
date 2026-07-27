@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     REMOTE_AI_TOKEN: str | None = None
     REMOTE_AI_PERCENTAGE: int = Field(default=0, ge=0, le=100)
     ENABLE_AI_SHADOW_MODE: bool = False
+    # Intelligence Platform (new architecture)
+    USE_INTELLIGENCE_API: bool = False
     # Risk Engine feature flag
     ENABLE_AUTOMATIC_EXECUTION: bool = True
 
