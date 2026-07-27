@@ -104,8 +104,24 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [expandedBrokers, setExpandedBrokers] = useState<Set<string>>(new Set());
   const [connectModalBroker, setConnectModalBroker] = useState<SupportedBroker | null>(null);
   const [selectedBrokerModule, setSelectedBrokerModule] = useState<{ brokerId: string; moduleId: string } | null>(null);
+  const [presetTradeSymbol, setPresetTradeSymbol] = useState<string | undefined>(undefined);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.page === "trade" && detail?.asset) {
+        const brokerId = detail.broker || "binance";
+        const symbol = detail.asset.toUpperCase().replace("/", "") + "USDT";
+        setSelectedBrokerModule({ brokerId, moduleId: "trade" });
+        setPresetTradeSymbol(symbol);
+        onTabChange("broker");
+      }
+    };
+    window.addEventListener("navigate", onNavigate);
+    return () => window.removeEventListener("navigate", onNavigate);
+  }, [onTabChange]);
 
   useEffect(() => {
     let alive = true;
@@ -552,6 +568,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
             <BrokerPage
               brokerId={selectedBrokerModule?.brokerId || null}
               moduleId={selectedBrokerModule?.moduleId || null}
+              presetSymbol={presetTradeSymbol}
             />
           ) : (
             children

@@ -540,6 +540,92 @@ def get_binance_account(
     }
 
 
+class ManualOrderRequest(BaseModel):
+    symbol: str
+    side: str  # "BUY" or "SELL"
+    order_type: str = "MARKET"  # "MARKET" or "LIMIT"
+    quantity: float | None = None
+    quote_order_qty: float | None = None  # amount in USDT for market buys
+    price: float | None = None  # required for LIMIT
+
+
+@router.post("/binance/manual-order")
+def place_binance_manual_order(req: ManualOrderRequest) -> dict:
+    """Place a manual order on Binance (buy/sell, market/limit)."""
+    settings = get_settings()
+    if settings.BROKER_PROVIDER != "binance":
+        return {"error": "Binance no configurado"}
+
+    creds = resolve_broker_credentials("binance", None)
+    if not creds:
+        return {"error": "No tienes API keys de Binance configuradas."}
+
+    from app.brokers.adapters.binance_adapter import BinanceAdapter
+
+    adapter = BinanceAdapter(creds)
+
+    symbol = req.symbol.upper()
+    side = req.side.upper()
+    order_type = req.order_type.upper()
+
+    if side not in ("BUY", "SELL"):
+        return {"error": "Side debe ser BUY o SELL"}
+    if order_type not in ("MARKET", "LIMIT"):
+        return {"error": "Order type debe ser MARKET o LIMIT"}
+    if order_type == "LIMIT" and not req.price:
+        return {"error": "LIMIT requiere price"}
+    if not req.quantity and not req.quote_order_qty:
+        return {"error": "Requiere quantity o quote_order_qty"}
+
+    params: dict = {
+        "symbol": symbol,
+        "side": side,
+        "type": order_type,
+    }
+
+    if order_type == "LIMIT":
+        params["timeInForce"] = "GTC"
+        params["price"] = f"{req.price:.8f}".rstrip("0").rstrip(".")
+
+    if req.quantity:
+        params["quantity"] = f"{req.quantity:.8f}".rstrip("0").rstrip(".")
+    elif req.quote_order_qty and order_type == "MARKET":
+        params["quoteOrderQty"] = f"{req.quote_order_qty:.8f}".rstrip("0").rstrip(".")
+
+    try:
+        resp = adapter._broker._signed_request("POST", "/api/v3/order", params)
+        return {
+            "status": "ok",
+            "orderId": str(resp.get("orderId", "")),
+            "symbol": resp.get("symbol", symbol),
+            "side": resp.get("side", side),
+            "type": resp.get("type", order_type),
+            "quantity": resp.get("origQty", ""),
+            "price": resp.get("price", ""),
+            "executedQty": resp.get("executedQty", ""),
+            "status": resp.get("status", ""),
+            "transactTime": resp.get("transactTime", ""),
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@router.get("/binance/price")
+def get_binance_price(symbol: str = Query(...)) -> dict:
+    """Get current price for a symbol from Binance."""
+    import httpx as _httpx
+    try:
+        resp = _httpx.get(
+            f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}",
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            return {"symbol": symbol.upper(), "price": float(resp.json()["price"])}
+        return {"error": f"Binance respondió {resp.status_code}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.get("/binance/positions")
 def get_binance_positions(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
