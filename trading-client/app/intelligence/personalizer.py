@@ -10,7 +10,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database.models.broker_account import BrokerAccount
+from app.database.models.intelligence_analysis import IntelligenceAnalysis
 from app.database.models.intelligence_event import IntelligenceEvent
+from app.database.models.intelligence_news import IntelligenceNews
 from app.database.models.position import Position
 from app.database.models.signal import Signal
 from app.database.models.user_settings import UserSettings
@@ -124,6 +127,143 @@ def _format_change(event: IntelligenceEvent) -> dict[str, Any]:
     }
 
 
+def _get_portfolio_summary(session: Session) -> dict[str, Any]:
+    """Get portfolio summary: total PnL, positions count, best/worst performers."""
+    positions = list(
+        session.execute(
+            select(Position).where(Position.status == "open")
+        ).scalars().all()
+    )
+    if not positions:
+        return {"totalPnl": 0.0, "positionsCount": 0, "bestPerformer": None, "worstPerformer": None, "totalValue": 0.0}
+
+    total_pnl = 0.0
+    total_value = 0.0
+    performers = []
+    for p in positions:
+        pnl = float(p.unrealized_pnl) if p.unrealized_pnl else 0.0
+        total_pnl += pnl
+        qty = float(p.quantity) if p.quantity else 0.0
+        price = float(p.current_price) if p.current_price else 0.0
+        total_value += qty * price
+        asset = p.symbol.upper().replace("USDT", "").replace("USDC", "")
+        pnl_pct = 0.0
+        if p.entry_price and float(p.entry_price) > 0 and p.current_price:
+            pnl_pct = ((float(p.current_price) - float(p.entry_price)) / float(p.entry_price)) * 100
+        performers.append({"asset": asset, "pnl": pnl, "pnl_pct": pnl_pct, "symbol": p.symbol})
+
+    performers.sort(key=lambda x: x["pnl_pct"], reverse=True)
+    return {
+        "totalPnl": total_pnl,
+        "positionsCount": len(positions),
+        "totalValue": total_value,
+        "bestPerformer": performers[0] if performers else None,
+        "worstPerformer": performers[-1] if performers else None,
+    }
+
+
+def _get_top_movers(session: Session) -> list[dict[str, Any]]:
+    """Get top crypto movers from recent analysis + news impact."""
+    movers: list[dict[str, Any]] = []
+
+    # From analysis: assets with BUY signals and high confidence
+    analyses = list(
+        session.execute(
+            select(IntelligenceAnalysis)
+            .where(IntelligenceAnalysis.decision.in_(["BUY", "SELL"]))
+            .order_by(IntelligenceAnalysis.analyzed_at.desc())
+            .limit(10)
+        ).scalars().all()
+    )
+
+    seen = set()
+    for a in analyses:
+        if a.asset in seen:
+            continue
+        seen.add(a.asset)
+        movers.append({
+            "asset": a.asset,
+            "decision": a.decision,
+            "confidence": float(a.confidence) * 100 if a.confidence else 50,
+            "price": float(a.price_usd) if a.price_usd else None,
+            "reason": a.reasons.get("technical", a.reasons.get("main_reasons", "")) if isinstance(a.reasons, dict) else "",
+            "target_price": float(a.target_price) if a.target_price else None,
+        })
+
+    return movers[:5]
+
+
+def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
+    """Get buy recommendations with broker info for quick action."""
+    # Get assets with BUY decision from analysis
+    analyses = list(
+        session.execute(
+            select(IntelligenceAnalysis)
+            .where(IntelligenceAnalysis.decision == "BUY")
+            .order_by(IntelligenceAnalysis.analyzed_at.desc())
+            .limit(5)
+        ).scalars().all()
+    )
+
+    # Get active brokers
+    brokers = list(
+        session.execute(
+            select(BrokerAccount).where(BrokerAccount.status == "active")
+        ).scalars().all()
+    )
+    broker_names = [b.broker_id for b in brokers] if brokers else ["binance"]
+
+    recommendations = []
+    seen = set()
+    for a in analyses:
+        if a.asset in seen:
+            continue
+        seen.add(a.asset)
+        price = float(a.price_usd) if a.price_usd else None
+        target = float(a.target_price) if a.target_price else None
+        upside = ((target - price) / price * 100) if (price and target and price > 0) else None
+
+        recommendations.append({
+            "asset": a.asset,
+            "price": price,
+            "targetPrice": target,
+            "potentialUpside": round(upside, 1) if upside else None,
+            "confidence": float(a.confidence) * 100 if a.confidence else 50,
+            "riskLevel": a.risk_level,
+            "brokers": broker_names,
+            "reason": a.reasons.get("technical", "") if isinstance(a.reasons, dict) else "",
+        })
+
+    return recommendations[:3]
+
+
+def _get_high_impact_news(session: Session, hours: int = 24) -> list[dict[str, Any]]:
+    """Get high-impact news from the last N hours."""
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    news = list(
+        session.execute(
+            select(IntelligenceNews)
+            .where(IntelligenceNews.published_at > since)
+            .where(IntelligenceNews.impact.in_(["high", "critical"]))
+            .order_by(IntelligenceNews.published_at.desc())
+            .limit(5)
+        ).scalars().all()
+    )
+    return [
+        {
+            "id": n.id,
+            "title": n.title,
+            "source": n.source,
+            "url": n.url,
+            "impact": n.impact,
+            "sentiment": n.sentiment,
+            "assets": n.affected_assets.get("assets", []) if isinstance(n.affected_assets, dict) else [],
+            "image_url": n.image_url,
+        }
+        for n in news
+    ]
+
+
 def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, Any]:
     """Build the 'Since Last Visit' payload for a user."""
     last_login = _get_last_login(session, user_id)
@@ -166,7 +306,19 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
         asset = p.symbol.upper().replace("USDT", "").replace("USDC", "")
         to_review.append({"asset": asset, "reason": "Posición abierta"})
 
-    # 5. Update last_login
+    # 5. Portfolio summary
+    portfolio = _get_portfolio_summary(session)
+
+    # 6. Top movers (buy/sell opportunities)
+    movers = _get_top_movers(session)
+
+    # 7. Buy recommendations with broker info
+    buy_recs = _get_buy_recommendations(session)
+
+    # 8. High impact news
+    high_impact_news = _get_high_impact_news(session, hours=max(24, int((datetime.now(UTC) - last_login).total_seconds() / 3600)))
+
+    # 9. Update last_login
     _update_last_login(session, user_id)
 
     hours = max(1, int((datetime.now(UTC) - last_login).total_seconds() / 3600))
@@ -177,6 +329,10 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
         "greeting": _get_greeting(),
         "changes": all_changes,
         "toReview": to_review,
+        "portfolio": portfolio,
+        "movers": movers,
+        "buyRecommendations": buy_recs,
+        "highImpactNews": high_impact_news,
     }
 
 

@@ -211,12 +211,55 @@ export interface ChangeItem {
   timestamp: string;
 }
 
+export interface PortfolioSummary {
+  totalPnl: number;
+  positionsCount: number;
+  totalValue: number;
+  bestPerformer: { asset: string; pnl: number; pnl_pct: number; symbol: string } | null;
+  worstPerformer: { asset: string; pnl: number; pnl_pct: number; symbol: string } | null;
+}
+
+export interface MoverItem {
+  asset: string;
+  decision: string;
+  confidence: number;
+  price: number | null;
+  reason: string;
+  target_price: number | null;
+}
+
+export interface BuyRecommendation {
+  asset: string;
+  price: number | null;
+  targetPrice: number | null;
+  potentialUpside: number | null;
+  confidence: number;
+  riskLevel: string;
+  brokers: string[];
+  reason: string;
+}
+
+export interface HighImpactNewsItem {
+  id: number;
+  title: string;
+  source: string;
+  url: string;
+  impact: string;
+  sentiment: string;
+  assets: string[];
+  image_url: string | null;
+}
+
 export interface SinceLastVisitData {
   lastLogin: string;
   hoursSinceLogin: number;
   greeting: string;
   changes: ChangeItem[];
   toReview: { asset: string; reason: string }[];
+  portfolio?: PortfolioSummary;
+  movers?: MoverItem[];
+  buyRecommendations?: BuyRecommendation[];
+  highImpactNews?: HighImpactNewsItem[];
 }
 
 export interface PriorityAsset {
