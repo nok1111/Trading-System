@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
 from typing import Any, Literal
@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     LIVE_CONFIRMATION_REQUIRED: bool = True
     # Multi-broker feature flag
     ENABLE_MULTI_BROKER: bool = False
+    # AI provider feature flags
+    USE_REMOTE_AI: bool = False
+    REMOTE_AI_URL: str | None = None
+    REMOTE_AI_TOKEN: str | None = None
+    REMOTE_AI_PERCENTAGE: int = Field(default=0, ge=0, le=100)
+    ENABLE_AI_SHADOW_MODE: bool = False
 
     @field_validator("DEFAULT_SYMBOLS")
     @classmethod
@@ -89,9 +95,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_live_mode(self) -> "Settings":
-        if self.TRADING_MODE == "live":
-            if not self.LIVE_TRADING_ENABLED:
-                raise ValueError("TRADING_MODE='live' requiere LIVE_TRADING_ENABLED=true")
+        if self.TRADING_MODE == "live" and not self.LIVE_TRADING_ENABLED:
+            raise ValueError("TRADING_MODE='live' requiere LIVE_TRADING_ENABLED=true")
         return self
 
     @property

@@ -14,12 +14,15 @@ Configuración (.env):
 
 import json
 import logging
-import time
 from datetime import UTC, datetime
 from threading import Event, Thread
 from typing import Any
 
 import httpx
+
+from app.ai.local_provider import LocalAIProvider
+from app.ai.provider import AIProvider, AIProviderConfig, AIResponse
+from app.ai.remote_provider import RemoteAIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,7 @@ class AITradingAgent:
         auto_trade: bool = True,
         jwt_token: str | None = None,
         auth_server_url: str | None = None,
+        ai_provider: AIProvider | None = None,
     ) -> None:
         self.provider = provider
         self.groq_api_key = groq_api_key
@@ -84,6 +88,46 @@ class AITradingAgent:
         self._jwt_token = jwt_token
         self._auth_server_url = auth_server_url
         self._grant_fail_streak = 0  # consecutive grant failures
+
+        # AI provider: use injected or build from config
+        if ai_provider is not None:
+            self._ai_provider = ai_provider
+        else:
+            provider_config = AIProviderConfig(
+                provider=provider,
+                groq_api_key=groq_api_key,
+                groq_model=groq_model,
+                gemini_api_key=gemini_api_key,
+                gemini_model=gemini_model,
+                ollama_url=ollama_url,
+                ollama_model=ollama_model,
+                openai_api_key=openai_api_key,
+                openai_base_url=openai_base_url,
+                openai_model=openai_model,
+            )
+            try:
+                from app.config import get_settings
+                settings = get_settings()
+                if settings.USE_REMOTE_AI and settings.REMOTE_AI_URL:
+                    provider_config = AIProviderConfig(
+                        provider=provider,
+                        groq_api_key=groq_api_key,
+                        groq_model=groq_model,
+                        gemini_api_key=gemini_api_key,
+                        gemini_model=gemini_model,
+                        ollama_url=ollama_url,
+                        ollama_model=ollama_model,
+                        openai_api_key=openai_api_key,
+                        openai_base_url=openai_base_url,
+                        openai_model=openai_model,
+                        remote_ai_url=settings.REMOTE_AI_URL,
+                        remote_ai_token=settings.REMOTE_AI_TOKEN,
+                    )
+                    self._ai_provider = RemoteAIProvider(provider_config)
+                else:
+                    self._ai_provider = LocalAIProvider(provider_config)
+            except Exception:
+                self._ai_provider = LocalAIProvider(provider_config)
 
     @property
     def is_running(self) -> bool:
@@ -193,7 +237,7 @@ class AITradingAgent:
 
     def _check_auto_close(self) -> None:
         """Check open positions with trailing stop logic.
-        
+
         Phases:
         1. Below entry: use original stop-loss
         2. Above entry (in profit): stop moves to breakeven (entry price)
@@ -400,7 +444,7 @@ class AITradingAgent:
             return
 
         # Log the full decision with all fields
-        self._add_log("info", f"Análisis completado", {
+        self._add_log("info", "Análisis completado", {
             "cycle": self._cycle,
             "phase": "decision",
             "market_overview": decision.get("market_overview", ""),
@@ -591,195 +635,19 @@ class AITradingAgent:
             return False
         # If we have an allowed symbols list, enforce it
         allowed = self._get_allowed_symbols()
-        if allowed and s not in allowed:
-            return False
-        return True
+        return not (allowed and s not in allowed)
 
     def _ask_llm(self, context: dict) -> dict | None:
-        """Envía el contexto al LLM y recibe la decisión."""
+        """Envía el contexto al proveedor de IA y recibe la decisión."""
         user_msg = f"Datos:{json.dumps(context,default=str)}\nAnaliza y decide. SOLO JSON."
-
-        if self.provider == "groq":
-            result = self._ask_groq(user_msg)
-            if result is None:
-                # Try Gemini as fallback
-                if self.gemini_api_key:
-                    self._add_log("warn", "Groq no disponible, intentando con Gemini...")
-                    result = self._ask_gemini(user_msg)
-                if result is None:
-                    self._add_log("warn", "Groq no disponible, intentando con Ollama local...")
-                    result = self._ask_ollama(user_msg)
-                if result is None:
-                    self._add_log("error", "Ni Groq, Gemini ni Ollama disponibles. Revisa tu conexión o API keys.")
-                else:
-                    self._add_log("info", "Fallback respondió correctamente")
-            return result
-        elif self.provider == "gemini":
-            result = self._ask_gemini(user_msg)
-            if result is None and self.groq_api_key:
-                self._add_log("warn", "Gemini no disponible, intentando con Groq...")
-                result = self._ask_groq(user_msg)
-            if result is None:
-                self._add_log("warn", "Gemini no disponible, intentando con Ollama local...")
-                result = self._ask_ollama(user_msg)
-            if result is None:
-                self._add_log("error", "Ni Gemini, Groq ni Ollama disponibles.")
-            return result
-        elif self.provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
-            result = self._ask_openai_compat(user_msg)
-            if result is None and self.groq_api_key:
-                self._add_log("warn", f"{self.provider} no disponible, intentando con Groq...")
-                result = self._ask_groq(user_msg)
-            if result is None:
-                self._add_log("warn", f"{self.provider} no disponible, intentando con Ollama local...")
-                result = self._ask_ollama(user_msg)
-            if result is None:
-                self._add_log("error", f"Ni {self.provider}, Groq ni Ollama disponibles.")
-            return result
-        elif self.provider == "ollama":
-            return self._ask_ollama(user_msg)
-        else:
-            self._add_log("error", f"Provider desconocido: {self.provider}")
+        response: AIResponse = self._ai_provider.ask(SYSTEM_PROMPT, user_msg)
+        if not response.success:
+            self._add_log("error", response.error or "El proveedor de IA no respondió")
             return None
-
-    def _ask_groq(self, user_msg: str) -> dict | None:
-        """Consulta a Groq API (gratis, rápido)."""
-        if not self.groq_api_key:
-            self._add_log("error", "GROQ_API_KEY no configurada")
-            return None
-        try:
-            resp = httpx.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.groq_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.groq_model,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 1000,
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
-            return self._parse_response(content)
-        except httpx.HTTPStatusError as exc:
-            self._add_log("error", f"Groq API error {exc.response.status_code}: {exc.response.text[:200]}")
-            return None
-        except Exception as exc:
-            self._add_log("error", f"Error consultando Groq: {exc}")
-            return None
-
-    def _ask_gemini(self, user_msg: str) -> dict | None:
-        """Consulta a Google Gemini API (gratis, generoso)."""
-        if not self.gemini_api_key:
-            self._add_log("error", "GEMINI_API_KEY no configurada")
-            return None
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
-            resp = httpx.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                    "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
-                    "generationConfig": {
-                        "temperature": 0.3,
-                        "maxOutputTokens": 1000,
-                        "responseMimeType": "application/json",
-                    },
-                },
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            content = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-            return self._parse_response(content)
-        except httpx.HTTPStatusError as exc:
-            self._add_log("error", f"Gemini API error {exc.response.status_code}: {exc.response.text[:200]}")
-            return None
-        except Exception as exc:
-            self._add_log("error", f"Error consultando Gemini: {exc}")
-            return None
-
-    def _ask_openai_compat(self, user_msg: str) -> dict | None:
-        """Consulta a cualquier API compatible con OpenAI (OpenAI, DeepSeek, Mistral, Together, Perplexity, Grok)."""
-        if not self.openai_api_key:
-            self._add_log("error", f"API Key para {self.provider} no configurada")
-            return None
-        try:
-            resp = httpx.post(
-                f"{self.openai_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.openai_model,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 1000,
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=45.0,
-            )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
-            return self._parse_response(content)
-        except httpx.HTTPStatusError as exc:
-            self._add_log("error", f"{self.provider} API error {exc.response.status_code}: {exc.response.text[:200]}")
-            return None
-        except Exception as exc:
-            self._add_log("error", f"Error consultando {self.provider}: {exc}")
-            return None
-
-    def _ask_ollama(self, user_msg: str) -> dict | None:
-        """Consulta a Ollama local."""
-        try:
-            resp = httpx.post(
-                f"{self.ollama_url}/api/chat",
-                json={
-                    "model": self.ollama_model,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "stream": False,
-                    "format": "json",
-                    "options": {"temperature": 0.3},
-                },
-                timeout=60.0,
-            )
-            resp.raise_for_status()
-            content = resp.json()["message"]["content"]
-            return self._parse_response(content)
-        except Exception as exc:
-            self._add_log("error", f"Error consultando Ollama: {exc}")
-            return None
-
-    def _parse_response(self, content: str) -> dict | None:
-        """Parsea la respuesta del LLM como JSON."""
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            # Intentar extraer JSON de la respuesta
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            if start >= 0 and end > start:
-                try:
-                    return json.loads(content[start:end])
-                except json.JSONDecodeError:
-                    pass
-            self._add_log("error", f"Respuesta no es JSON válido: {content[:200]}")
-            return None
+        if isinstance(self._ai_provider, LocalAIProvider):
+            for log_entry in self._ai_provider.get_logs():
+                self._add_log("warn", log_entry)
+        return response.decision
 
     def _execute_action(self, action: dict) -> None:
         """Ejecuta una acción de trading directamente via execution engine."""
@@ -828,15 +696,16 @@ class AITradingAgent:
     def _notify_telegram(self, action: str, symbol: str, quantity: float, price: float, reason: str = "") -> None:
         """Send Telegram notification to all users with alerts enabled."""
         try:
-            from app.database.session import SessionLocal
-            from app.database.models.user import User
-            from app.services.telegram import notify_trade
             from sqlalchemy import select
+
+            from app.database.models.user import User
+            from app.database.session import SessionLocal
+            from app.services.telegram import notify_trade
 
             db = SessionLocal()
             try:
                 users = db.execute(
-                    select(User).where(User.telegram_alerts == True, User.telegram_chat_id.isnot(None))
+                    select(User).where(User.telegram_alerts, User.telegram_chat_id.isnot(None))
                 ).scalars().all()
                 for user in users:
                     notify_trade(user.telegram_chat_id, action, symbol, float(quantity), float(price), reason)
