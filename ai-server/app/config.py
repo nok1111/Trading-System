@@ -50,6 +50,29 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = Field(default=30, ge=1)
 
+    # Market Data Engine
+    MARKET_DATA_REFRESH_SECONDS: int = 300
+    INDICATOR_TIMEFRAMES: str = "15m,1h,4h,1d"
+    MARKET_DATA_CACHE_TTL_SECONDS: int = 120
+
+    # Data feeds (stubs for now, real impl in Phase 7)
+    ENABLE_NEWS_FEED: bool = False
+    ENABLE_ONCHAIN_FEED: bool = False
+    ENABLE_MACRO_FEED: bool = False
+    ENABLE_SENTIMENT_FEED: bool = False
+
+    # Event-Driven Scheduler (Phase E)
+    SCHEDULER_ENABLED: bool = False
+    SCHEDULER_INTERVAL_SECONDS: int = 60
+    AGENT_TIMEOUT_SECONDS: int = 30
+    CONSENSUS_MIN_AGENTS: int = 3
+
+    # Intelligence API (Phase F)
+    USE_INTELLIGENCE_API: bool = False
+
+    # Database (Phase C — Market Knowledge Base)
+    DATABASE_URL: str = "sqlite:///./data/ai_server.db"
+
     @property
     def cors_origins_list(self) -> list[str]:
         if self.CORS_ORIGINS == "*":
