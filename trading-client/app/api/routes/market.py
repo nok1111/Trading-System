@@ -1,5 +1,6 @@
 """Market data endpoints (prices, movers, smart money)."""
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 from app.data.price_stream import get_price_stream
@@ -87,5 +88,35 @@ def smart_money_info(encrypted_uid: str) -> dict:
     lb = BinanceLeaderboard()
     try:
         return lb.get_trader_info(encrypted_uid)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/klines/{symbol}")
+def get_klines(
+    symbol: str,
+    interval: str = Query("1m", pattern="^(1m|3m|5m|15m|30m|1h|2h|4h|1d|1w)$"),
+    limit: int = Query(200, ge=1, le=1000),
+) -> list[dict]:
+    """Klines (OHLCV) desde Binance public API."""
+    sym = symbol.upper()
+    if not sym.endswith("USDT"):
+        sym = sym + "USDT"
+    url = f"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit={limit}"
+    try:
+        resp = httpx.get(url, timeout=10)
+        resp.raise_for_status()
+        raw = resp.json()
+        return [
+            {
+                "time": k[0],
+                "open": float(k[1]),
+                "high": float(k[2]),
+                "low": float(k[3]),
+                "close": float(k[4]),
+                "volume": float(k[5]),
+            }
+            for k in raw
+        ]
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

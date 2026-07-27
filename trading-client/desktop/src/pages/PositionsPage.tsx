@@ -7,15 +7,7 @@ import { Select } from "../components/ui/Input";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { fmt, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
-import {
-  ComposedChart,
-  Line,
-  Area,
-  ReferenceLine,
-  ResponsiveContainer,
-  YAxis,
-  Tooltip,
-} from "recharts";
+import { PositionChart } from "../components/PositionChart";
 
 export function PositionsPage() {
   const [positions, setPositions] = useState<any[]>([]);
@@ -135,21 +127,6 @@ export function PositionsPage() {
               const isProfit = pnl >= 0;
               const qty = Number(p.quantity || 0);
               const invested = qty * entry;
-              const hist = priceHistoryRef.current[p.symbol] || [];
-
-              // Build chart data
-              const chartData = hist.map((v, i) => ({ i, v }));
-
-              // Chart domain: include entry, SL, TP, current
-              const allPrices = [entry, current, sl, tp].filter((v) => v > 0);
-              const minPrice = Math.min(...allPrices);
-              const maxPrice = Math.max(...allPrices);
-              const padding = (maxPrice - minPrice) * 0.15 || maxPrice * 0.05;
-              const yDomain: [number | string, number | string] = [
-                Math.max(0, minPrice - padding),
-                maxPrice + padding,
-              ];
-
               return (
                 <Card key={p.id}>
                   {/* Header */}
@@ -182,83 +159,16 @@ export function PositionsPage() {
                     </div>
                   </div>
 
-                  {/* Mini chart with Entry/SL/TP lines */}
-                  <div className="h-[120px] mb-3 -mx-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
-                        <defs>
-                          <linearGradient id={`grad-${p.id}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={isProfit ? "var(--color-success)" : "var(--color-danger)"} stopOpacity={0.25} />
-                            <stop offset="100%" stopColor={isProfit ? "var(--color-success)" : "var(--color-danger)"} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <YAxis domain={yDomain} hide />
-                        <Tooltip
-                          contentStyle={{
-                            background: "var(--color-surface)",
-                            border: "1px solid var(--color-border)",
-                            borderRadius: 8,
-                            fontSize: 11,
-                          }}
-                          formatter={(v: any) => [`$${fmt(v)}`, "Precio"]}
-                          labelFormatter={() => ""}
-                        />
-                        {chartData.length > 1 && (
-                          <Area
-                            type="monotone"
-                            dataKey="v"
-                            stroke="none"
-                            fill={`url(#grad-${p.id})`}
-                            strokeWidth={0}
-                          />
-                        )}
-                        {chartData.length > 1 && (
-                          <Line
-                            type="monotone"
-                            dataKey="v"
-                            stroke={isProfit ? "var(--color-success)" : "var(--color-danger)"}
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                        )}
-                        {/* Entry line */}
-                        <ReferenceLine
-                          y={entry}
-                          stroke="var(--color-text-muted)"
-                          strokeDasharray="4 4"
-                          strokeWidth={1}
-                          label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }}
-                        />
-                        {/* SL line */}
-                        {sl > 0 && (
-                          <ReferenceLine
-                            y={sl}
-                            stroke="var(--color-danger)"
-                            strokeDasharray="3 3"
-                            strokeWidth={1}
-                            label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }}
-                          />
-                        )}
-                        {/* TP line */}
-                        {tp > 0 && (
-                          <ReferenceLine
-                            y={tp}
-                            stroke="var(--color-success)"
-                            strokeDasharray="3 3"
-                            strokeWidth={1}
-                            label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }}
-                          />
-                        )}
-                        {/* Current price line */}
-                        {current > 0 && (
-                          <ReferenceLine
-                            y={current}
-                            stroke={isProfit ? "var(--color-success)" : "var(--color-danger)"}
-                            strokeWidth={1.5}
-                          />
-                        )}
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                  {/* Chart with 10 style options */}
+                  <div className="mb-3">
+                    <PositionChart
+                      symbol={p.symbol}
+                      entry={entry}
+                      stopLoss={sl}
+                      takeProfit={tp}
+                      side={p.side}
+                      height={200}
+                    />
                   </div>
 
                   {/* Stats grid */}
