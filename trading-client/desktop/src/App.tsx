@@ -3,13 +3,16 @@ import { ThemeProvider } from "./theme/ThemeContext";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Layout, type TabId } from "./components/layout/Layout";
 import { Toast } from "./components/ui/Toast";
-import { OverviewPage } from "./pages/OverviewPage";
-import { ActivityPage } from "./pages/ActivityPage";
-import { PositionsPage } from "./pages/PositionsPage";
-import { PerformancePage } from "./pages/PerformancePage";
-import { MarketPage } from "./pages/MarketPage";
-import { WalletPage } from "./pages/WalletPage";
-import { SettingsPage } from "./pages/SettingsPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { IntelligencePage } from "./pages/IntelligencePage";
+import { OpportunitiesPage } from "./pages/OpportunitiesPage";
+import { RisksPage } from "./pages/RisksPage";
+import { NewsPage } from "./pages/NewsPage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { AlertsPage } from "./pages/AlertsPage";
+import { ConnectionsPage } from "./pages/ConnectionsPage";
+import { SecurityPage } from "./pages/SecurityPage";
+import { PreferencesPage } from "./pages/PreferencesPage";
 import { logger } from "./lib/logger";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
@@ -82,17 +85,17 @@ function BrokerAwareContent({
   const tabs: TabId[] = ["dashboard", "intelligence", "opportunities", "risks", "news", "reports", "alerts", "connections", "security", "preferences"];
 
   const pages: Record<TabId, React.ReactNode> = {
-    dashboard: <OverviewPage />,
-    intelligence: <MarketPage />,
-    opportunities: <ActivityPage />,
-    risks: <PositionsPage />,
-    news: <MarketPage />,
-    reports: <PerformancePage />,
-    alerts: <ActivityPage />,
-    connections: <SettingsPage />,
-    security: <SettingsPage />,
-    preferences: <SettingsPage />,
-    broker: <WalletPage />,
+    dashboard: <DashboardPage />,
+    intelligence: <IntelligencePage />,
+    opportunities: <OpportunitiesPage />,
+    risks: <RisksPage />,
+    news: <NewsPage />,
+    reports: <ReportsPage />,
+    alerts: <AlertsPage />,
+    connections: <ConnectionsPage />,
+    security: <SecurityPage />,
+    preferences: <PreferencesPage />,
+    broker: <ConnectionsPage />,
   };
 
   return (
