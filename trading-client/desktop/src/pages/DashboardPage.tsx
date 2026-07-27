@@ -5,7 +5,7 @@ import { DominanceChart } from "../components/intelligence/DominanceChart";
 import { DailyReportCard } from "../components/intelligence/DailyReportCard";
 import { SignalList } from "../components/intelligence/SignalList";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
-import { SinceLastVisit } from "../components/dashboard/SinceLastVisit";
+import { WelcomePortal } from "../components/dashboard/WelcomePortal";
 import { TodayPriorities } from "../components/dashboard/TodayPriorities";
 import { AIActivityTimeline } from "../components/dashboard/AIActivityTimeline";
 import { OnboardingModal } from "../components/dashboard/OnboardingModal";
@@ -94,35 +94,40 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="p-5 space-y-5 max-w-[1200px] mx-auto">
-      <SinceLastVisit data={sinceLastVisit} loading={loading} />
+    <div className="p-5 space-y-4 max-w-[900px] mx-auto">
+      {/* Conversational welcome — AI greets you like a friend */}
+      <WelcomePortal data={sinceLastVisit} profile={userProfile} loading={loading} />
 
-      <TodayPriorities data={priorities} loading={loading} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AIActivityTimeline data={activity} loading={loading} />
-        <div className="space-y-4">
+      {/* Market pulse — subtle, not overwhelming */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="panel p-3">
+          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">Sentimiento</h3>
+          <FearGreedGauge data={fearGreed} loading={loading} />
+        </div>
+        <div className="panel p-3">
+          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">BTC Dominance</h3>
+          <DominanceChart data={dominance} loading={loading} />
+        </div>
+        <div className="panel p-3">
+          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">Mercado</h3>
           <RegimeBanner overview={overview} loading={loading} />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="panel p-3">
-              <h3 className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2">Fear & Greed</h3>
-              <FearGreedGauge data={fearGreed} loading={loading} />
-            </div>
-            <div className="panel p-3">
-              <h3 className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2">BTC Dominance</h3>
-              <DominanceChart data={dominance} loading={loading} />
-            </div>
-          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* What to review today — friendly priorities */}
+      <TodayPriorities data={priorities} loading={loading} />
+
+      {/* AI activity + signals — side by side, compact */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <AIActivityTimeline data={activity} loading={loading} />
         <div className="panel p-4">
           <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Señales Activas</h3>
           {loading ? <LoadingSkeleton lines={3} /> : <SignalList signals={signals} />}
         </div>
-        <DailyReportCard report={report} loading={loading} />
       </div>
+
+      {/* Daily report — at the bottom, optional read */}
+      <DailyReportCard report={report} loading={loading} />
     </div>
   );
 }
