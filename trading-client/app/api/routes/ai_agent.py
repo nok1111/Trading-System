@@ -556,12 +556,34 @@ def place_binance_manual_order(req: ManualOrderRequest) -> dict:
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado"}
 
-    creds = resolve_broker_credentials("binance", None)
-    if not creds:
-        return {"error": "No tienes API keys de Binance configuradas."}
+    # Try resolving keys: .env first, then user_settings for user_id=1
+    keys = resolve_binancekeys(None)
+    if not keys:
+        try:
+            session = SessionLocal()
+            from app.database.models.user_settings import UserSettings
+            row = session.query(UserSettings).filter_by(user_id=1).first()
+            session.close()
+            if row and row.binance_api_key_enc:
+                k = decrypt(row.binance_api_key_enc)
+                s = decrypt(row.binance_api_secret_enc)
+                if k and s:
+                    keys = (k, s)
+        except Exception:
+            pass
+
+    if not keys:
+        return {"error": "No tienes API keys de Binance configuradas. Ve a Settings para ingresarlas."}
 
     from app.brokers.adapters.binance_adapter import BinanceAdapter
+    from app.brokers.models import BrokerCredentials
 
+    creds = BrokerCredentials(
+        broker_id="binance",
+        api_key=keys[0],
+        api_secret=keys[1],
+        testnet=getattr(settings, "BINANCE_TESTNET", False),
+    )
     adapter = BinanceAdapter(creds)
 
     symbol = req.symbol.upper()
