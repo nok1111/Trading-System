@@ -466,26 +466,87 @@ def get_binance_all_orders(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
     limit: int = 50,
 ) -> dict:
-    """Consulta el historial completo de órdenes desde Binance en tiempo real."""
+    """Consulta el historial completo de órdenes desde Binance en tiempo real.
+
+    Binance /api/v3/allOrders requires a symbol parameter, so we first get
+    the user's balances to find which symbols they trade, then query orders
+    for each. Also fetches open orders (which don't require symbol).
+    """
     creds = resolve_broker_credentials("binance", current_user)
     if not creds:
-        return {"error": "No tienes API keys de Binance configuradas.", "orders": []}
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "orders": [], "active": [], "filled": []}
 
     from app.brokers.adapters.binance_adapter import BinanceAdapter
 
     adapter = BinanceAdapter(creds)
 
+    # 1. Get open orders (no symbol required)
     try:
-        resp = adapter._broker._signed_request("GET", "/api/v3/allOrders", {"limit": limit})
+        open_resp = adapter._broker._signed_request("GET", "/api/v3/openOrders", {})
     except Exception as exc:
-        return {"error": f"No se pudo consultar órdenes: {exc}", "orders": []}
+        err_msg = str(exc)
+        if "401" in err_msg or "-2015" in err_msg:
+            err_msg = "Binance rechazó las credenciales. Verifica permisos de lectura e IP autorizada."
+        return {"error": f"No se pudo consultar órdenes: {err_msg}", "orders": [], "active": [], "filled": []}
 
+    # 2. Get symbols from balance to query historical orders
+    symbols_to_query = set()
+    try:
+        balances = adapter.get_account_balances()
+        for b in balances:
+            if b.free > 0 or b.locked > 0:
+                if b.asset not in ("USDT", "BUSD", "USDC", "EUR", "MXN", "BNB"):
+                    symbols_to_query.add(f"{b.asset}USDT")
+    except Exception:
+        pass
+
+    # Always include common symbols
+    symbols_to_query.update({"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"})
+
+    # 3. Query all orders per symbol
+    all_orders = []
+    for sym in symbols_to_query:
+        try:
+            resp = adapter._broker._signed_request("GET", "/api/v3/allOrders", {"symbol": sym, "limit": limit})
+            all_orders.extend(resp)
+        except Exception:
+            pass
+
+    # 4. Merge open orders + historical, deduplicate by orderId
+    seen_ids = set()
     orders = []
-    for o in resp:
+
+    for o in open_resp:
+        oid = str(o.get("orderId", ""))
+        if oid in seen_ids:
+            continue
+        seen_ids.add(oid)
+        orders.append({
+            "orderId": oid,
+            "clientOrderId": o.get("clientOrderId", ""),
+            "symbol": o.get("symbol", ""),
+            "side": o.get("side", ""),
+            "type": o.get("type", ""),
+            "status": o.get("status", ""),
+            "is_active": True,
+            "quantity": float(o.get("origQty", "0")),
+            "filled_quantity": float(o.get("executedQty", "0")),
+            "price": float(o.get("price", "0")) if o.get("price") and o.get("price") != "0" else None,
+            "avg_price": float(o.get("avgPrice", "0")) if o.get("avgPrice") and o.get("avgPrice") != "0" else None,
+            "stop_price": float(o.get("stopPrice", "0")) if o.get("stopPrice") and o.get("stopPrice") != "0" else None,
+            "time": o.get("time", 0),
+            "updateTime": o.get("updateTime", 0),
+        })
+
+    for o in all_orders:
+        oid = str(o.get("orderId", ""))
+        if oid in seen_ids:
+            continue
+        seen_ids.add(oid)
         status = o.get("status", "")
         is_active = status in ("NEW", "PARTIALLY_FILLED", "PENDING_NEW", "PENDING_CANCEL")
         orders.append({
-            "orderId": str(o.get("orderId", "")),
+            "orderId": oid,
             "clientOrderId": o.get("clientOrderId", ""),
             "symbol": o.get("symbol", ""),
             "side": o.get("side", ""),
@@ -500,6 +561,9 @@ def get_binance_all_orders(
             "time": o.get("time", 0),
             "updateTime": o.get("updateTime", 0),
         })
+
+    # Sort by time descending
+    orders.sort(key=lambda x: x.get("time", 0), reverse=True)
 
     active = [o for o in orders if o["is_active"]]
     filled = [o for o in orders if not o["is_active"]]
