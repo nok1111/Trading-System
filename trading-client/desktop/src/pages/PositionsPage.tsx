@@ -9,24 +9,6 @@ import { fmt, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PositionChart } from "../components/PositionChart";
 
-function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div
-      className="relative inline-flex"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      {children}
-      {show && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg bg-[var(--color-surface-3)] border border-[var(--color-border)] text-[11px] text-[var(--color-text)] whitespace-nowrap z-50 shadow-lg pointer-events-none">
-          {text}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function PositionsPage() {
   const [positions, setPositions] = useState<any[]>([]);
   const [riskEvents, setRiskEvents] = useState<any[]>([]);
@@ -256,11 +238,11 @@ export function PositionsPage() {
 
                   {/* Sell & Hold buttons */}
                   <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex gap-2">
-                    <Tooltip text="Vende y cierra la posición inmediatamente al precio de mercado">
                       <Button
                         variant="danger"
                         size="sm"
                         className="flex-1"
+                        title="Vende y cierra la posición inmediatamente al precio de mercado"
                         onClick={async () => {
                           try {
                             await api("/api/paper-trading/sell", {
@@ -276,12 +258,11 @@ export function PositionsPage() {
                       >
                         Sell
                       </Button>
-                    </Tooltip>
-                    <Tooltip text={isHeld ? "Quitar Hold: la IA podrá vender esta posición" : "Hold: la IA no venderá esta posición automáticamente"}>
                       <Button
                         variant={isHeld ? "primary" : "default"}
                         size="sm"
                         className="flex-1"
+                        title={isHeld ? "Quitar Hold: la IA podrá vender esta posición" : "Hold: la IA no venderá esta posición automáticamente"}
                         onClick={async () => {
                           try {
                             await api("/api/paper-trading/hold", {
@@ -297,7 +278,6 @@ export function PositionsPage() {
                       >
                         {isHeld ? "Hold ✓" : "Hold"}
                       </Button>
-                    </Tooltip>
                   </div>
                 </Card>
               );
