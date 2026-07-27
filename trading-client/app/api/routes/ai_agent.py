@@ -1068,9 +1068,7 @@ def ai_agent_stats() -> dict:
 # ---------------------------------------------------------------------------
 
 @router.get("/intelligence/changes-since-last-login")
-def get_changes_since_last_login(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-) -> dict:
+def get_changes_since_last_login() -> dict:
     """Returns changes since the user's last login.
 
     Combines Event Journal entries with portfolio changes to build
@@ -1080,8 +1078,7 @@ def get_changes_since_last_login(
 
     session = SessionLocal()
     try:
-        user_id = current_user.id if current_user else 0
-        return _get_changes(session, user_id)
+        return _get_changes(session, user_id=0)
     except Exception as exc:
         return {
             "lastLogin": datetime.now(UTC).isoformat(),
@@ -1089,6 +1086,10 @@ def get_changes_since_last_login(
             "greeting": "Hola",
             "changes": [],
             "toReview": [],
+            "portfolio": {"totalPnl": 0, "positionsCount": 0, "totalValue": 0, "bestPerformer": None, "worstPerformer": None},
+            "movers": [],
+            "buyRecommendations": [],
+            "highImpactNews": [],
             "error": str(exc),
         }
     finally:
@@ -1096,9 +1097,7 @@ def get_changes_since_last_login(
 
 
 @router.get("/intelligence/today-priorities")
-def get_today_priorities(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-) -> dict:
+def get_today_priorities() -> dict:
     """Returns prioritized assets for the user to review today.
 
     Based on open positions and recent signals, ranked by confidence.
@@ -1107,8 +1106,7 @@ def get_today_priorities(
 
     session = SessionLocal()
     try:
-        user_id = current_user.id if current_user else 0
-        return _get_priorities(session, user_id)
+        return _get_priorities(session, user_id=0)
     except Exception as exc:
         return {"priorities": [], "error": str(exc)}
     finally:
