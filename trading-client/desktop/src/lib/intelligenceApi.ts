@@ -25,13 +25,9 @@ import {
   MOCK_MARKET_OVERVIEW,
   MOCK_FEAR_GREED,
   MOCK_DOMINANCE,
-  MOCK_NEWS,
   MOCK_MACRO_EVENTS,
   MOCK_WHALE_ACTIVITY,
   MOCK_DAILY_REPORT,
-  MOCK_SINCE_LAST_VISIT,
-  MOCK_TODAY_PRIORITIES,
-  MOCK_AI_ACTIVITY,
 } from "./intelligenceMocks";
 
 function getAiServerUrl(): string {
@@ -86,10 +82,10 @@ export async function getDominance(): Promise<DominanceData | null> {
 }
 
 export async function getNews(limit?: number): Promise<NewsItem[]> {
-  if (!isFeatureEnabled("news")) return MOCK_NEWS.slice(0, limit ?? 5);
   try {
     const qs = limit ? `?limit=${limit}` : "";
-    return await aiServerFetch<NewsItem[]>(`/v1/intelligence/news${qs}`);
+    const data = await api<{ news: NewsItem[]; count: number }>(`/api/intelligence/news${qs}`);
+    return data.news || [];
   } catch {
     return [];
   }
@@ -234,29 +230,29 @@ export { getAiServerUrl };
 export async function getSinceLastVisit(): Promise<SinceLastVisitData | null> {
   try {
     const data = await api<SinceLastVisitData>("/api/intelligence/changes-since-last-login");
-    if (!data || (data as any).error) return MOCK_SINCE_LAST_VISIT;
+    if (!data || (data as any).error) return null;
     return data;
   } catch {
-    return MOCK_SINCE_LAST_VISIT;
+    return null;
   }
 }
 
 export async function getTodayPriorities(): Promise<TodayPrioritiesData | null> {
   try {
     const data = await api<TodayPrioritiesData>("/api/intelligence/today-priorities");
-    if (!data || (data as any).error) return MOCK_TODAY_PRIORITIES;
+    if (!data || (data as any).error) return null;
     return data;
   } catch {
-    return MOCK_TODAY_PRIORITIES;
+    return null;
   }
 }
 
 export async function getAIActivity(): Promise<AIActivityData | null> {
   try {
     const data = await api<AIActivityData>("/api/intelligence/activity");
-    if (!data || (data as any).error) return MOCK_AI_ACTIVITY;
+    if (!data || (data as any).error) return null;
     return data;
   } catch {
-    return MOCK_AI_ACTIVITY;
+    return null;
   }
 }

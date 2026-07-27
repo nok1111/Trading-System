@@ -1132,3 +1132,105 @@ def get_intelligence_activity(
         return {"entries": [], "error": str(exc)}
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Intelligence News Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/intelligence/news")
+def get_intelligence_news(
+    hours: int = Query(24, ge=1, le=168),
+    impact: str | None = Query(None),
+    asset: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    """Returns stored news articles, filtered by time/impact/asset."""
+    from app.intelligence.news_fetcher import get_news
+
+    try:
+        news = get_news(hours=hours, impact=impact, asset=asset, limit=limit, offset=offset)
+        return {"news": news, "count": len(news)}
+    except Exception as exc:
+        return {"news": [], "count": 0, "error": str(exc)}
+
+
+@router.post("/intelligence/news/fetch")
+def trigger_news_fetch(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Manually trigger a news fetch cycle (normally runs on scheduler)."""
+    from app.intelligence.news_fetcher import fetch_and_store_news
+
+    try:
+        count = fetch_and_store_news(max_per_feed=10, min_impact="medium")
+        return {"fetched": count, "status": "ok"}
+    except Exception as exc:
+        return {"fetched": 0, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Analysis Endpoints (historical AI analysis per asset)
+# ---------------------------------------------------------------------------
+
+@router.get("/intelligence/analysis/{asset}")
+def get_analysis_history(
+    asset: str,
+    hours: int = Query(168, ge=1, le=2160),  # up to 90 days
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """Returns historical AI analysis for a specific asset."""
+    from app.intelligence.analysis_storage import get_analysis_history as _get_history
+
+    try:
+        history = _get_history(asset, hours=hours, limit=limit)
+        return {"asset": asset.upper(), "history": history, "count": len(history)}
+    except Exception as exc:
+        return {"asset": asset.upper(), "history": [], "count": 0, "error": str(exc)}
+
+
+@router.get("/intelligence/analysis/{asset}/trend")
+def get_analysis_trend(
+    asset: str,
+    hours: int = Query(168, ge=1, le=2160),
+) -> dict:
+    """Returns trend analysis for an asset (how decision/confidence evolved)."""
+    from app.intelligence.analysis_storage import get_analysis_trend as _get_trend
+
+    try:
+        return _get_trend(asset, hours=hours)
+    except Exception as exc:
+        return {"asset": asset.upper(), "trend": "error", "error": str(exc)}
+
+
+@router.get("/intelligence/analysis")
+def get_all_latest_analyses(
+    assets: str | None = Query(None),  # comma-separated: BTC,ETH,SOL
+) -> dict:
+    """Returns the latest analysis for all assets (or specified ones)."""
+    from app.intelligence.analysis_storage import get_all_latest_analyses as _get_all
+
+    try:
+        asset_list = assets.split(",") if assets else None
+        analyses = _get_all(asset_list)
+        return {"analyses": analyses, "count": len(analyses)}
+    except Exception as exc:
+        return {"analyses": [], "count": 0, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Cleanup Endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/intelligence/cleanup")
+def trigger_cleanup(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Manually trigger cleanup of old news, analysis, and events."""
+    from app.intelligence.cleanup import run_cleanup
+
+    try:
+        return run_cleanup()
+    except Exception as exc:
+        return {"error": str(exc)}

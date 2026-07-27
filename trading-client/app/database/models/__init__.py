@@ -5,7 +5,9 @@ from app.database.models.backtest_run import BacktestRun
 from app.database.models.broker_account import BrokerAccount
 from app.database.models.market_bar import MarketBar
 from app.database.models.model_version import ModelVersion
+from app.database.models.intelligence_analysis import IntelligenceAnalysis
 from app.database.models.intelligence_event import IntelligenceEvent
+from app.database.models.intelligence_news import IntelligenceNews
 from app.database.models.order import Order
 from app.database.models.order_reconciliation import OrderReconciliation
 from app.database.models.position import Position
@@ -23,7 +25,9 @@ __all__ = [
     "BrokerAccount",
     "MarketBar",
     "ModelVersion",
+    "IntelligenceAnalysis",
     "IntelligenceEvent",
+    "IntelligenceNews",
     "Order",
     "OrderReconciliation",
     "Position",

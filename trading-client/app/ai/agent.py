@@ -501,6 +501,10 @@ class AITradingAgent:
         # 2.5. Record events to journal for multi-user dashboard
         self._record_events_to_journal(signals, alerts)
 
+        # 2.6. Fetch news every 6 cycles (~3min at 30s interval)
+        if self._cycle % 6 == 0:
+            self._fetch_news()
+
         if not signals:
             self._add_log("info", "No hay señales activas del Intelligence Platform", {"cycle": self._cycle, "phase": "no_signals"})
             self._hold_streak += 1
@@ -663,10 +667,37 @@ class AITradingAgent:
                 # 4. Update snapshot for next cycle
                 self._last_signals_snapshot = current_snapshot
 
+                # 5. Save analysis snapshots to analysis storage (like klines for AI)
+                from app.intelligence.analysis_storage import AnalysisStorage
+                storage = AnalysisStorage(session)
+                for signal in signals:
+                    storage.save(
+                        asset=signal.asset,
+                        decision=signal.decision,
+                        confidence=signal.confidence,
+                        risk_level="medium",
+                        reasons={"main_reasons": signal.main_reasons},
+                        risks={"main_risks": signal.main_risks},
+                        metrics={"agreement": signal.agreement} if hasattr(signal, "agreement") else {},
+                        agent_votes=signal.agreement if hasattr(signal, "agreement") else {},
+                    )
+
             finally:
                 session.close()
         except Exception as exc:
             logger.warning("[AI Agent] Failed to record events to journal: %s", exc)
+
+    def _fetch_news(self) -> None:
+        """Fetch and store important crypto news (runs every few cycles)."""
+        try:
+            from app.intelligence.news_fetcher import fetch_and_store_news
+            count = fetch_and_store_news(max_per_feed=10, min_impact="medium")
+            if count > 0:
+                self._add_log("info", f"News fetcher: {count} new articles stored", {
+                    "cycle": self._cycle, "phase": "news_fetch",
+                })
+        except Exception as exc:
+            logger.warning("[AI Agent] News fetch failed: %s", exc)
 
     def _build_portfolio_for_match(self, positions: list | None) -> dict:
         """Build portfolio dict for the Portfolio Matcher from open positions."""
