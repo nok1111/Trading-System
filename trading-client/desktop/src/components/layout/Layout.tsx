@@ -27,6 +27,7 @@ import { Badge } from "../ui/Badge";
 import { MarketStatusBar } from "./MarketStatusBar";
 import { BrokerListGroup } from "../brokers/BrokerListGroup";
 import { BrokerConnectModal } from "../brokers/BrokerConnectModal";
+import { BrokerPage } from "../../pages/BrokerPage";
 import {
   isBrokerConnected,
   isBrokerDegraded,
@@ -102,6 +103,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [signals, setSignals] = useState<any[]>([]);
   const [expandedBrokers, setExpandedBrokers] = useState<Set<string>>(new Set());
   const [connectModalBroker, setConnectModalBroker] = useState<SupportedBroker | null>(null);
+  const [selectedBrokerModule, setSelectedBrokerModule] = useState<{ brokerId: string; moduleId: string } | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
@@ -268,8 +270,11 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                         setConnectModalBroker(broker);
                       }
                     }}
-                    selectedModule={null}
-                    onSelectModule={() => onTabChange("broker")}
+                    selectedModule={selectedBrokerModule?.brokerId === broker.brokerId ? selectedBrokerModule.moduleId : null}
+                    onSelectModule={(moduleId) => {
+                      setSelectedBrokerModule({ brokerId: broker.brokerId, moduleId });
+                      onTabChange("broker");
+                    }}
                     collapsed={collapsed}
                   />
                 );
@@ -542,7 +547,16 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
+        <main className="flex-1 overflow-y-auto min-h-0">
+          {activeTab === "broker" ? (
+            <BrokerPage
+              brokerId={selectedBrokerModule?.brokerId || null}
+              moduleId={selectedBrokerModule?.moduleId || null}
+            />
+          ) : (
+            children
+          )}
+        </main>
       </div>
 
       {/* Connect modal */}

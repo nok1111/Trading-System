@@ -272,3 +272,4 @@
     at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
     at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
     at App (<anonymous>)
+[2026-07-27T18:26:01.073Z] [ERROR] Unhandled promise rejection | Not Found

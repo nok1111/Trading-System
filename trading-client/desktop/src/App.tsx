@@ -95,7 +95,7 @@ function BrokerAwareContent({
     connections: <ConnectionsPage />,
     security: <SecurityPage />,
     preferences: <PreferencesPage />,
-    broker: <ConnectionsPage />,
+    broker: null,
   };
 
   return (
