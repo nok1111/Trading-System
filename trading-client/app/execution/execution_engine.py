@@ -16,6 +16,7 @@ from app.database.models.position import Position
 from app.database.models.risk_event import RiskEvent
 from app.database.models.signal import Signal
 from app.database.models.trade import Trade
+from app.execution.order_manager import OrderManager
 from app.models.signal import SignalCreate
 from app.risk.engine import RiskEngine
 from app.risk.risk_manager import RiskManager
@@ -36,12 +37,14 @@ class ExecutionEngine:
         session: Session,
         settings: Settings,
         risk_engine: RiskEngine | None = None,
+        order_manager: OrderManager | None = None,
     ) -> None:
         self.broker = broker
         self.risk_manager = risk_manager
         self.session = session
         self.settings = settings
         self.risk_engine = risk_engine
+        self.order_manager = order_manager
 
     def process_signal(self, signal_create: SignalCreate, account: AccountSnapshot | None = None) -> Order | None:
         """Persiste la señal, evalúa riesgo y, si aplica, envía orden al broker.
@@ -151,8 +154,26 @@ class ExecutionEngine:
         price = self._get_live_price(signal.symbol) or signal.entry_price or self.broker.get_quote(signal.symbol)
         quantity = self.risk_manager.calculate_position_size(signal, account)
 
+        if self.order_manager is not None:
+            order = self.order_manager.process_order_lifecycle(
+                signal, signal_db, quantity, price, side="BUY",
+            )
+            if order is None:
+                return None  # type: ignore[return-value]
+            if order.internal_status == "PENDING_APPROVAL":
+                logger.info("Order %s pending human approval", order.id)
+                return order
+            if order.internal_status == "FILLED" and order.filled_quantity > 0:
+                self._record_trade_and_position(order, signal_db)
+                self._place_exchange_sl_tp(order, signal_db)
+            self._notify_trade(order, signal_db)
+            self.session.commit()
+            return order
+
+        # Fallback: legacy path without OrderManager
         order = Order(
             client_order_id=self._generate_client_order_id(),
+            idempotency_key=uuid4().hex[:36],
             broker_order_id=None,
             timestamp=datetime.now(tz=UTC),
             symbol=signal.symbol,
@@ -162,6 +183,7 @@ class ExecutionEngine:
             filled_quantity=Decimal("0"),
             price=price,
             status="pending",
+            internal_status="DRAFT",
             signal_id=signal_db.id,
             metadata_json={"source": "execution_engine", "signal_id": signal_db.id},
         )
@@ -190,8 +212,24 @@ class ExecutionEngine:
         )
         price = self._get_live_price(signal.symbol) or signal.entry_price or self.broker.get_quote(signal.symbol)
 
+        if self.order_manager is not None:
+            order = self.order_manager.process_order_lifecycle(
+                signal, signal_db, position.quantity, price, side="SELL",
+            )
+            if order is None:
+                return None  # type: ignore[return-value]
+            if order.internal_status == "PENDING_APPROVAL":
+                logger.info("Sell order %s pending human approval", order.id)
+                return order
+            if order.internal_status == "FILLED" and order.filled_quantity > 0:
+                self._close_position(order, position, signal_db)
+            self.session.commit()
+            return order
+
+        # Fallback: legacy path without OrderManager
         order = Order(
             client_order_id=self._generate_client_order_id(),
+            idempotency_key=uuid4().hex[:36],
             broker_order_id=None,
             timestamp=datetime.now(tz=UTC),
             symbol=signal.symbol,
@@ -201,6 +239,7 @@ class ExecutionEngine:
             filled_quantity=Decimal("0"),
             price=price,
             status="pending",
+            internal_status="DRAFT",
             signal_id=signal_db.id,
             metadata_json={"source": "execution_engine", "closing_position_id": position.id},
         )

@@ -6,6 +6,24 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
 
+# 14 estados internos del Order Manager (Fase 6)
+ORDER_INTERNAL_STATUSES = [
+    "DRAFT",               # Creado, sin validar
+    "VALIDATED",           # Validado por Execution Manager
+    "RISK_APPROVED",       # Aprobado por Risk Manager + RiskEngine
+    "PENDING_APPROVAL",    # Espera aprobación humana
+    "APPROVED",            # Aprobado humanamente
+    "SUBMITTED",           # Enviado al broker
+    "PARTIALLY_FILLED",    # Parcialmente lleno
+    "FILLED",              # Completamente lleno
+    "CANCELLED",           # Cancelado antes de ejecución
+    "REJECTED",            # Rechazado por el broker
+    "EXPIRED",             # Expirado sin ejecución
+    "RECONCILING",         # En reconciliación con broker
+    "RECONCILED",          # Reconciliado exitosamente
+    "FAILED",              # Falló definitivamente
+]
+
 
 class Order(Base):
     """Orden enviada o simulada hacia un broker."""
@@ -15,6 +33,9 @@ class Order(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     client_order_id: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True,
     )
     broker_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
@@ -32,6 +53,9 @@ class Order(Base):
         String(20),
         nullable=False,
         default="submitted",  # submitted, pending, filled, cancelled, rejected
+    )
+    internal_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="DRAFT",
     )
     signal_id: Mapped[int | None] = mapped_column(
         ForeignKey("signals.id"), nullable=True, index=True
@@ -51,4 +75,5 @@ class Order(Base):
         Index("ix_orders_symbol", "symbol"),
         Index("ix_orders_status", "status"),
         Index("ix_orders_timestamp", "timestamp"),
+        Index("ix_orders_internal_status", "internal_status"),
     )
