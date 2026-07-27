@@ -44,6 +44,7 @@ def health() -> dict:
 
 
 # Include routers (imported after app creation to avoid circular imports)
-from app.routes import analyze
+from app.routes import analyze, intelligence
 
 app.include_router(analyze.router)
+app.include_router(intelligence.router)
