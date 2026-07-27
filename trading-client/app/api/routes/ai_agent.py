@@ -14,6 +14,7 @@ from app.api.helpers import (
     get_or_create_agent,
     get_shared_broker,
     resolve_binance_keys,
+    resolve_broker_credentials,
 )
 from app.config import get_settings
 from app.database.session import SessionLocal
@@ -322,24 +323,19 @@ def get_binance_balance(
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado", "assets": [], "total_usd": 0, "total_mxn": 0}
 
-    keys = resolve_binance_keys(current_user)
-    if not keys:
+    creds = resolve_broker_credentials("binance", current_user)
+    if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Ve a Settings para ingresarlas.", "assets": [], "total_usd": 0, "total_mxn": 0}
 
-    from app.brokers.binance_broker import BinanceBroker
+    from app.brokers.adapters.binance_adapter import BinanceAdapter
 
-    broker = BinanceBroker(
-        api_key=keys[0],
-        api_secret=keys[1],
-        testnet=settings.BINANCE_TESTNET,
-    )
+    adapter = BinanceAdapter(creds)
 
     try:
-        resp = broker._signed_request("GET", "/api/v3/account", {})
+        balances = adapter.get_account_balances()
     except Exception as exc:
         return {"error": f"No se pudo conectar a Binance: {exc}", "assets": [], "total_usd": 0, "total_mxn": 0}
 
-    balances = resp.get("balances", [])
     assets = []
     total_usd = 0.0
 
@@ -355,13 +351,13 @@ def get_binance_balance(
         mxn_rate = 18.5  # fallback approximate
 
     for b in balances:
-        free = float(b["free"])
-        locked = float(b["locked"])
+        free = float(b.free)
+        locked = float(b.locked)
         total = free + locked
         if total <= 0:
             continue
 
-        asset = b["asset"]
+        asset = b.asset
         usd_value = 0.0
 
         if asset in ("USDT", "BUSD", "USDC", "UST", "USD", "EUR"):

@@ -154,25 +154,33 @@ def list_positions(
     # Update current_price and unrealized_pnl for open positions
     open_positions = [p for p in positions if p.status == "open"]
     if open_positions:
-        import httpx as _httpx
         from decimal import Decimal as Dec
+
+        from app.brokers.adapters.binance_adapter import BinanceAdapter
+        from app.brokers.models import BrokerCredentials, normalize_symbol
+        from app.config import get_settings
+
+        settings = get_settings()
+        creds = None
+        if settings.BROKER_API_KEY and settings.BROKER_API_SECRET:
+            creds = BrokerCredentials(
+                broker_id="binance",
+                api_key=settings.BROKER_API_KEY,
+                api_secret=settings.BROKER_API_SECRET,
+                testnet=settings.BINANCE_TESTNET,
+            )
+
         updated = False
         for pos in open_positions:
             try:
                 live = None
-                resp = _httpx.get(
-                    f"https://api.binance.com/api/v3/ticker/price?symbol={pos.symbol}",
-                    timeout=5.0,
-                )
-                if resp.status_code == 200:
-                    live = float(resp.json()["price"])
-                else:
-                    resp = _httpx.get(
-                        f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={pos.symbol}",
-                        timeout=5.0,
-                    )
-                    if resp.status_code == 200:
-                        live = float(resp.json()["price"])
+                if creds:
+                    adapter = BinanceAdapter(creds)
+                    try:
+                        ticker = adapter.get_ticker(normalize_symbol(pos.symbol))
+                        live = ticker.price
+                    except Exception:
+                        pass
                 if live and live > 0:
                     pos.current_price = Dec(str(live))
                     pos.unrealized_pnl = (Dec(str(live)) - pos.entry_price) * pos.quantity

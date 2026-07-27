@@ -2,12 +2,13 @@
 
 from fastapi import HTTPException
 
+from app.brokers.models import BrokerCredentials
 from app.config import get_settings
 from app.database.session import SessionLocal
 from app.services.crypto import decrypt
 
 
-def resolve_binance_keys(current_user=None) -> tuple[str, str] | None:
+def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
     """Resolve Binance API keys: user stored > .env fallback. Returns (key, secret) or None."""
     # Check user_settings table first (where keys are stored via Settings UI)
     if current_user:
@@ -38,10 +39,31 @@ def resolve_binance_keys(current_user=None) -> tuple[str, str] | None:
     return None
 
 
+def resolve_broker_credentials(
+    broker_id: str = "binance",
+    current_user=None,
+) -> BrokerCredentials | None:
+    """Resolve broker credentials into a normalized BrokerCredentials object.
+
+    Returns None if no credentials are found.
+    """
+    keys = resolve_binancekeys(current_user)
+    if not keys:
+        return None
+    settings = get_settings()
+    return BrokerCredentials(
+        broker_id=broker_id,
+        api_key=keys[0],
+        api_secret=keys[1],
+        testnet=getattr(settings, "BINANCE_TESTNET", False),
+    )
+
+
 def build_strategy(name: str, settings):
     """Construye una estrategia por nombre."""
     if name == "ml":
         from pathlib import Path
+
         from app.ml import MLPredictor
         model_path = "models/BTCUSDT_ml_model.json"
         if not Path(model_path).exists():
@@ -79,7 +101,6 @@ def get_shared_broker(binance_keys: tuple[str, str] | None = None):
 
     if binance_keys:
         # Override settings with user keys
-        from app.config import Settings
         override = settings.model_copy(update={"BROKER_API_KEY": binance_keys[0], "BROKER_API_SECRET": binance_keys[1]})
         broker = create_broker(override)
     else:
