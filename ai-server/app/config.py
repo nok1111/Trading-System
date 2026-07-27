@@ -55,11 +55,15 @@ class Settings(BaseSettings):
     INDICATOR_TIMEFRAMES: str = "15m,1h,4h,1d"
     MARKET_DATA_CACHE_TTL_SECONDS: int = 120
 
-    # Data feeds (stubs for now, real impl in Phase 7)
+    # Data feeds (real implementations with graceful degradation)
     ENABLE_NEWS_FEED: bool = False
     ENABLE_ONCHAIN_FEED: bool = False
     ENABLE_MACRO_FEED: bool = False
     ENABLE_SENTIMENT_FEED: bool = False
+    # Feed API keys (optional — feeds degrade gracefully without them)
+    NEWS_API_TOKEN: str | None = None  # CryptoPanic auth token
+    ONCHAIN_API_KEY: str | None = None  # Glassnode API key
+    FEED_TIMEOUT_SECONDS: int = 10
 
     # Event-Driven Scheduler (Phase E)
     SCHEDULER_ENABLED: bool = False
