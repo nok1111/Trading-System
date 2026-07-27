@@ -1234,3 +1234,58 @@ def trigger_cleanup(
         return run_cleanup()
     except Exception as exc:
         return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Market Sources Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/intelligence/sources")
+def get_market_sources(
+    category: str | None = Query(None),
+    asset_type: str | None = Query(None),
+) -> dict:
+    """Returns configured market data sources, optionally filtered."""
+    from app.intelligence.market_sources import MARKET_SOURCES, SOURCE_CATEGORIES
+
+    sources = MARKET_SOURCES
+    if category:
+        sources = [s for s in sources if s.category == category]
+    if asset_type:
+        sources = [s for s in sources if s.asset_type == asset_type or s.asset_type == "general"]
+
+    return {
+        "sources": [
+            {
+                "name": s.name,
+                "url": s.url,
+                "category": s.category,
+                "asset_type": s.asset_type,
+                "priority": s.priority,
+                "requires_auth": s.requires_auth,
+                "notes": s.notes,
+            }
+            for s in sorted(sources, key=lambda x: x.priority)
+        ],
+        "count": len(sources),
+        "categories": SOURCE_CATEGORIES,
+    }
+
+
+@router.get("/intelligence/sources/context")
+def get_sources_for_agent(
+    asset: str | None = Query(None),
+    include_crypto: bool = Query(True),
+    include_stocks: bool = Query(True),
+    include_macro: bool = Query(True),
+) -> dict:
+    """Returns a context string of available sources for AI agent prompts."""
+    from app.intelligence.market_sources import get_sources_for_agent_context
+
+    context = get_sources_for_agent_context(
+        asset=asset,
+        include_crypto=include_crypto,
+        include_stocks=include_stocks,
+        include_macro=include_macro,
+    )
+    return {"context": context}

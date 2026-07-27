@@ -21,17 +21,12 @@ from sqlalchemy.orm import Session
 
 from app.database.models.intelligence_news import IntelligenceNews
 from app.database.session import SessionLocal
+from app.intelligence.market_sources import RSS_FEEDS_EXTENDED, get_rss_feeds
 
 logger = logging.getLogger(__name__)
 
-# RSS feeds — free, no API key needed
-RSS_FEEDS: list[dict[str, str]] = [
-    {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"},
-    {"name": "CoinTelegraph", "url": "https://cointelegraph.com/rss"},
-    {"name": "Bitcoin Magazine", "url": "https://bitcoinmagazine.com/.rss/full/"},
-    {"name": "CryptoSlate", "url": "https://cryptoslate.com/feed/"},
-    {"name": "The Block", "url": "https://www.theblock.co/rss.xml"},
-]
+# RSS feeds — use extended list from market_sources.py
+RSS_FEEDS: list[dict[str, str]] = get_rss_feeds(min_priority=3)
 
 # Keywords that indicate high-impact news
 HIGH_IMPACT_KEYWORDS = [
