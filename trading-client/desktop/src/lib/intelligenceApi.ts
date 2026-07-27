@@ -1,4 +1,5 @@
 import { isFeatureEnabled } from "./featureFlags";
+import { api } from "./api";
 import type {
   MarketOverview,
   FearGreedData,
@@ -232,7 +233,9 @@ export { getAiServerUrl };
 
 export async function getSinceLastVisit(): Promise<SinceLastVisitData | null> {
   try {
-    return await aiServerFetch<SinceLastVisitData>("/v1/intelligence/changes-since-last-login");
+    const data = await api<SinceLastVisitData>("/api/intelligence/changes-since-last-login");
+    if (!data || (data as any).error) return MOCK_SINCE_LAST_VISIT;
+    return data;
   } catch {
     return MOCK_SINCE_LAST_VISIT;
   }
@@ -240,7 +243,9 @@ export async function getSinceLastVisit(): Promise<SinceLastVisitData | null> {
 
 export async function getTodayPriorities(): Promise<TodayPrioritiesData | null> {
   try {
-    return await aiServerFetch<TodayPrioritiesData>("/v1/intelligence/today-priorities");
+    const data = await api<TodayPrioritiesData>("/api/intelligence/today-priorities");
+    if (!data || (data as any).error) return MOCK_TODAY_PRIORITIES;
+    return data;
   } catch {
     return MOCK_TODAY_PRIORITIES;
   }
@@ -248,7 +253,9 @@ export async function getTodayPriorities(): Promise<TodayPrioritiesData | null> 
 
 export async function getAIActivity(): Promise<AIActivityData | null> {
   try {
-    return await aiServerFetch<AIActivityData>("/v1/intelligence/activity");
+    const data = await api<AIActivityData>("/api/intelligence/activity");
+    if (!data || (data as any).error) return MOCK_AI_ACTIVITY;
+    return data;
   } catch {
     return MOCK_AI_ACTIVITY;
   }

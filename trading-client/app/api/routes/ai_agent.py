@@ -1061,3 +1061,74 @@ def ai_agent_stats() -> dict:
         return {"error": str(exc)}
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Dashboard Endpoints (Phase 1: Event Journal + Personalization)
+# ---------------------------------------------------------------------------
+
+@router.get("/intelligence/changes-since-last-login")
+def get_changes_since_last_login(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Returns changes since the user's last login.
+
+    Combines Event Journal entries with portfolio changes to build
+    the 'Since Last Visit' section of the dashboard.
+    """
+    from app.intelligence.personalizer import get_changes_since_last_login as _get_changes
+
+    session = SessionLocal()
+    try:
+        user_id = current_user.id if current_user else 0
+        return _get_changes(session, user_id)
+    except Exception as exc:
+        return {
+            "lastLogin": datetime.now(UTC).isoformat(),
+            "hoursSinceLogin": 24,
+            "greeting": "Hola",
+            "changes": [],
+            "toReview": [],
+            "error": str(exc),
+        }
+    finally:
+        session.close()
+
+
+@router.get("/intelligence/today-priorities")
+def get_today_priorities(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Returns prioritized assets for the user to review today.
+
+    Based on open positions and recent signals, ranked by confidence.
+    """
+    from app.intelligence.personalizer import get_today_priorities as _get_priorities
+
+    session = SessionLocal()
+    try:
+        user_id = current_user.id if current_user else 0
+        return _get_priorities(session, user_id)
+    except Exception as exc:
+        return {"priorities": [], "error": str(exc)}
+    finally:
+        session.close()
+
+
+@router.get("/intelligence/activity")
+def get_intelligence_activity(
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """Returns the AI activity timeline (chronological agent decisions).
+
+    Reads from the Event Journal, falling back to AI agent logs if empty.
+    """
+    from app.intelligence.personalizer import get_activity as _get_activity
+
+    session = SessionLocal()
+    try:
+        return _get_activity(session, hours=24, limit=limit)
+    except Exception as exc:
+        return {"entries": [], "error": str(exc)}
+    finally:
+        session.close()

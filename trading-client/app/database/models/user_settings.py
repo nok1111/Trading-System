@@ -1,6 +1,8 @@
 """Local user settings model — stores encrypted API keys per user in local SQLite."""
 
-from sqlalchemy import Integer, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -27,3 +29,4 @@ class UserSettings(Base):
     ai_premium_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     telegram_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     telegram_alerts: Mapped[bool] = mapped_column(default=False, nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
