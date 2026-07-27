@@ -6,6 +6,7 @@ import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { NotConnectedState } from "../components/common/NotConnectedState";
 import { BrokerStatusBadge } from "../components/brokers/BrokerStatusBadge";
 import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
+import { PriceChart } from "../components/charts/PriceChart";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
 interface BrokerPageProps {
@@ -266,11 +267,27 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
 }
 
 function MarketsModule() {
+  const [symbol, setSymbol] = useState("BTCUSDT");
+  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "DOGEUSDT", "AVAXUSDT", "XRPUSDT", "ADAUSDT"];
+
   return (
-    <div className="panel p-6 text-center">
-      <TrendingUp size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
-      <p className="text-[14px] font-bold text-[var(--color-text)]">Mercados</p>
-      <p className="text-[12px] text-[var(--color-text-muted)] mt-1">Datos de mercado en vivo próximamente</p>
+    <div className="space-y-4">
+      <div className="flex gap-1.5 flex-wrap">
+        {symbols.map((s) => (
+          <button
+            key={s}
+            onClick={() => setSymbol(s)}
+            className={`px-3 h-8 rounded-[8px] text-[12px] font-bold transition-colors ${
+              symbol === s
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+      <PriceChart symbol={symbol} interval="1h" height={420} />
     </div>
   );
 }
