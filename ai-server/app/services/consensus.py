@@ -210,6 +210,8 @@ def compute_agreement(agent_results: dict[str, dict | None]) -> dict[str, int]:
         "onchain_analyst": "onchainBias",
         "opportunity_detector": "suggestion",
         "sentiment_analyst": "sentimentScore",
+        "liquidity_analyst": "liquidityRating",
+        "regime_analyst": "regime",
     }
 
     for agent_id, result in agent_results.items():
@@ -226,9 +228,9 @@ def compute_agreement(agent_results: dict[str, dict | None]) -> dict[str, int]:
 
         if isinstance(value, str):
             v = value.upper()
-            if v in ("BUY", "BUY_ON_PULLBACK", "BULLISH", "ACCUMULATE", "BREAKOUT", "BOUNCE", "CONTINUE_TREND"):
+            if v in ("BUY", "BUY_ON_PULLBACK", "BULLISH", "ACCUMULATE", "BREAKOUT", "BOUNCE", "CONTINUE_TREND", "GOOD", "TRENDING_BULLISH", "RISK_ON", "ACCUMULATION"):
                 positive += 1
-            elif v in ("SELL", "SELL_ON_RALLY", "BEARISH", "TAKE_PROFIT"):
+            elif v in ("SELL", "SELL_ON_RALLY", "BEARISH", "TAKE_PROFIT", "POOR", "CRITICAL", "TRENDING_BEARISH", "RISK_OFF", "CAPITULATION", "DISTRIBUTION"):
                 negative += 1
             else:
                 neutral += 1

@@ -63,15 +63,15 @@ class EventType(Enum):
 
 # Qué agentes ejecutar por tipo de evento
 EVENT_AGENT_MAP: dict[EventType, list[str]] = {
-    EventType.SUPPORT_BREAK: ["technical_analyst", "crash_detector", "consensus_agent"],
-    EventType.RESISTANCE_BREAK: ["technical_analyst", "opportunity_detector", "consensus_agent"],
-    EventType.NEWS_CRITICAL: ["news_analyst", "macro_analyst", "consensus_agent"],
-    EventType.WHALE_MOVEMENT: ["onchain_analyst", "crash_detector", "consensus_agent"],
+    EventType.SUPPORT_BREAK: ["technical_analyst", "crash_detector", "liquidity_analyst", "regime_analyst", "consensus_agent"],
+    EventType.RESISTANCE_BREAK: ["technical_analyst", "opportunity_detector", "liquidity_analyst", "regime_analyst", "consensus_agent"],
+    EventType.NEWS_CRITICAL: ["news_analyst", "macro_analyst", "sentiment_analyst", "consensus_agent"],
+    EventType.WHALE_MOVEMENT: ["onchain_analyst", "crash_detector", "correlation_analyst", "consensus_agent"],
     EventType.SENTIMENT_SHIFT: ["sentiment_analyst", "consensus_agent"],
-    EventType.VOLATILITY_SPIKE: ["technical_analyst", "crash_detector", "consensus_agent"],
-    EventType.VOLUME_SPIKE: ["technical_analyst", "opportunity_detector", "consensus_agent"],
-    EventType.OPPORTUNITY_DETECTED: ["opportunity_detector", "contrarian_agent", "consensus_agent"],
-    EventType.CRASH_RISK_ELEVATED: ["crash_detector", "contrarian_agent", "consensus_agent"],
+    EventType.VOLATILITY_SPIKE: ["technical_analyst", "crash_detector", "regime_analyst", "consensus_agent"],
+    EventType.VOLUME_SPIKE: ["technical_analyst", "opportunity_detector", "liquidity_analyst", "consensus_agent"],
+    EventType.OPPORTUNITY_DETECTED: ["opportunity_detector", "liquidity_analyst", "contrarian_agent", "consensus_agent"],
+    EventType.CRASH_RISK_ELEVATED: ["crash_detector", "contrarian_agent", "regime_analyst", "consensus_agent"],
     EventType.SCHEDULED: PRE_CONSENSUS_AGENTS + ["consensus_agent"],
     EventType.MANUAL: PRE_CONSENSUS_AGENTS + ["consensus_agent"],
 }
@@ -706,6 +706,9 @@ class EventScheduler:
             "contrarian_agent": "recommendation",
             "news_analyst": "impact",
             "macro_analyst": "cryptoImpact",
+            "liquidity_analyst": "liquidityRating",
+            "correlation_analyst": "marketDriver",
+            "regime_analyst": "regime",
         }
 
         for agent_id, result in agent_results.items():
@@ -750,7 +753,7 @@ class EventScheduler:
         }
 
         # Añadir indicadores técnicos si están disponibles
-        if agent_id in ("technical_analyst", "crash_detector", "opportunity_detector"):
+        if agent_id in ("technical_analyst", "crash_detector", "opportunity_detector", "liquidity_analyst", "regime_analyst"):
             indicators = self.market_data.compute_indicators(event.asset)
             base["indicators"] = {
                 "rsi": indicators.rsi,
@@ -767,8 +770,8 @@ class EventScheduler:
                 "resistance_levels": indicators.resistance_levels,
             }
 
-        # Añadir anomalías para crash detector
-        if agent_id == "crash_detector":
+        # Añadir anomalías para crash detector y regime analyst
+        if agent_id in ("crash_detector", "regime_analyst"):
             anomalies = self.market_data.detect_anomalies(event.asset)
             base["anomalies"] = [
                 {"type": a.anomaly_type, "severity": a.severity, "value": a.value}

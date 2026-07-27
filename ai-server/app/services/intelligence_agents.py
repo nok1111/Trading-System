@@ -55,11 +55,18 @@ _OPPORTUNITY_PROMPT = """Eres el DETECTOR DE OPORTUNIDADES. Buscas posibles opor
 
 _CONTRARIAN_PROMPT = """Eres el AGENTE CONTRARIANO. Tu trabajo es intentar demostrar que la señal es incorrecta. Si el Opportunity Detector dice comprar, buscas: divergencias negativas, mala liquidez, noticias no consideradas, señales de distribución, debilidad macro, correlaciones peligrosas, manipulación de mercado. Evitas que todos los agentes se confirmen mutuamente sin cuestionarse."""
 
-_CONSENSUS_PROMPT = """Eres el AGENTE DE CONSENSO. Recibes los resultados de todos los agentes (Technical, News, Sentiment, On-chain, Macro, Crash, Opportunity, Contrarian). Decides: comprar, vender, mantener, tomar ganancias, evitar, esperar confirmación, o sin acción. Calculas confianza (0-1), acuerdo entre agentes, razones principales, riesgos principales, y escenarios probabilísticos (alcista, base, bajista con rangos). No inventas datos que no estén en los inputs.
+_LIQUIDITY_PROMPT = """Eres el ANALISTA DE LIQUIDEZ. Interpretas datos previamente calculados del order book: profundidad, spread, slippage estimado, muros de compra y venta, absorción, desequilibrio del libro, reducción repentina de liquidez, y posibles zonas de liquidación. Una oportunidad técnica puede verse buena pero ser peligrosa si la liquidez es mala. Produces una evaluación de liquidez (GOOD, MODERATE, POOR, CRITICAL) y flags de riesgo. No inventas datos."""
+
+_CORRELATION_PROMPT = """Eres el ANALISTA DE CORRELACIONES. Detectas relaciones entre activos: BTC y altcoins, BTC y Nasdaq, cripto y dólar, activos del mismo sector, portafolios excesivamente correlacionados, y desacoplamientos anormales. Identificas el market driver principal y si la señal de un activo depende de que otro mantenga un nivel. No inventas correlaciones."""
+
+_REGIME_PROMPT = """Eres el ANALISTA DE RÉGIMEN DE MERCADO. Clasificas el estado actual del mercado como: TRENDING_BULLISH, TRENDING_BEARISH, RANGING, HIGH_VOLATILITY, LOW_LIQUIDITY, CAPITULATION, ACCUMULATION, DISTRIBUTION, RISK_ON, RISK_OFF. Esto ayuda a que Opportunity Detector no aplique siempre la misma lógica. Mercado tendencial favorece continuaciones y pullbacks. Mercado lateral favorece reversión en extremos. Mercado caótico reduce confianza y evita entradas. Risk-off prioriza protección."""
+
+
+_CONSENSUS_PROMPT = """Eres el AGENTE DE CONSENSO. Recibes los resultados de todos los agentes (Technical, News, Sentiment, On-chain, Macro, Crash, Opportunity, Contrarian, Liquidity, Correlation, Regime). Decides: comprar, vender, mantener, tomar ganancias, evitar, esperar confirmación, o sin acción. Calculas confianza (0-1), acuerdo entre agentes, razones principales, riesgos principales, y escenarios probabilísticos (alcista, base, bajista con rangos). No inventas datos que no estén en los inputs.
 
 Tu output debe incluir OBLIGATORIAMENTE:
 - riskLevel: LOW, MEDIUM o HIGH
-- agentVotes: voto de cada agente (technical, news, sentiment, onchain, macro, crash, opportunity, contrarian)
+- agentVotes: voto de cada agente (technical, news, sentiment, onchain, macro, crash, opportunity, contrarian, liquidity, correlation, regime)
 - validFrom y expiresAt: ventana de validez ISO 8601
 - entryZone: {min, max} — zona de entrada sugerida como strings
 - invalidation: {type: PRICE_BELOW|PRICE_ABOVE|TIME_EXPIRED|EVENT_TRIGGERED, value}
@@ -77,7 +84,7 @@ Ejemplo de output:
   "entryZone": {"min": "102400", "max": "103800"},
   "invalidation": {"type": "PRICE_BELOW", "value": "100900"},
   "targets": [{"price": "106500", "probability": 0.57}, {"price": "109200", "probability": 0.31}],
-  "agentVotes": {"technical": "BUY", "news": "NEUTRAL", "sentiment": "BUY", "onchain": "BUY", "macro": "NEUTRAL", "crash": "LOW_RISK", "opportunity": "BUY", "contrarian": "CAUTION"},
+  "agentVotes": {"technical": "BUY", "news": "NEUTRAL", "sentiment": "BUY", "onchain": "BUY", "macro": "NEUTRAL", "crash": "LOW_RISK", "opportunity": "BUY", "contrarian": "CAUTION", "liquidity": "GOOD", "correlation": "BTC_DRIVEN", "regime": "TRENDING_BULLISH"},
   "mainReasons": [],
   "mainRisks": [],
   "requiresConfirmation": true
@@ -196,6 +203,53 @@ _CONTRARIAN_SCHEMA = {
     },
 }
 
+_LIQUIDITY_SCHEMA = {
+    "type": "object",
+    "required": ["asset", "liquidityRating", "confidence"],
+    "properties": {
+        "asset": {"type": "string"},
+        "liquidityRating": {"type": "string", "enum": ["GOOD", "MODERATE", "POOR", "CRITICAL"]},
+        "spread": {"type": "number"},
+        "slippageEstimate": {"type": "number"},
+        "depthUSD": {"type": "number"},
+        "imbalance": {"type": "number", "minimum": -1, "maximum": 1},
+        "buyWalls": {"type": "array", "items": {"type": "number"}},
+        "sellWalls": {"type": "array", "items": {"type": "number"}},
+        "absorptionDetected": {"type": "boolean"},
+        "liquidityDrop": {"type": "boolean"},
+        "riskFlags": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+_CORRELATION_SCHEMA = {
+    "type": "object",
+    "required": ["asset", "marketDriver", "confidence"],
+    "properties": {
+        "asset": {"type": "string"},
+        "marketDriver": {"type": "string"},
+        "correlation30d": {"type": "number", "minimum": -1, "maximum": 1},
+        "correlationChange": {"type": "string", "enum": ["increasing", "decreasing", "stable"]},
+        "decouplingDetected": {"type": "boolean"},
+        "correlatedAssets": {"type": "array", "items": {"type": "object"}},
+        "risk": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+_REGIME_SCHEMA = {
+    "type": "object",
+    "required": ["regime", "confidence"],
+    "properties": {
+        "regime": {"type": "string", "enum": ["TRENDING_BULLISH", "TRENDING_BEARISH", "RANGING", "HIGH_VOLATILITY", "LOW_LIQUIDITY", "CAPITULATION", "ACCUMULATION", "DISTRIBUTION", "RISK_ON", "RISK_OFF"]},
+        "volatilityRegime": {"type": "string", "enum": ["low", "normal", "high", "extreme"]},
+        "trendStrength": {"type": "number", "minimum": 0, "maximum": 1},
+        "recommendedStrategy": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+
 _CONSENSUS_SCHEMA = {
     "type": "object",
     "required": ["asset", "decision", "confidence", "riskLevel", "agentVotes"],
@@ -241,6 +295,9 @@ _CONSENSUS_SCHEMA = {
                 "crash": {"type": "string"},
                 "opportunity": {"type": "string"},
                 "contrarian": {"type": "string"},
+                "liquidity": {"type": "string"},
+                "correlation": {"type": "string"},
+                "regime": {"type": "string"},
             },
         },
         "agreement": {
@@ -320,6 +377,24 @@ INTELLIGENCE_AGENTS: dict[str, IntelligenceAgentConfig] = {
         system_prompt=_CONTRARIAN_PROMPT, output_schema=_CONTRARIAN_SCHEMA,
         max_tokens=400, interval_minutes=15,
     ),
+    "liquidity_analyst": IntelligenceAgentConfig(
+        id="liquidity_analyst", name="Liquidity Analyst",
+        role="Interpreta profundidad de order book, spread, slippage",
+        system_prompt=_LIQUIDITY_PROMPT, output_schema=_LIQUIDITY_SCHEMA,
+        max_tokens=400, interval_minutes=15,
+    ),
+    "correlation_analyst": IntelligenceAgentConfig(
+        id="correlation_analyst", name="Correlation Analyst",
+        role="Detecta correlaciones y desacoplamientos entre activos",
+        system_prompt=_CORRELATION_PROMPT, output_schema=_CORRELATION_SCHEMA,
+        max_tokens=400, interval_minutes=30, is_optional=True,
+    ),
+    "regime_analyst": IntelligenceAgentConfig(
+        id="regime_analyst", name="Market Regime Analyst",
+        role="Clasifica el régimen de mercado actual",
+        system_prompt=_REGIME_PROMPT, output_schema=_REGIME_SCHEMA,
+        max_tokens=300, interval_minutes=30,
+    ),
     "consensus_agent": IntelligenceAgentConfig(
         id="consensus_agent", name="Consensus Agent",
         role="Integra todos los agentes en una decisión final",
@@ -338,6 +413,9 @@ PRE_CONSENSUS_AGENTS = [
     "macro_analyst",
     "crash_detector",
     "opportunity_detector",
+    "liquidity_analyst",
+    "correlation_analyst",
+    "regime_analyst",
     "contrarian_agent",
 ]
 

@@ -86,14 +86,16 @@ class TestLevelRouter:
 
 
 class TestIntelligenceAgents:
-    def test_all_9_agents_exist(self):
-        assert len(INTELLIGENCE_AGENTS) == 9
+    def test_all_12_agents_exist(self):
+        assert len(INTELLIGENCE_AGENTS) == 12
 
     def test_agent_ids(self):
         expected = {
             "technical_analyst", "news_analyst", "sentiment_analyst",
             "onchain_analyst", "macro_analyst", "crash_detector",
-            "opportunity_detector", "contrarian_agent", "consensus_agent",
+            "opportunity_detector", "contrarian_agent",
+            "liquidity_analyst", "correlation_analyst", "regime_analyst",
+            "consensus_agent",
         }
         assert set(INTELLIGENCE_AGENTS.keys()) == expected
 
@@ -107,7 +109,7 @@ class TestIntelligenceAgents:
 
     def test_list_agents(self):
         agents = list_intelligence_agents()
-        assert len(agents) == 9
+        assert len(agents) == 12
         assert "id" in agents[0]
         assert "name" in agents[0]
         assert "role" in agents[0]
@@ -126,15 +128,16 @@ class TestIntelligenceAgents:
 
     def test_core_agents_count(self):
         core = get_core_intelligence_agents()
-        assert len(core) == 5
+        assert len(core) == 7
 
     def test_optional_agents_count(self):
         optional = get_optional_intelligence_agents()
-        assert len(optional) == 4
+        assert len(optional) == 5
         assert "news_analyst" in optional
         assert "sentiment_analyst" in optional
         assert "onchain_analyst" in optional
         assert "macro_analyst" in optional
+        assert "correlation_analyst" in optional
 
 
 class TestValidator:
@@ -201,6 +204,21 @@ class TestValidator:
             "agentVotes": {"technical": "BUY", "news": "NEUTRAL"},
         }
         valid, _error = validate_agent_response("consensus_agent", data)
+        assert valid
+
+    def test_validate_agent_response_liquidity_analyst(self):
+        data = {"asset": "BTCUSDT", "liquidityRating": "GOOD", "confidence": 0.8}
+        valid, _error = validate_agent_response("liquidity_analyst", data)
+        assert valid
+
+    def test_validate_agent_response_correlation_analyst(self):
+        data = {"asset": "ETHUSDT", "marketDriver": "BTC", "confidence": 0.7}
+        valid, _error = validate_agent_response("correlation_analyst", data)
+        assert valid
+
+    def test_validate_agent_response_regime_analyst(self):
+        data = {"regime": "TRENDING_BULLISH", "confidence": 0.75}
+        valid, _error = validate_agent_response("regime_analyst", data)
         assert valid
 
     def test_validate_agent_response_unknown_agent(self):
