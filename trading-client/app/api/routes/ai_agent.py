@@ -13,7 +13,7 @@ from app.api.helpers import (
     create_ai_snapshot,
     get_or_create_agent,
     get_shared_broker,
-    resolve_binance_keys,
+    resolve_binancekeys,
     resolve_broker_credentials,
 )
 from app.config import get_settings

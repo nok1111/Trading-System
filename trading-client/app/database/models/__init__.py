@@ -2,6 +2,7 @@
 
 from app.database.models.account_snapshot import AccountSnapshot
 from app.database.models.backtest_run import BacktestRun
+from app.database.models.broker_account import BrokerAccount
 from app.database.models.market_bar import MarketBar
 from app.database.models.model_version import ModelVersion
 from app.database.models.order import Order
@@ -18,6 +19,7 @@ from app.database.models.user_settings import UserSettings
 __all__ = [
     "AccountSnapshot",
     "BacktestRun",
+    "BrokerAccount",
     "MarketBar",
     "ModelVersion",
     "Order",

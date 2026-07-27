@@ -99,3 +99,11 @@ def get_available_broker_ids() -> tuple[str, ...]:
     if getattr(get_settings(), "ENABLE_MULTI_BROKER", False):
         return _BROKER_IDS
     return ("binance",)
+
+
+_IMPLEMENTED_BROKERS: frozenset[str] = frozenset({"binance"})
+
+
+def is_implemented(broker_id: str) -> bool:
+    """Devuelve True si el adapter del broker está completamente implementado (no es stub)."""
+    return broker_id.lower().strip() in _IMPLEMENTED_BROKERS
