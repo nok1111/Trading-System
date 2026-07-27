@@ -1,57 +1,24 @@
-"""Endpoint /v1/analyze — contrato versionado para análisis de IA.
+"""Endpoints /v1/agents and /v1/usage — agent listing and token usage.
 
-Request:
-    POST /v1/analyze
-    Headers: X-HMAC-Signature, X-HMAC-Timestamp, X-HMAC-Nonce, Authorization: Bearer <jwt>
-    Body: {"version": "1", "user_id_hash": "...", "plan": "free|pro|premium", "context": {...}}
-
-Response (validado con JSON Schema):
-    {"version": "1", "analysis_id": "...", "market_overview": "...", "actions": [...], ...}
+The legacy /v1/analyze endpoint has been removed in favor of the
+Intelligence Platform scheduler + /v1/intelligence/* endpoints.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.services.cache import get_cached_analysis, set_cached_analysis
-from app.services.orchestrator import orchestrate_analysis
+from app.services.intelligence_agents import list_intelligence_agents
 from app.services.token_accounting import get_all_usage, get_user_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1", tags=["ai-analysis"])
 settings = get_settings()
-
-
-# --- Models ---
-
-class AnalysisRequest(BaseModel):
-    version: str = Field(pattern=r"^1$")
-    user_id_hash: str = Field(min_length=8, max_length=128)
-    plan: str = Field(pattern=r"^(free|pro|premium)$")
-    broker: str = Field(default="binance", max_length=32)
-    market: str = Field(default="spot", pattern=r"^(spot|futures)$")
-    symbol: str = Field(default="ALL", max_length=32)
-    timeframe: str = Field(default="1m", max_length=8)
-    data_version: str = Field(default="", max_length=128)
-    context: dict[str, Any] = Field(default_factory=dict)
-
-
-class AnalysisResponse(BaseModel):
-    version: str = "1"
-    analysis_id: str
-    market_overview: str
-    portfolio_status: str = ""
-    analysis: str = ""
-    actions: list[dict[str, Any]] = Field(default_factory=list)
-    risk_assessment: str
-    next_steps: str = ""
-    tokens_used: int = 0
 
 
 # --- JWT Validation ---
@@ -93,59 +60,10 @@ async def verify_jwt(authorization: Annotated[str | None, Header()] = None) -> d
 
 # --- Endpoints ---
 
-@router.post("/analyze", response_model=AnalysisResponse)
-async def analyze(
-    req: AnalysisRequest,
-    user: Annotated[dict, Depends(verify_jwt)],
-) -> AnalysisResponse:
-    """Analyze market context and return AI-powered trading decisions.
-
-    The request must include HMAC headers (validated by middleware) and a valid JWT.
-    The context must NOT contain broker API keys or sensitive user data.
-    """
-    # Check cache first
-    cached = get_cached_analysis(
-        broker=req.broker,
-        market=req.market,
-        symbol=req.symbol,
-        timeframe=req.timeframe,
-        data_version=req.data_version,
-    )
-    if cached:
-        logger.info(f"Cache hit for {req.broker}:{req.market}:{req.symbol}")
-        return AnalysisResponse(**cached)
-
-    # Run orchestration
-    result = orchestrate_analysis(
-        context=req.context,
-        plan=req.plan,
-        user_id_hash=req.user_id_hash,
-    )
-
-    if result is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="AI analysis failed — LLM unavailable or output invalid",
-        )
-
-    # Cache the result
-    set_cached_analysis(
-        broker=req.broker,
-        market=req.market,
-        symbol=req.symbol,
-        timeframe=req.timeframe,
-        data_version=req.data_version,
-        analysis=result,
-    )
-
-    return AnalysisResponse(**result)
-
-
 @router.get("/agents")
 async def list_agents() -> dict:
-    """List available specialized agents."""
-    from app.services.agents import list_agents
-    return {"agents": list_agents()}
+    """List available intelligence agents."""
+    return {"agents": list_intelligence_agents()}
 
 
 @router.get("/usage/{user_id_hash}")

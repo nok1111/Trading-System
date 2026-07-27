@@ -1,6 +1,6 @@
 """Alvora AI Server — FastAPI application.
 
-Provides AI analysis for trading clients via 8 specialized agents.
+Provides AI intelligence for trading clients via 9 specialized agents.
 Security: HMAC service-to-service + JWT validation against Auth Server.
 Never receives broker API keys or sensitive user data.
 """
@@ -24,7 +24,7 @@ settings = get_settings()
 
 app = FastAPI(
     title="Alvora AI Server",
-    description="Cloud AI analysis service with 8 specialized agents.",
+    description="Cloud AI intelligence service with 9 specialized agents and event-driven scheduler.",
     version="1.0.0",
     lifespan=lifespan,
 )

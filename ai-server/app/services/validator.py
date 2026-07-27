@@ -3,7 +3,7 @@
 El ai-server valida cada respuesta del LLM contra un schema antes de devolverla
 al cliente. Si no valida, se rechaza con error 422.
 
-Cada agente tiene su propio schema definido en agents.py.
+Cada agente tiene su propio schema definido en intelligence_agents.py.
 El envelope estándar valida la estructura externa de cada mensaje.
 """
 
@@ -13,7 +13,6 @@ from typing import Any
 
 from jsonschema import ValidationError, validate
 
-from app.services.agents import AGENTS
 from app.services.intelligence_agents import INTELLIGENCE_AGENTS
 
 # Envelope estándar para mensajes entre agentes (del documento 11_JSON_CONTRACT_EXAMPLE)
@@ -82,28 +81,15 @@ def validate_analysis_response(data: dict) -> tuple[bool, str | None]:
 
 
 def validate_agent_response(agent_id: str, data: dict) -> tuple[bool, str | None]:
-    """Valida la respuesta de un agente específico contra su JSON Schema.
-
-    Soporta tanto los agentes legacy (agents.py) como los nuevos agentes
-    de inteligencia (intelligence_agents.py).
+    """Valida la respuesta de un agente de inteligencia contra su JSON Schema.
 
     Returns:
         (True, None) si valida, (False, error_message) si no.
     """
-    # Try legacy agents first
-    agent = AGENTS.get(agent_id)
+    agent = INTELLIGENCE_AGENTS.get(agent_id)
     if agent is not None:
         try:
             validate(instance=data, schema=agent.output_schema)
-            return True, None
-        except ValidationError as exc:
-            return False, exc.message
-
-    # Try intelligence agents
-    intel_agent = INTELLIGENCE_AGENTS.get(agent_id)
-    if intel_agent is not None:
-        try:
-            validate(instance=data, schema=intel_agent.output_schema)
             return True, None
         except ValidationError as exc:
             return False, exc.message
