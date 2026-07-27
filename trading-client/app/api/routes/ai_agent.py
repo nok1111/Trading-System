@@ -1289,3 +1289,42 @@ def get_sources_for_agent(
         include_macro=include_macro,
     )
     return {"context": context}
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Scheduler Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/intelligence/scheduler/status")
+def get_scheduler_status() -> dict:
+    """Returns the current intelligence scheduler status."""
+    from app.intelligence.scheduler import get_scheduler
+    return get_scheduler().get_status()
+
+
+@router.post("/intelligence/scheduler/start")
+def start_intel_scheduler() -> dict:
+    """Start the intelligence scheduler (news + cleanup)."""
+    from app.intelligence.scheduler import start_scheduler as _start
+    sched = _start()
+    return sched.get_status()
+
+
+@router.post("/intelligence/scheduler/stop")
+def stop_intel_scheduler() -> dict:
+    """Stop the intelligence scheduler."""
+    from app.intelligence.scheduler import stop_scheduler, get_scheduler
+    stop_scheduler()
+    return get_scheduler().get_status()
+
+
+@router.post("/intelligence/scheduler/intervals")
+def update_scheduler_intervals(
+    news_interval: int = Query(None, ge=60),
+    cleanup_interval: int = Query(None, ge=3600),
+) -> dict:
+    """Update scheduler intervals (seconds). News min 60s, cleanup min 3600s."""
+    from app.intelligence.scheduler import get_scheduler
+    sched = get_scheduler()
+    sched.set_intervals(news_interval=news_interval, cleanup_interval=cleanup_interval)
+    return sched.get_status()

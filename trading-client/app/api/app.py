@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.schemas import HealthOut
 from app.config import get_settings
 from app.data.price_stream import get_price_stream, init_price_stream, stop_price_stream
+from app.intelligence.scheduler import start_scheduler as start_intel_scheduler, stop_scheduler as stop_intel_scheduler
 from app.services.license import validate_license
 
 app = FastAPI(
@@ -103,18 +104,25 @@ app.include_router(broker_accounts.router)
 
 
 @app.on_event("startup")
-def _startup_price_stream() -> None:
+def _startup_services() -> None:
     settings = get_settings()
     try:
         init_price_stream(settings.symbols_list, testnet=settings.BINANCE_TESTNET)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Failed to start price stream: %s", exc)
+    # Start intelligence scheduler (news fetcher + cleanup)
+    try:
+        start_intel_scheduler()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to start intelligence scheduler: %s", exc)
 
 
 @app.on_event("shutdown")
-def _shutdown_price_stream() -> None:
+def _shutdown_services() -> None:
     stop_price_stream()
+    stop_intel_scheduler()
 
 
 # ---------------------------------------------------------------------------

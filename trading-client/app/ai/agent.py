@@ -501,9 +501,8 @@ class AITradingAgent:
         # 2.5. Record events to journal for multi-user dashboard
         self._record_events_to_journal(signals, alerts)
 
-        # 2.6. Fetch news every 6 cycles (~3min at 30s interval)
-        if self._cycle % 6 == 0:
-            self._fetch_news()
+        # News fetching is now handled by the independent intelligence scheduler
+        # which runs every 5 minutes regardless of agent state
 
         if not signals:
             self._add_log("info", "No hay señales activas del Intelligence Platform", {"cycle": self._cycle, "phase": "no_signals"})
