@@ -16,6 +16,7 @@ from app.brokers.models import (
     BrokerInfo,
     BrokerOrder,
     CancelOrderRequest,
+    Candle,
     CredentialValidationResult,
     MarketInfo,
     OrderCancellationResult,
@@ -118,6 +119,18 @@ class BrokerAdapter(ABC):
     @abstractmethod
     def get_order_status(self, broker_order_id: str, symbol: str | None = None) -> BrokerOrder:
         """Consulta el estado de una orden en el broker."""
+
+    @abstractmethod
+    def get_klines(
+        self, symbol: str, interval: str, limit: int = 200
+    ) -> list[Candle]:
+        """Devuelve velas OHLCV normalizadas con Decimal."""
+
+    @abstractmethod
+    def get_market_movers(
+        self, market: str = "spot", limit: int = 20, quote: str = "USDT"
+    ) -> dict:
+        """Devuelve top gainers y losers de 24h."""
 
     def subscribe_market_data(
         self,

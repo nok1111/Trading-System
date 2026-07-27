@@ -10,6 +10,7 @@ from app.brokers.models import (
     BrokerInfo,
     BrokerOrder,
     CancelOrderRequest,
+    Candle,
     CredentialValidationResult,
     MarketInfo,
     MarketType,
@@ -79,4 +80,10 @@ class OKXAdapter(BrokerAdapter):
         raise NotImplementedError("OKXAdapter no implementado — TODO(fase-7)")
 
     def get_order_status(self, broker_order_id: str, symbol: str | None = None) -> BrokerOrder:
+        raise NotImplementedError("OKXAdapter no implementado — TODO(fase-7)")
+
+    def get_klines(self, symbol: str, interval: str, limit: int = 200) -> list[Candle]:
+        raise NotImplementedError("OKXAdapter no implementado — TODO(fase-7)")
+
+    def get_market_movers(self, market: str = "spot", limit: int = 20, quote: str = "USDT") -> dict:
         raise NotImplementedError("OKXAdapter no implementado — TODO(fase-7)")

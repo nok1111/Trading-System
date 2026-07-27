@@ -31,6 +31,7 @@ from app.brokers.models import (
     BrokerInfo,
     BrokerOrder,
     CancelOrderRequest,
+    Candle,
     CredentialValidationResult,
     MarketInfo,
     MarketType,
@@ -399,6 +400,80 @@ class BinanceAdapter(BrokerAdapter):
             raise _map_binance_error(exc) from exc
 
         return self._parse_binance_order(resp)
+
+    def get_klines(
+        self, symbol: str, interval: str, limit: int = 200
+    ) -> list[Candle]:
+        """Devuelve velas OHLCV normalizadas con Decimal desde Binance public API."""
+        broker_symbol = denormalize_symbol(symbol, "binance")
+        try:
+            resp = httpx.get(
+                f"{self._base_url}/api/v3/klines",
+                params={"symbol": broker_symbol, "interval": interval, "limit": limit},
+                timeout=self._broker._timeout,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400:
+                raise InvalidSymbolError(f"Simbolo {symbol} no existe en Binance") from exc
+            if exc.response.status_code == 429:
+                raise BrokerRateLimitError("Rate limit de Binance excedido") from exc
+            raise BrokerError(f"Error HTTP {exc.response.status_code}: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise BrokerTimeoutError(f"Timeout conectando a Binance: {exc}") from exc
+
+        raw = resp.json()
+        candles: list[Candle] = []
+        for k in raw:
+            candles.append(
+                Candle(
+                    timestamp=datetime.fromtimestamp(k[0] / 1000, tz=UTC),
+                    open=Decimal(str(k[1])),
+                    high=Decimal(str(k[2])),
+                    low=Decimal(str(k[3])),
+                    close=Decimal(str(k[4])),
+                    volume=Decimal(str(k[5])),
+                    interval=interval,
+                )
+            )
+        return candles
+
+    def get_market_movers(
+        self, market: str = "spot", limit: int = 20, quote: str = "USDT"
+    ) -> dict:
+        """Devuelve top gainers y losers de 24h desde Binance.
+
+        Returns dict con 'gainers' y 'losers', cada uno una lista de dicts con
+        symbol, price (Decimal), price_change_percent (Decimal), volume (Decimal).
+        """
+        if market == "futures":
+            url = "https://fapi.binance.com/fapi/v1/ticker/24hr"
+        else:
+            url = f"{self._base_url}/api/v3/ticker/24hr"
+
+        try:
+            resp = httpx.get(url, timeout=self._broker._timeout)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise BrokerError(f"Error al consultar ticker 24h de Binance: {exc}") from exc
+
+        data = resp.json()
+        tickers = []
+        for item in data:
+            sym = item.get("symbol", "")
+            if not sym.endswith(quote):
+                continue
+            tickers.append({
+                "symbol": sym,
+                "price": Decimal(str(item.get("lastPrice", "0"))),
+                "price_change_percent": Decimal(str(item.get("priceChangePercent", "0"))),
+                "volume": Decimal(str(item.get("quoteVolume", "0"))),
+            })
+
+        tickers.sort(key=lambda x: x["price_change_percent"], reverse=True)
+        gainers = tickers[:limit]
+        losers = list(reversed(tickers[-limit:]))
+        return {"gainers": gainers, "losers": losers}
 
     def _parse_binance_order(self, data: dict) -> BrokerOrder:
         bin_status = data.get("status", "NEW")

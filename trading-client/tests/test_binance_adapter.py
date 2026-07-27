@@ -361,3 +361,60 @@ class TestErrorMapping:
         mapped = _map_binance_error(exc)
         assert isinstance(mapped, BrokerError)
         assert not isinstance(mapped, (BrokerAuthError, BrokerRateLimitError, BrokerTimeoutError))
+
+
+class TestGetKlines:
+    def test_returns_candles_with_decimal(self, adapter):
+        raw_klines = [
+            [1700000000000, "42000.0", "42100.0", "41900.0", "42050.0", "100.5", 0, "4205000.0", 10, "50.0", "42000.0"],
+            [1700000060000, "42050.0", "42200.0", "42000.0", "42150.0", "200.3", 0, "8430000.0", 20, "100.0", "42050.0"],
+        ]
+        mock_resp = _mock_response(raw_klines)
+        with patch("app.brokers.adapters.binance_adapter.httpx.get", return_value=mock_resp):
+            candles = adapter.get_klines("BTC/USDT", "1m", 200)
+        assert len(candles) == 2
+        for c in candles:
+            assert isinstance(c.open, Decimal)
+            assert isinstance(c.high, Decimal)
+            assert isinstance(c.low, Decimal)
+            assert isinstance(c.close, Decimal)
+            assert isinstance(c.volume, Decimal)
+        assert candles[0].open == Decimal("42000.0")
+        assert candles[0].close == Decimal("42050.0")
+        assert candles[1].volume == Decimal("200.3")
+
+    def test_invalid_symbol(self, adapter):
+        mock_resp = _mock_response({"code": -1121, "msg": "Invalid symbol"}, status_code=400)
+        with patch("app.brokers.adapters.binance_adapter.httpx.get", return_value=mock_resp), pytest.raises(InvalidSymbolError):
+            adapter.get_klines("FAKE/USDT", "1m", 200)
+
+    def test_empty_response(self, adapter):
+        mock_resp = _mock_response([])
+        with patch("app.brokers.adapters.binance_adapter.httpx.get", return_value=mock_resp):
+            candles = adapter.get_klines("BTC/USDT", "1m", 200)
+        assert len(candles) == 0
+
+
+class TestGetMarketMovers:
+    def test_returns_movers_with_decimal(self, adapter):
+        raw_tickers = [
+            {"symbol": "BTCUSDT", "lastPrice": "42000", "priceChangePercent": "5.2", "quoteVolume": "1000000"},
+            {"symbol": "ETHUSDT", "lastPrice": "2200", "priceChangePercent": "-3.1", "quoteVolume": "500000"},
+            {"symbol": "SOLUSDT", "lastPrice": "100", "priceChangePercent": "8.5", "quoteVolume": "200000"},
+            {"symbol": "DOGEUSDT", "lastPrice": "0.08", "priceChangePercent": "-7.2", "quoteVolume": "100000"},
+        ]
+        mock_resp = _mock_response(raw_tickers)
+        with patch("app.brokers.adapters.binance_adapter.httpx.get", return_value=mock_resp):
+            result = adapter.get_market_movers(market="spot", limit=2, quote="USDT")
+        assert "gainers" in result
+        assert "losers" in result
+        assert len(result["gainers"]) == 2
+        assert len(result["losers"]) == 2
+        for t in result["gainers"] + result["losers"]:
+            assert isinstance(t["price"], Decimal)
+            assert isinstance(t["price_change_percent"], Decimal)
+            assert isinstance(t["volume"], Decimal)
+        assert result["gainers"][0]["price_change_percent"] == Decimal("8.5")
+        assert result["gainers"][1]["price_change_percent"] == Decimal("5.2")
+        assert result["losers"][0]["price_change_percent"] == Decimal("-7.2")
+        assert result["losers"][1]["price_change_percent"] == Decimal("-3.1")
