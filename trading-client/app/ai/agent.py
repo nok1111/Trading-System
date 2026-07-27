@@ -15,6 +15,7 @@ Configuración (.env):
 import json
 import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 from threading import Event, Thread
 from typing import Any
 
@@ -23,6 +24,7 @@ import httpx
 from app.ai.local_provider import LocalAIProvider
 from app.ai.provider import AIProvider, AIProviderConfig, AIResponse
 from app.ai.remote_provider import RemoteAIProvider
+from app.risk.engine import RiskEngine
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +86,8 @@ class AITradingAgent:
         self._last_context_hash = ""
         self._base_interval = interval_seconds
         self._current_interval = interval_seconds
-        self._position_peaks: dict[str, float] = {}  # symbol -> highest price seen
+        self._position_peaks: dict[str, float] = {}  # symbol -> highest price seen (legacy)
+        self._risk_engine = RiskEngine()  # Deterministic risk engine with trailing stop
         self._jwt_token = jwt_token
         self._auth_server_url = auth_server_url
         self._grant_fail_streak = 0  # consecutive grant failures
@@ -236,13 +239,10 @@ class AITradingAgent:
             self._stop_event.wait(5)
 
     def _check_auto_close(self) -> None:
-        """Check open positions with trailing stop logic.
+        """Check open positions with trailing stop logic via RiskEngine.
 
-        Phases:
-        1. Below entry: use original stop-loss
-        2. Above entry (in profit): stop moves to breakeven (entry price)
-        3. Peak tracking: stop trails at 2% below the highest price seen
-        4. Never lets a profitable position go back to loss
+        Uses RiskEngine.evaluate_trailing_stop (Decimal-based, deterministic).
+        Falls back to legacy float logic if RiskEngine unavailable.
         """
         try:
             positions = self._api_get("/api/positions?status=open&limit=50")
@@ -278,88 +278,60 @@ class AITradingAgent:
                 except Exception:
                     continue
 
-                entry = float(entry_price)
-                original_sl = float(stop_loss)
-                tp = float(take_profit)
+                # Use RiskEngine for trailing stop evaluation (Decimal-based)
+                result = self._risk_engine.evaluate_trailing_stop(
+                    symbol=symbol,
+                    entry_price=Decimal(str(entry_price)),
+                    stop_loss=Decimal(str(stop_loss)),
+                    take_profit=Decimal(str(take_profit)),
+                    current_price=Decimal(str(current_price)),
+                )
 
-                # Track peak price for this position
-                peak = self._position_peaks.get(symbol, entry)
-                if current_price > peak:
-                    peak = current_price
-                    self._position_peaks[symbol] = peak
+                if result.should_close:
+                    entry = float(entry_price)
+                    peak = float(result.peak)
 
-                # Determine the effective stop-loss based on trailing logic
-                if current_price <= entry:
-                    # Below or at entry: use original stop-loss
-                    effective_sl = original_sl
-                elif current_price > entry and peak <= entry * 1.02:
-                    # Just barely in profit (< 2% up): stop at breakeven
-                    effective_sl = entry
-                else:
-                    # Clearly in profit: trail at 2% below peak, but never below entry
-                    trailing_sl = peak * 0.98
-                    effective_sl = max(entry, trailing_sl)
-
-                # Check if we should sell
-                if current_price <= effective_sl:
-                    if effective_sl == entry and current_price < entry:
-                        # Selling at breakeven to avoid loss
+                    if result.close_type == "breakeven":
                         self._add_log("warn", f"BREAKEVEN STOP {symbol}: precio ${current_price:.4f} bajó hacia entry ${entry:.4f}. Vendiendo para proteger capital.", {
                             "phase": "auto_breakeven", "symbol": symbol, "price": current_price, "entry": entry, "peak": peak,
                         })
                         reason = f"Auto breakeven-stop: protegía profit, precio volvió a ${current_price}"
-                    elif effective_sl > entry:
-                        # Trailing stop hit - we had a good run
+                    elif result.close_type == "trailing":
                         self._add_log("info", f"TRAILING STOP {symbol}: precio ${current_price:.4f} bajó del peak ${peak:.4f}. Vendiendo con profit asegurado.", {
                             "phase": "auto_trailing", "symbol": symbol, "price": current_price, "entry": entry, "peak": peak,
                         })
                         reason = f"Auto trailing-stop: peak fue ${peak:.4f}, vendiendo a ${current_price}"
+                    elif result.close_type == "take_profit":
+                        self._add_log("info", f"TAKE-PROFIT {symbol}: precio ${current_price:.4f} >= TP ${float(take_profit):.4f}. Vendiendo.", {
+                            "phase": "auto_take_profit", "symbol": symbol, "price": current_price, "take_profit": float(take_profit),
+                        })
+                        reason = f"Auto take-profit: precio subió a ${current_price}"
                     else:
-                        # Original stop-loss
-                        self._add_log("warn", f"STOP-LOSS {symbol}: precio ${current_price:.4f} <= SL ${effective_sl:.4f}. Vendiendo.", {
-                            "phase": "auto_stop_loss", "symbol": symbol, "price": current_price, "stop_loss": effective_sl,
+                        self._add_log("warn", f"STOP-LOSS {symbol}: precio ${current_price:.4f} <= SL ${float(result.effective_sl):.4f}. Vendiendo.", {
+                            "phase": "auto_stop_loss", "symbol": symbol, "price": current_price, "stop_loss": float(result.effective_sl),
                         })
                         reason = f"Auto stop-loss: precio bajó a ${current_price}"
 
-                    result = self._api_post("/api/ai-agent/execute", {
+                    sell_result = self._api_post("/api/ai-agent/execute", {
                         "action_type": "sell",
                         "symbol": symbol,
                         "confidence": 1.0,
                         "reason": reason,
                     })
-                    if result and result.get("status") == "executed":
+                    if sell_result and sell_result.get("status") == "executed":
                         pnl_pct = ((current_price - entry) / entry) * 100
                         emoji = "🎉" if current_price > entry else "🛡️" if current_price >= entry * 0.999 else "⚠️"
                         self._add_log("info", f"{emoji} Venta {symbol} ejecutada @ ${current_price:.4f} (PnL: {pnl_pct:+.2f}%)")
-                        # Clean up peak tracking
+                        self._risk_engine.clear_position_peak(symbol)
                         self._position_peaks.pop(symbol, None)
                     else:
-                        self._add_log("error", f"Auto-sell falló para {symbol}: {result}")
-
-                elif current_price >= tp:
-                    # Take-profit hit
-                    self._add_log("info", f"TAKE-PROFIT {symbol}: precio ${current_price:.4f} >= TP ${tp:.4f}. Vendiendo.", {
-                        "phase": "auto_take_profit", "symbol": symbol, "price": current_price, "take_profit": tp,
-                    })
-                    result = self._api_post("/api/ai-agent/execute", {
-                        "action_type": "sell",
-                        "symbol": symbol,
-                        "confidence": 1.0,
-                        "reason": f"Auto take-profit: precio subió a ${current_price}",
-                    })
-                    if result and result.get("status") == "executed":
-                        pnl_pct = ((current_price - entry) / entry) * 100
-                        self._add_log("info", f"🎉 Take-profit {symbol} ejecutado @ ${current_price:.4f} (PnL: {pnl_pct:+.2f}%)")
-                        self._position_peaks.pop(symbol, None)
-                    else:
-                        self._add_log("error", f"Take-profit falló para {symbol}: {result}")
+                        self._add_log("error", f"Auto-sell falló para {symbol}: {sell_result}")
                 else:
                     # Position still open - log trailing status occasionally
+                    peak = float(result.peak)
                     if peak > entry * 1.01:
-                        # Only log if in profit > 1%
-                        trail_sl = max(entry, peak * 0.98)
+                        trail_sl = float(result.effective_sl)
                         profit_pct = ((current_price - entry) / entry) * 100
-                        # Log every significant peak update
                         if peak == current_price and profit_pct > 2:
                             self._add_log("info", f"📈 {symbol} subiendo: ${current_price:.4f} (PnL: {profit_pct:+.2f}%, peak: ${peak:.4f}, trailing SL: ${trail_sl:.4f})", {
                                 "phase": "trailing_update", "symbol": symbol, "price": current_price, "peak": peak, "trailing_sl": trail_sl,

@@ -17,6 +17,7 @@ from app.database.models.risk_event import RiskEvent
 from app.database.models.signal import Signal
 from app.database.models.trade import Trade
 from app.models.signal import SignalCreate
+from app.risk.engine import RiskEngine
 from app.risk.risk_manager import RiskManager
 
 if TYPE_CHECKING:
@@ -34,11 +35,13 @@ class ExecutionEngine:
         risk_manager: RiskManager,
         session: Session,
         settings: Settings,
+        risk_engine: RiskEngine | None = None,
     ) -> None:
         self.broker = broker
         self.risk_manager = risk_manager
         self.session = session
         self.settings = settings
+        self.risk_engine = risk_engine
 
     def process_signal(self, signal_create: SignalCreate, account: AccountSnapshot | None = None) -> Order | None:
         """Persiste la señal, evalúa riesgo y, si aplica, envía orden al broker.
@@ -69,6 +72,34 @@ class ExecutionEngine:
                 "medium",
             )
             return None
+
+        # RiskEngine determinista con circuit breaker (veto adicional)
+        if self.risk_engine is not None:
+            engine_decision = self.risk_engine.evaluate_order(
+                side=signal_create.signal_type.lower(),
+                symbol=signal_create.symbol,
+                entry_price=signal_create.entry_price or Decimal("0"),
+                stop_loss=signal_create.suggested_stop_loss,
+                account_cash=account.cash if account else Decimal("0"),
+                account_equity=account.equity if account else Decimal("0"),
+                daily_pnl=account.daily_pnl if account else Decimal("0"),
+                open_positions=[{"symbol": p.symbol, "status": p.status} for p in open_positions],
+                open_positions_count=len(open_positions),
+            )
+            if not engine_decision.allowed:
+                logger.info(
+                    "RiskEngine veto: %s %s - %s (CB: %s)",
+                    signal_create.signal_type,
+                    signal_create.symbol,
+                    engine_decision.reason,
+                    engine_decision.circuit_breaker_state.value,
+                )
+                self._log_risk_event(
+                    signal_create,
+                    f"RiskEngine: {engine_decision.reason}",
+                    engine_decision.severity,
+                )
+                return None
 
         if signal_create.signal_type == "BUY":
             return self._execute_buy(signal_create, signal_db, account)
