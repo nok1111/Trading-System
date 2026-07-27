@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 
 import app.api.state as state
 from app.api.helpers import (
@@ -1326,3 +1327,83 @@ def update_scheduler_intervals(
     sched = get_scheduler()
     sched.set_intervals(news_interval=news_interval, cleanup_interval=cleanup_interval)
     return sched.get_status()
+
+
+# ---------------------------------------------------------------------------
+# User Profile / Onboarding Endpoints
+# ---------------------------------------------------------------------------
+
+class OnboardingData(BaseModel):
+    experience_level: str = "beginner"
+    risk_tolerance: str = "moderate"
+    asset_interests: list[str] = ["crypto"]
+    capital_range: str = "100-1000"
+    preferred_strategies: list[str] = ["swing"]
+    trading_goal: str = "growth"
+    preferred_language: str = "es"
+
+
+@router.get("/intelligence/profile")
+def get_user_profile() -> dict:
+    """Get the current user's onboarding profile."""
+    import json
+    from app.database.models.user_profile import UserProfile
+
+    session = SessionLocal()
+    try:
+        profile = session.execute(
+            select(UserProfile).where(UserProfile.user_id == 0)
+        ).scalar_one_or_none()
+
+        if not profile:
+            return {"onboarding_completed": False, "experience_level": None}
+
+        return profile.to_dict()
+    except Exception as exc:
+        return {"onboarding_completed": False, "error": str(exc)}
+    finally:
+        session.close()
+
+
+@router.post("/intelligence/profile")
+def save_user_profile(data: OnboardingData) -> dict:
+    """Save or update the user's onboarding profile."""
+    import json
+    from app.database.models.user_profile import UserProfile
+
+    session = SessionLocal()
+    try:
+        profile = session.execute(
+            select(UserProfile).where(UserProfile.user_id == 0)
+        ).scalar_one_or_none()
+
+        if not profile:
+            profile = UserProfile(
+                user_id=0,
+                experience_level=data.experience_level,
+                risk_tolerance=data.risk_tolerance,
+                asset_interests=json.dumps(data.asset_interests),
+                capital_range=data.capital_range,
+                preferred_strategies=json.dumps(data.preferred_strategies),
+                trading_goal=data.trading_goal,
+                preferred_language=data.preferred_language,
+                onboarding_completed=True,
+            )
+            session.add(profile)
+        else:
+            profile.experience_level = data.experience_level
+            profile.risk_tolerance = data.risk_tolerance
+            profile.asset_interests = json.dumps(data.asset_interests)
+            profile.capital_range = data.capital_range
+            profile.preferred_strategies = json.dumps(data.preferred_strategies)
+            profile.trading_goal = data.trading_goal
+            profile.preferred_language = data.preferred_language
+            profile.onboarding_completed = True
+
+        session.commit()
+        return profile.to_dict()
+    except Exception as exc:
+        session.rollback()
+        return {"error": str(exc)}
+    finally:
+        session.close()

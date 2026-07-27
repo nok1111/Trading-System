@@ -8,6 +8,7 @@ import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { SinceLastVisit } from "../components/dashboard/SinceLastVisit";
 import { TodayPriorities } from "../components/dashboard/TodayPriorities";
 import { AIActivityTimeline } from "../components/dashboard/AIActivityTimeline";
+import { OnboardingModal } from "../components/dashboard/OnboardingModal";
 import {
   getMarketOverview,
   getFearGreed,
@@ -17,6 +18,8 @@ import {
   getSinceLastVisit,
   getTodayPriorities,
   getAIActivity,
+  getUserProfile,
+  type UserProfileData,
 } from "../lib/intelligenceApi";
 import type {
   MarketOverview,
@@ -39,11 +42,14 @@ export function DashboardPage() {
   const [priorities, setPriorities] = useState<TodayPrioritiesData | null>(null);
   const [activity, setActivity] = useState<AIActivityData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const results = await Promise.allSettled([
+      const [profileResult, ...rest] = await Promise.allSettled([
+        getUserProfile(),
         getMarketOverview(),
         getFearGreed(),
         getDominance(),
@@ -54,7 +60,14 @@ export function DashboardPage() {
         getAIActivity(),
       ]);
       if (!alive) return;
-      const get = (i: number) => results[i].status === "fulfilled" ? results[i].value : null;
+
+      const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
+      setUserProfile(profile);
+      if (!profile || !profile.onboarding_completed) {
+        setShowOnboarding(true);
+      }
+
+      const get = (i: number) => rest[i].status === "fulfilled" ? rest[i].value : null;
       setOverview(get(0) as MarketOverview | null);
       setFearGreed(get(1) as FearGreedData | null);
       setDominance(get(2) as DominanceData | null);
@@ -68,6 +81,17 @@ export function DashboardPage() {
     load();
     return () => { alive = false; };
   }, []);
+
+  if (showOnboarding) {
+    return (
+      <OnboardingModal
+        onComplete={(profile) => {
+          setUserProfile(profile);
+          setShowOnboarding(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="p-5 space-y-5 max-w-[1200px] mx-auto">

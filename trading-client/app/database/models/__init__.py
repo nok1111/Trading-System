@@ -18,6 +18,7 @@ from app.database.models.strategy_run import StrategyRun
 from app.database.models.system_event import SystemEvent
 from app.database.models.trade import Trade
 from app.database.models.user_settings import UserSettings
+from app.database.models.user_profile import UserProfile
 
 __all__ = [
     "AccountSnapshot",
@@ -38,4 +39,5 @@ __all__ = [
     "SystemEvent",
     "Trade",
     "UserSettings",
+    "UserProfile",
 ]

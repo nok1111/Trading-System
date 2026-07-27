@@ -269,3 +269,45 @@ export async function getAIActivity(): Promise<AIActivityData | null> {
     return null;
   }
 }
+
+export interface UserProfileData {
+  onboarding_completed: boolean;
+  experience_level: string | null;
+  risk_tolerance: string | null;
+  asset_interests: string[];
+  capital_range: string | null;
+  preferred_strategies: string[];
+  trading_goal: string | null;
+  preferred_language: string;
+}
+
+export async function getUserProfile(): Promise<UserProfileData | null> {
+  try {
+    const data = await api<UserProfileData>("/api/intelligence/profile");
+    if (!data || (data as any).error) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveUserProfile(payload: {
+  experience_level: string;
+  risk_tolerance: string;
+  asset_interests: string[];
+  capital_range: string;
+  preferred_strategies: string[];
+  trading_goal: string;
+  preferred_language: string;
+}): Promise<UserProfileData | null> {
+  try {
+    const data = await api<UserProfileData>("/api/intelligence/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return data;
+  } catch {
+    return null;
+  }
+}
