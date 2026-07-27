@@ -16,6 +16,9 @@ import type {
   Recommendation,
   IntelligenceReport,
   PendingNotification,
+  SinceLastVisitData,
+  TodayPrioritiesData,
+  AIActivityData,
 } from "./intelligenceTypes";
 import {
   MOCK_MARKET_OVERVIEW,
@@ -25,6 +28,9 @@ import {
   MOCK_MACRO_EVENTS,
   MOCK_WHALE_ACTIVITY,
   MOCK_DAILY_REPORT,
+  MOCK_SINCE_LAST_VISIT,
+  MOCK_TODAY_PRIORITIES,
+  MOCK_AI_ACTIVITY,
 } from "./intelligenceMocks";
 
 function getAiServerUrl(): string {
@@ -223,3 +229,27 @@ export async function getReports(asset: string): Promise<IntelligenceReport[]> {
 }
 
 export { getAiServerUrl };
+
+export async function getSinceLastVisit(): Promise<SinceLastVisitData | null> {
+  try {
+    return await aiServerFetch<SinceLastVisitData>("/v1/intelligence/changes-since-last-login");
+  } catch {
+    return MOCK_SINCE_LAST_VISIT;
+  }
+}
+
+export async function getTodayPriorities(): Promise<TodayPrioritiesData | null> {
+  try {
+    return await aiServerFetch<TodayPrioritiesData>("/v1/intelligence/today-priorities");
+  } catch {
+    return MOCK_TODAY_PRIORITIES;
+  }
+}
+
+export async function getAIActivity(): Promise<AIActivityData | null> {
+  try {
+    return await aiServerFetch<AIActivityData>("/v1/intelligence/activity");
+  } catch {
+    return MOCK_AI_ACTIVITY;
+  }
+}

@@ -200,3 +200,50 @@ export interface PendingNotification {
   timestamp: string;
   read: boolean;
 }
+
+export interface ChangeItem {
+  id: string;
+  type: "new_opportunity" | "invalidated" | "consensus_change" | "institutional_flow" | "risk_change" | "portfolio_change" | "macro_event" | "news_high_impact";
+  icon: string;
+  color: "green" | "red" | "yellow" | "blue" | "orange" | "white" | "gray" | "black";
+  title: string;
+  detail: string;
+  timestamp: string;
+}
+
+export interface SinceLastVisitData {
+  lastLogin: string;
+  hoursSinceLogin: number;
+  greeting: string;
+  changes: ChangeItem[];
+  toReview: { asset: string; reason: string }[];
+}
+
+export interface PriorityAsset {
+  id: string;
+  asset: string;
+  recommendation: "BUY" | "HOLD" | "SELL" | "BUY ON PULLBACK" | "WAIT";
+  confidence: number;
+  risk: "low" | "medium" | "high";
+  mainReason: string;
+  expiresAt: string | null;
+  reasons: { label: string; confirmed: boolean }[];
+}
+
+export interface TodayPrioritiesData {
+  priorities: PriorityAsset[];
+}
+
+export interface AIActivityEntry {
+  id: string;
+  timestamp: string;
+  agent: "Technical" | "News" | "On-chain" | "Contrarian" | "Consensus" | "Macro";
+  action: string;
+  detail: string;
+  decision?: "BUY" | "HOLD" | "SELL";
+  confidence?: number;
+}
+
+export interface AIActivityData {
+  entries: AIActivityEntry[];
+}
