@@ -40,6 +40,7 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
   const [balanceData, setBalanceData] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [binanceOpenOrders, setBinanceOpenOrders] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -53,17 +54,19 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
     const load = async () => {
       setLoading(true);
       try {
-        const [bal, pos, ord, tr] = await Promise.all([
+        const [bal, pos, ord, tr, binOrders] = await Promise.all([
           api<any>("/api/binance/balance").catch(() => null),
           api<any[]>("/api/positions").catch(() => []),
           api<any[]>("/api/orders").catch(() => []),
           api<any[]>("/api/trades?limit=20").catch(() => []),
+          api<any>("/api/binance/open-orders").catch(() => null),
         ]);
         if (!alive) return;
         setBalanceData(bal);
         setPositions(pos);
         setOrders(ord);
         setTrades(tr);
+        setBinanceOpenOrders(binOrders?.orders || []);
       } catch {
         // graceful
       } finally {
@@ -116,13 +119,13 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
       {loading ? (
         <LoadingSkeleton lines={5} />
       ) : module === "overview" ? (
-        <OverviewModule balanceData={balanceData} positions={positions} orders={orders} />
+        <OverviewModule balanceData={balanceData} positions={positions} binanceOpenOrders={binanceOpenOrders} />
       ) : module === "portfolio" ? (
         <PortfolioModule balanceData={balanceData} />
       ) : module === "markets" ? (
         <MarketsModule />
       ) : module === "orders" ? (
-        <OrdersModule orders={orders} />
+        <OrdersModule orders={orders} binanceOpenOrders={binanceOpenOrders} />
       ) : module === "history" ? (
         <HistoryModule trades={trades} />
       ) : module === "config" ? (
@@ -137,12 +140,12 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
   );
 }
 
-function OverviewModule({ balanceData, positions, orders }: { balanceData: any; positions: any[]; orders: any[] }) {
+function OverviewModule({ balanceData, positions, binanceOpenOrders }: { balanceData: any; positions: any[]; binanceOpenOrders: any[] }) {
   const assets: any[] = balanceData?.assets || [];
   const totalUsd = balanceData?.total_usd || 0;
   const totalMxn = balanceData?.total_mxn || 0;
   const activePositions = positions.filter((p) => p.status === "open").length;
-  const activeOrders = orders.filter((o) => o.status === "SUBMITTED" || o.status === "PARTIALLY_FILLED" || o.status === "PENDING_APPROVAL").length;
+  const activeOrders = binanceOpenOrders.length;
 
   return (
     <div className="space-y-4">
@@ -272,13 +275,48 @@ function MarketsModule() {
   );
 }
 
-function OrdersModule({ orders }: { orders: any[] }) {
+function OrdersModule({ orders, binanceOpenOrders }: { orders: any[]; binanceOpenOrders: any[] }) {
   const active = orders.filter((o) => o.status === "SUBMITTED" || o.status === "PARTIALLY_FILLED" || o.status === "PENDING_APPROVAL" || o.status === "APPROVED");
   const filled = orders.filter((o) => o.status === "filled" || o.status === "FILLED");
   return (
     <div className="space-y-4">
+      {binanceOpenOrders.length > 0 && (
+        <div className="panel p-4 border-l-2 border-[var(--color-primary)]">
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-1">Órdenes Abiertas en Binance ({binanceOpenOrders.length})</h3>
+          <p className="text-[10px] text-[var(--color-text-muted)] mb-3">Datos en tiempo real desde Binance API</p>
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                <th className="text-left pb-2">Symbol</th>
+                <th className="text-left pb-2">Side</th>
+                <th className="text-left pb-2">Type</th>
+                <th className="text-right pb-2">Qty</th>
+                <th className="text-right pb-2">Filled</th>
+                <th className="text-right pb-2">Price</th>
+                <th className="text-right pb-2">Stop</th>
+                <th className="text-right pb-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {binanceOpenOrders.map((o, i) => (
+                <tr key={i} className="border-b border-[var(--color-border)]/50">
+                  <td className="py-2 font-bold text-[var(--color-text)]">{o.symbol}</td>
+                  <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
+                  <td className="text-[var(--color-text-muted)]">{o.type}</td>
+                  <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{fmt(o.filled_quantity)}</td>
+                  <td className="text-right text-[var(--color-text)]">{o.price ? fmt(o.price) : "—"}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{o.stop_price ? fmt(o.stop_price) : "—"}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{o.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="panel p-4">
-        <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Órdenes Activas ({active.length})</h3>
+        <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Órdenes Activas (DB local) ({active.length})</h3>
         {active.length === 0 ? (
           <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin órdenes activas</p>
         ) : (
