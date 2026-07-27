@@ -93,6 +93,7 @@ class AITradingAgent:
         self._auth_server_url = auth_server_url
         self._grant_fail_streak = 0  # consecutive grant failures
         self._intelligence_provider: IntelligenceProvider | None = None
+        self._last_signals_snapshot: dict[str, str] = {}  # asset -> decision (for consensus change detection)
 
         # AI provider: use injected or build from config
         if ai_provider is not None:
@@ -496,6 +497,10 @@ class AITradingAgent:
 
         # 2. Get global signals
         signals = provider.get_signals(limit=10)
+
+        # 2.5. Record events to journal for multi-user dashboard
+        self._record_events_to_journal(signals, alerts)
+
         if not signals:
             self._add_log("info", "No hay señales activas del Intelligence Platform", {"cycle": self._cycle, "phase": "no_signals"})
             self._hold_streak += 1
@@ -551,6 +556,117 @@ class AITradingAgent:
             self._execute_action(action)
 
         self._add_log("info", f"--- Ciclo {self._cycle} completado (intelligence mode) ---", {"cycle": self._cycle, "phase": "end"})
+
+    def _record_events_to_journal(
+        self,
+        signals: list,
+        alerts: list,
+    ) -> None:
+        """Write signals and alerts to the Event Journal for multi-user dashboard.
+
+        Detects consensus changes by comparing current signal decisions with
+        the previous cycle's snapshot. New signals, invalidated signals, and
+        consensus changes are recorded as events.
+        """
+        try:
+            from app.database.session import SessionLocal
+            from app.intelligence.event_journal import EventJournal
+
+            session = SessionLocal()
+            try:
+                journal = EventJournal(session)
+
+                # 1. Record alerts as news_high_impact or whale_move events
+                for alert in alerts:
+                    event_type = "news_high_impact"
+                    if alert.alert_type in ("whale", "whale_move", "large_transfer"):
+                        event_type = "whale_move"
+                    elif alert.alert_type in ("funding", "funding_shift"):
+                        event_type = "funding_shift"
+                    elif alert.alert_type in ("macro", "economic_event"):
+                        event_type = "macro_event"
+
+                    severity = "critical" if alert.severity in ("critical", "high") else "info"
+                    scope = "global" if severity == "critical" else "asset"
+
+                    journal.record(
+                        event_type=event_type,
+                        asset=alert.asset,
+                        title=alert.message[:200],
+                        detail=alert.message,
+                        severity=severity,
+                        scope=scope,
+                        agent_source="News",
+                        metadata={"alert_type": alert.alert_type, "alert_id": alert.id},
+                    )
+
+                # 2. Detect consensus changes and new/invalidated signals
+                current_snapshot: dict[str, str] = {}
+                for signal in signals:
+                    asset = signal.asset
+                    decision = signal.decision
+                    current_snapshot[asset] = decision
+
+                    prev_decision = self._last_signals_snapshot.get(asset)
+
+                    if prev_decision is None:
+                        # New signal for this asset
+                        journal.record(
+                            event_type="new_opportunity",
+                            asset=asset,
+                            title=f"Nueva señal: {asset} → {decision}",
+                            detail=f"Confianza: {signal.confidence:.0%}. Motivos: {', '.join(signal.main_reasons[:3])}",
+                            severity="info",
+                            scope="asset",
+                            agent_source="Consensus",
+                            metadata={
+                                "decision": decision,
+                                "confidence": signal.confidence,
+                                "reasons": signal.main_reasons,
+                                "risks": signal.main_risks,
+                                "signal_id": signal.id,
+                            },
+                        )
+                    elif prev_decision != decision:
+                        # Consensus changed
+                        journal.record(
+                            event_type="consensus_change",
+                            asset=asset,
+                            title=f"{asset} cambió de {prev_decision} → {decision}",
+                            detail=f"Confianza: {signal.confidence:.0%}. Motivos: {', '.join(signal.main_reasons[:3])}",
+                            severity="warning",
+                            scope="asset",
+                            agent_source="Consensus",
+                            metadata={
+                                "prev_decision": prev_decision,
+                                "new_decision": decision,
+                                "confidence": signal.confidence,
+                                "reasons": signal.main_reasons,
+                                "signal_id": signal.id,
+                            },
+                        )
+
+                # 3. Detect invalidated signals (assets that were in snapshot but no longer in current)
+                for asset, prev_decision in self._last_signals_snapshot.items():
+                    if asset not in current_snapshot:
+                        journal.record(
+                            event_type="invalidated",
+                            asset=asset,
+                            title=f"Señal de {asset} invalidada",
+                            detail=f"Ya no hay señal activa para {asset} (era {prev_decision})",
+                            severity="info",
+                            scope="asset",
+                            agent_source="Consensus",
+                            metadata={"prev_decision": prev_decision},
+                        )
+
+                # 4. Update snapshot for next cycle
+                self._last_signals_snapshot = current_snapshot
+
+            finally:
+                session.close()
+        except Exception as exc:
+            logger.warning("[AI Agent] Failed to record events to journal: %s", exc)
 
     def _build_portfolio_for_match(self, positions: list | None) -> dict:
         """Build portfolio dict for the Portfolio Matcher from open positions."""
