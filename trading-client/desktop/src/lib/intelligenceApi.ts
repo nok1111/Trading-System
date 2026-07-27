@@ -84,8 +84,19 @@ export async function getDominance(): Promise<DominanceData | null> {
 export async function getNews(limit?: number): Promise<NewsItem[]> {
   try {
     const qs = limit ? `?limit=${limit}` : "";
-    const data = await api<{ news: NewsItem[]; count: number }>(`/api/intelligence/news${qs}`);
-    return data.news || [];
+    const data = await api<{ news: any[]; count: number }>(`/api/intelligence/news${qs}`);
+    if (!data.news) return [];
+    return data.news.map((n) => ({
+      id: String(n.id),
+      title: n.title || "",
+      source: n.source || "unknown",
+      url: n.url || "",
+      timestamp: n.published_at || n.fetched_at || "",
+      sentiment: n.sentiment === "bullish" ? "positive" : n.sentiment === "bearish" ? "negative" : "neutral",
+      assets: n.affected_assets || [],
+      impact: (["critical", "high"].includes(n.impact) ? "high" : n.impact === "medium" ? "medium" : "low") as "high" | "medium" | "low",
+      summary: n.summary || n.ai_analysis || "",
+    }));
   } catch {
     return [];
   }

@@ -16,12 +16,21 @@ const COLOR_MAP: Record<string, string> = {
 export function SinceLastVisit({ data, loading }: { data: SinceLastVisitData | null; loading: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="panel p-5">
         <div className="h-5 w-48 bg-[var(--color-surface-2)] rounded animate-pulse mb-3" />
         <div className="h-4 w-full bg-[var(--color-surface-2)] rounded animate-pulse mb-2" />
         <div className="h-4 w-3/4 bg-[var(--color-surface-2)] rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="panel p-5">
+        <h2 className="text-[18px] font-extrabold text-[var(--color-text)] mb-2">Bienvenido.</h2>
+        <p className="text-[12px] text-[var(--color-text-muted)]">No hay datos disponibles. El scheduler está recopilando información.</p>
       </div>
     );
   }

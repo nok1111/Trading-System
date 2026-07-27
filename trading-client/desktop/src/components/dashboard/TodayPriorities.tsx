@@ -83,7 +83,7 @@ function PriorityCard({ asset }: { asset: PriorityAsset }) {
 }
 
 export function TodayPriorities({ data, loading }: { data: TodayPrioritiesData | null; loading: boolean }) {
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="panel p-5">
         <div className="h-5 w-40 bg-[var(--color-surface-2)] rounded animate-pulse mb-4" />
@@ -92,6 +92,18 @@ export function TodayPriorities({ data, loading }: { data: TodayPrioritiesData |
             <div key={i} className="h-40 bg-[var(--color-surface-2)] rounded-[10px] animate-pulse" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (!data || data.priorities.length === 0) {
+    return (
+      <div className="panel p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <AlertTriangle size={16} className="text-[var(--color-warning)]" />
+          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Qué revisar hoy</h3>
+        </div>
+        <p className="text-[12px] text-[var(--color-text-muted)]">No hay prioridades disponibles. Abre posiciones para generar recomendaciones.</p>
       </div>
     );
   }

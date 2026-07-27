@@ -43,7 +43,7 @@ export function DashboardPage() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [ov, fg, dom, rep, sig, slv, pri, act] = await Promise.all([
+      const results = await Promise.allSettled([
         getMarketOverview(),
         getFearGreed(),
         getDominance(),
@@ -54,14 +54,15 @@ export function DashboardPage() {
         getAIActivity(),
       ]);
       if (!alive) return;
-      setOverview(ov);
-      setFearGreed(fg);
-      setDominance(dom);
-      setReport(rep);
-      setSignals(sig);
-      setSinceLastVisit(slv);
-      setPriorities(pri);
-      setActivity(act);
+      const get = (i: number) => results[i].status === "fulfilled" ? results[i].value : null;
+      setOverview(get(0) as MarketOverview | null);
+      setFearGreed(get(1) as FearGreedData | null);
+      setDominance(get(2) as DominanceData | null);
+      setReport(get(3) as DailyReport | null);
+      setSignals(get(4) as IntelligenceSignal[] | null ?? []);
+      setSinceLastVisit(get(5) as SinceLastVisitData | null);
+      setPriorities(get(6) as TodayPrioritiesData | null);
+      setActivity(get(7) as AIActivityData | null);
       setLoading(false);
     };
     load();

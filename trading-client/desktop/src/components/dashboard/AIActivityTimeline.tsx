@@ -65,13 +65,25 @@ function ActivityRow({ entry }: { entry: AIActivityEntry }) {
 }
 
 export function AIActivityTimeline({ data, loading }: { data: AIActivityData | null; loading: boolean }) {
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="panel p-5">
         <div className="h-5 w-32 bg-[var(--color-surface-2)] rounded animate-pulse mb-4" />
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="h-12 bg-[var(--color-surface-2)] rounded animate-pulse mb-2" />
         ))}
+      </div>
+    );
+  }
+
+  if (!data || data.entries.length === 0) {
+    return (
+      <div className="panel p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity size={16} className="text-[var(--color-primary)]" />
+          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Actividad de la IA</h3>
+        </div>
+        <p className="text-[12px] text-[var(--color-text-muted)]">No hay actividad registrada. El scheduler está recopilando datos.</p>
       </div>
     );
   }
