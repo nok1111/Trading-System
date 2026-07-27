@@ -341,3 +341,7 @@ FROM orders ORDER BY orders.id DESC
     at ThemeProvider (http://127.0.0.1:53403/src/theme/ThemeContext.tsx:25:33)
     at ErrorBoundary (http://127.0.0.1:53403/src/components/ErrorBoundary.tsx:8:5)
     at App (<anonymous>)
+[2026-07-27T21:36:17.533Z] [ERROR] Uncaught error | Uncaught  | http://127.0.0.1:53403/:
+[2026-07-27T21:36:23.483Z] [ERROR] Uncaught error | Uncaught  | http://127.0.0.1:53403/:
+[2026-07-27T21:36:57.269Z] [ERROR] Uncaught error | Uncaught  | http://localhost:1420/:
+[2026-07-27T21:37:04.170Z] [ERROR] Uncaught error | Uncaught  | http://localhost:1420/:

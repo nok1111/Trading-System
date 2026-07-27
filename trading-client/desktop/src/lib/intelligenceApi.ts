@@ -241,9 +241,11 @@ export { getAiServerUrl };
 export async function getSinceLastVisit(): Promise<SinceLastVisitData | null> {
   try {
     const data = await api<SinceLastVisitData>("/api/intelligence/changes-since-last-login");
-    if (!data || (data as any).error) return null;
+    console.log("[getSinceLastVisit] response:", data);
+    if (!data || (data as any).error) { console.log("[getSinceLastVisit] returning null, error:", (data as any)?.error); return null; }
     return data;
-  } catch {
+  } catch (e) {
+    console.error("[getSinceLastVisit] error:", e);
     return null;
   }
 }

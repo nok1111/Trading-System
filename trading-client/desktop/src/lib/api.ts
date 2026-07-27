@@ -1,15 +1,18 @@
 const API_BASE = "http://localhost:18652";
 
 // Read token from localStorage on module init (survives Vite hot reloads)
-let authToken: string | null = localStorage.getItem("jwt");
+let authToken: string | null = null;
+try { authToken = localStorage.getItem("jwt"); } catch {}
 
 export function setAuthToken(token: string | null) {
   authToken = token;
-  if (token) {
-    localStorage.setItem("jwt", token);
-  } else {
-    localStorage.removeItem("jwt");
-  }
+  try {
+    if (token) {
+      localStorage.setItem("jwt", token);
+    } else {
+      localStorage.removeItem("jwt");
+    }
+  } catch {}
 }
 
 export function getAuthToken(): string | null {

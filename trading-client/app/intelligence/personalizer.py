@@ -239,7 +239,7 @@ def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
 
 def _get_high_impact_news(session: Session, hours: int = 24) -> list[dict[str, Any]]:
     """Get high-impact news from the last N hours."""
-    since = datetime.now(UTC) - timedelta(hours=hours)
+    since = datetime.utcnow() - timedelta(hours=hours)
     news = list(
         session.execute(
             select(IntelligenceNews)
@@ -273,7 +273,7 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
 
     # 1. Events from journal
     journal = EventJournal(session)
-    events = journal.get_for_user(since=last_login, user_assets=user_assets, limit=20)
+    events = journal.get_for_user(since=last_login_naive, user_assets=user_assets, limit=20)
 
     # 2. Portfolio changes (deterministic)
     positions = list(
@@ -316,12 +316,13 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
     buy_recs = _get_buy_recommendations(session)
 
     # 8. High impact news
-    high_impact_news = _get_high_impact_news(session, hours=max(24, int((datetime.now(UTC) - last_login).total_seconds() / 3600)))
+    hours_since = max(1, int((datetime.utcnow() - last_login_naive).total_seconds() / 3600))
+    high_impact_news = _get_high_impact_news(session, hours=max(24, hours_since))
 
     # 9. Update last_login
     _update_last_login(session, user_id)
 
-    hours = max(1, int((datetime.now(UTC) - last_login).total_seconds() / 3600))
+    hours = hours_since
 
     return {
         "lastLogin": last_login.isoformat(),
