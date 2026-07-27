@@ -195,7 +195,11 @@ class TestValidator:
         assert valid
 
     def test_validate_agent_response_consensus(self):
-        data = {"asset": "BTCUSDT", "decision": "BUY", "confidence": 0.75}
+        data = {
+            "asset": "BTCUSDT", "decision": "BUY", "confidence": 0.75,
+            "riskLevel": "MEDIUM",
+            "agentVotes": {"technical": "BUY", "news": "NEUTRAL"},
+        }
         valid, _error = validate_agent_response("consensus_agent", data)
         assert valid
 

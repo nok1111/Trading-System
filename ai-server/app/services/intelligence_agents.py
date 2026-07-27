@@ -32,6 +32,9 @@ class IntelligenceAgentConfig:
     max_tokens: int = 500
     interval_minutes: int = 15
     is_optional: bool = False
+    provider: str | None = None
+    model: str | None = None
+    api_key: str | None = None
 
 
 # --- Prompts ---
@@ -52,7 +55,33 @@ _OPPORTUNITY_PROMPT = """Eres el DETECTOR DE OPORTUNIDADES. Buscas posibles opor
 
 _CONTRARIAN_PROMPT = """Eres el AGENTE CONTRARIANO. Tu trabajo es intentar demostrar que la señal es incorrecta. Si el Opportunity Detector dice comprar, buscas: divergencias negativas, mala liquidez, noticias no consideradas, señales de distribución, debilidad macro, correlaciones peligrosas, manipulación de mercado. Evitas que todos los agentes se confirmen mutuamente sin cuestionarse."""
 
-_CONSENSUS_PROMPT = """Eres el AGENTE DE CONSENSO. Recibes los resultados de todos los agentes (Technical, News, Sentiment, On-chain, Macro, Crash, Opportunity, Contrarian). Decides: comprar, vender, mantener, tomar ganancias, evitar, esperar confirmación, o sin acción. Calculas confianza (0-1), acuerdo entre agentes, razones principales, riesgos principales, y escenarios probabilísticos (alcista, base, bajista con rangos). No inventas datos que no estén en los inputs."""
+_CONSENSUS_PROMPT = """Eres el AGENTE DE CONSENSO. Recibes los resultados de todos los agentes (Technical, News, Sentiment, On-chain, Macro, Crash, Opportunity, Contrarian). Decides: comprar, vender, mantener, tomar ganancias, evitar, esperar confirmación, o sin acción. Calculas confianza (0-1), acuerdo entre agentes, razones principales, riesgos principales, y escenarios probabilísticos (alcista, base, bajista con rangos). No inventas datos que no estén en los inputs.
+
+Tu output debe incluir OBLIGATORIAMENTE:
+- riskLevel: LOW, MEDIUM o HIGH
+- agentVotes: voto de cada agente (technical, news, sentiment, onchain, macro, crash, opportunity, contrarian)
+- validFrom y expiresAt: ventana de validez ISO 8601
+- entryZone: {min, max} — zona de entrada sugerida como strings
+- invalidation: {type: PRICE_BELOW|PRICE_ABOVE|TIME_EXPIRED|EVENT_TRIGGERED, value}
+- targets: [{price, probability}] — objetivos de precio con probabilidad
+- requiresConfirmation: true si requiere confirmación humana para ejecutar
+
+Ejemplo de output:
+{
+  "asset": "BTCUSDT",
+  "decision": "BUY_ON_PULLBACK",
+  "confidence": 0.78,
+  "riskLevel": "MEDIUM",
+  "validFrom": "2026-07-27T15:00:00Z",
+  "expiresAt": "2026-07-27T19:00:00Z",
+  "entryZone": {"min": "102400", "max": "103800"},
+  "invalidation": {"type": "PRICE_BELOW", "value": "100900"},
+  "targets": [{"price": "106500", "probability": 0.57}, {"price": "109200", "probability": 0.31}],
+  "agentVotes": {"technical": "BUY", "news": "NEUTRAL", "sentiment": "BUY", "onchain": "BUY", "macro": "NEUTRAL", "crash": "LOW_RISK", "opportunity": "BUY", "contrarian": "CAUTION"},
+  "mainReasons": [],
+  "mainRisks": [],
+  "requiresConfirmation": true
+}"""
 
 
 # --- JSON Schemas ---
@@ -169,11 +198,51 @@ _CONTRARIAN_SCHEMA = {
 
 _CONSENSUS_SCHEMA = {
     "type": "object",
-    "required": ["asset", "decision", "confidence"],
+    "required": ["asset", "decision", "confidence", "riskLevel", "agentVotes"],
     "properties": {
         "asset": {"type": "string"},
         "decision": {"type": "string", "enum": ["BUY", "SELL", "BUY_ON_PULLBACK", "SELL_ON_RALLY", "HOLD", "TAKE_PROFIT", "AVOID", "WAIT_CONFIRMATION", "NO_ACTION"]},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "riskLevel": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+        "validFrom": {"type": "string"},
+        "expiresAt": {"type": "string"},
+        "entryZone": {
+            "type": "object",
+            "properties": {
+                "min": {"type": "string"},
+                "max": {"type": "string"},
+            },
+        },
+        "invalidation": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": ["PRICE_BELOW", "PRICE_ABOVE", "TIME_EXPIRED", "EVENT_TRIGGERED"]},
+                "value": {"type": "string"},
+            },
+        },
+        "targets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "price": {"type": "string"},
+                    "probability": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+            },
+        },
+        "agentVotes": {
+            "type": "object",
+            "properties": {
+                "technical": {"type": "string"},
+                "news": {"type": "string"},
+                "sentiment": {"type": "string"},
+                "onchain": {"type": "string"},
+                "macro": {"type": "string"},
+                "crash": {"type": "string"},
+                "opportunity": {"type": "string"},
+                "contrarian": {"type": "string"},
+            },
+        },
         "agreement": {
             "type": "object",
             "properties": {
@@ -195,6 +264,7 @@ _CONSENSUS_SCHEMA = {
                 },
             },
         },
+        "requiresConfirmation": {"type": "boolean"},
     },
 }
 

@@ -25,20 +25,41 @@ def _call_llm(
     model_config: Any,
     system_prompt: str,
     user_message: str,
+    agent_config: Any = None,
 ) -> tuple[str | None, int]:
-    """Llama al LLM y devuelve (content, tokens_used)."""
-    provider = model_config.provider
+    """Llama al LLM y devuelve (content, tokens_used).
 
-    if provider == "groq" and settings.GROQ_API_KEY:
+    Prioridad de provider/model/api_key:
+    1. agent_config (si tiene provider, model, api_key definidos)
+    2. model_config (level_router por plan)
+    3. settings defaults (.env)
+    """
+    s = get_settings()
+
+    # Resolver provider, model, api_key
+    if agent_config and agent_config.provider:
+        provider = agent_config.provider
+        model = agent_config.model or model_config.model
+        api_key = agent_config.api_key
+    else:
+        provider = model_config.provider
+        model = model_config.model
+        api_key = None
+
+    if provider == "groq":
+        key = api_key or s.GROQ_API_KEY
+        if not key:
+            logger.warning("No GROQ_API_KEY configured")
+            return None, 0
         try:
             resp = httpx.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": model_config.model,
+                    "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message},
@@ -47,7 +68,7 @@ def _call_llm(
                     "max_tokens": model_config.max_tokens,
                     "response_format": {"type": "json_object"},
                 },
-                timeout=settings.AGENT_TIMEOUT_SECONDS,
+                timeout=s.AGENT_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -56,6 +77,35 @@ def _call_llm(
             return content, tokens
         except Exception as exc:  # noqa: BLE001
             logger.error("LLM call failed (groq): %s", exc)
+            return None, 0
+
+    elif provider == "gemini":
+        key = api_key or s.GEMINI_API_KEY
+        if not key:
+            logger.warning("No GEMINI_API_KEY configured")
+            return None, 0
+        gemini_model = model or s.GEMINI_MODEL
+        try:
+            resp = httpx.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={key}",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}],
+                    "generationConfig": {
+                        "maxOutputTokens": model_config.max_tokens,
+                        "temperature": model_config.temperature,
+                        "responseMimeType": "application/json",
+                    },
+                },
+                timeout=s.AGENT_TIMEOUT_SECONDS,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["candidates"][0]["content"]["parts"][0]["text"]
+            tokens = data.get("usageMetadata", {}).get("totalTokenCount", 0)
+            return content, tokens
+        except Exception as exc:  # noqa: BLE001
+            logger.error("LLM call failed (gemini): %s", exc)
             return None, 0
 
     logger.warning("No LLM provider available for %s", provider)
@@ -124,6 +174,7 @@ def run_consensus(
         model_config,
         consensus_agent.system_prompt,
         json.dumps(consensus_input, default=str),
+        agent_config=consensus_agent,
     )
 
     if tokens > 0:

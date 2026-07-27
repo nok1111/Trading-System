@@ -123,6 +123,8 @@ class EventScheduler:
         self._thread: threading.Thread | None = None
         self._last_run: dict[str, float] = {}  # {agent_id: timestamp}
         self._last_indicators: dict[str, dict] = {}  # {symbol: indicator_summary}
+        self._last_agent_results: dict[str, dict[str, dict | None]] = {}  # {symbol: {agent_id: result}}
+        self._last_consensus: dict[str, dict | None] = {}  # {symbol: last consensus result}
         self._stop_event = threading.Event()
 
     def start(self) -> bool:
@@ -215,23 +217,51 @@ class EventScheduler:
             ):
                 self._persist_alert(session, result.result)
 
-        # Ejecutar consensus si es necesario
-        if needs_consensus:
-            consensus_result = self._execute_consensus(agent_results, event)
-            results.append(consensus_result)
-            self._last_run["consensus_agent"] = time.time()
+        # Guardar resultados de agentes para comparación futura
+        symbol = event.asset
+        prev_results = self._last_agent_results.get(symbol, {})
+        # Merge: actualizar solo los agentes que se ejecutaron
+        merged_results = {**prev_results, **agent_results}
+        self._last_agent_results[symbol] = merged_results
 
-            # Persistir señal si consensus fue exitoso
-            if (
-                session is not None
-                and consensus_result.success
-                and consensus_result.result
-            ):
-                self._persist_signal(
-                    session,
-                    consensus_result.result,
-                    agent_results,
+        # Ejecutar consensus solo si hay cambio material o evento explícito
+        if needs_consensus:
+            force_consensus = event.event_type in (
+                EventType.SCHEDULED,
+                EventType.MANUAL,
+                EventType.NEWS_CRITICAL,
+                EventType.SUPPORT_BREAK,
+                EventType.RESISTANCE_BREAK,
+            )
+
+            if force_consensus or self._has_material_change(symbol, merged_results):
+                logger.info(
+                    "Consensus triggered for %s (force=%s, material_change=%s)",
+                    symbol, force_consensus,
+                    not force_consensus,
                 )
+                consensus_result = self._execute_consensus(merged_results, event)
+                results.append(consensus_result)
+                self._last_run["consensus_agent"] = time.time()
+
+                # Persistir señal si consensus fue exitoso
+                if (
+                    session is not None
+                    and consensus_result.success
+                    and consensus_result.result
+                ):
+                    self._persist_signal(
+                        session,
+                        consensus_result.result,
+                        merged_results,
+                    )
+                    self._last_consensus[symbol] = consensus_result.result
+            else:
+                logger.info("Consensus skipped for %s — no material change", symbol)
+                results.append(AgentExecutionResult(
+                    agent_id="consensus_agent", success=False,
+                    error="Skipped — no material change",
+                ))
 
         return results
 
@@ -389,6 +419,7 @@ class EventScheduler:
             model_config,
             agent.system_prompt,
             json.dumps(agent_input, default=str),
+            agent_config=agent,
         )
 
         parsed = _parse_json(content)
@@ -645,6 +676,66 @@ class EventScheduler:
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to expire stale items: %s", exc)
             session.rollback()
+
+    def _has_material_change(
+        self,
+        symbol: str,
+        agent_results: dict[str, dict | None],
+    ) -> bool:
+        """Detecta si hubo un cambio material que justifique ejecutar Consensus.
+
+        Consensus se ejecuta cuando:
+        - Un agente cambió su bias/decision (BUY→SELL, NEUTRAL→BUY, etc.)
+        - Crash risk aumentó significativamente (>15% delta)
+        - No hay resultados previos (primer run)
+        - No hay consensus previo para este símbolo
+        """
+        if symbol not in self._last_consensus:
+            return True
+
+        prev = self._last_agent_results.get(symbol, {})
+        if not prev:
+            return True
+
+        # Campos clave a comparar por agente
+        bias_fields = {
+            "technical_analyst": "technicalBias",
+            "onchain_analyst": "onchainBias",
+            "opportunity_detector": "suggestion",
+            "sentiment_analyst": "sentimentScore",
+            "contrarian_agent": "recommendation",
+            "news_analyst": "impact",
+            "macro_analyst": "cryptoImpact",
+        }
+
+        for agent_id, result in agent_results.items():
+            old_result = prev.get(agent_id)
+            if old_result is None and result is not None:
+                return True
+            if old_result is not None and result is None:
+                return True
+            if old_result is None or result is None:
+                continue
+
+            field = bias_fields.get(agent_id)
+            if field:
+                old_val = old_result.get(field)
+                new_val = result.get(field)
+                if old_val != new_val:
+                    return True
+
+            # Crash detector: delta significativo
+            if agent_id == "crash_detector":
+                old_risk = old_result.get("crashRisk", 0)
+                new_risk = result.get("crashRisk", 0)
+                if abs(new_risk - old_risk) > 0.15:
+                    return True
+                old_level = old_result.get("riskLevel", "low")
+                new_level = result.get("riskLevel", "low")
+                if old_level != new_level:
+                    return True
+
+        return False
 
     def _build_agent_input(
         self,
