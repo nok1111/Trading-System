@@ -326,7 +326,7 @@ def get_binance_balance(
 
     creds = resolve_broker_credentials("binance", current_user)
     if not creds:
-        return {"error": "No tienes API keys de Binance configuradas. Ve a Settings para ingresarlas.", "assets": [], "total_usd": 0, "total_mxn": 0}
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "assets": [], "total_usd": 0, "total_mxn": 0}
 
     from app.brokers.adapters.binance_adapter import BinanceAdapter
 
@@ -335,7 +335,10 @@ def get_binance_balance(
     try:
         balances = adapter.get_account_balances()
     except Exception as exc:
-        return {"error": f"No se pudo conectar a Binance: {exc}", "assets": [], "total_usd": 0, "total_mxn": 0}
+        err_msg = str(exc)
+        if "401" in err_msg or "-2015" in err_msg:
+            err_msg = "Binance rechazó las credenciales. Verifica que tu API key tenga permisos de lectura y que tu IP esté autorizada en Binance."
+        return {"error": f"No se pudo conectar a Binance: {err_msg}", "assets": [], "total_usd": 0, "total_mxn": 0}
 
     assets = []
     total_usd = 0.0
@@ -556,34 +559,11 @@ def place_binance_manual_order(req: ManualOrderRequest) -> dict:
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado"}
 
-    # Try resolving keys: .env first, then user_settings for user_id=1
-    keys = resolve_binancekeys(None)
-    if not keys:
-        try:
-            session = SessionLocal()
-            from app.database.models.user_settings import UserSettings
-            row = session.query(UserSettings).filter_by(user_id=1).first()
-            session.close()
-            if row and row.binance_api_key_enc:
-                k = decrypt(row.binance_api_key_enc)
-                s = decrypt(row.binance_api_secret_enc)
-                if k and s:
-                    keys = (k, s)
-        except Exception:
-            pass
-
-    if not keys:
-        return {"error": "No tienes API keys de Binance configuradas. Ve a Settings para ingresarlas."}
+    creds = resolve_broker_credentials("binance", None)
+    if not creds:
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones."}
 
     from app.brokers.adapters.binance_adapter import BinanceAdapter
-    from app.brokers.models import BrokerCredentials
-
-    creds = BrokerCredentials(
-        broker_id="binance",
-        api_key=keys[0],
-        api_secret=keys[1],
-        testnet=getattr(settings, "BINANCE_TESTNET", False),
-    )
     adapter = BinanceAdapter(creds)
 
     symbol = req.symbol.upper()
@@ -629,7 +609,10 @@ def place_binance_manual_order(req: ManualOrderRequest) -> dict:
             "transactTime": resp.get("transactTime", ""),
         }
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        err_msg = str(exc)
+        if "401" in err_msg or "-2015" in err_msg:
+            err_msg = "Binance rechazó las credenciales. Verifica que tu API key tenga permisos de trading y que tu IP esté autorizada en Binance."
+        return {"status": "error", "error": err_msg}
 
 
 @router.get("/binance/price")

@@ -9,33 +9,24 @@ from app.services.crypto import decrypt
 
 
 def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
-    """Resolve Binance API keys: user stored > .env fallback. Returns (key, secret) or None."""
-    # Check user_settings table first (where keys are stored via Settings UI)
-    if current_user:
-        try:
-            session = SessionLocal()
-            from app.database.models.user_settings import UserSettings
-            settings_row = session.query(UserSettings).filter_by(user_id=current_user.id).first()
-            session.close()
-            if settings_row and settings_row.binance_api_key_enc:
-                key = decrypt(settings_row.binance_api_key_enc)
-                secret = decrypt(settings_row.binance_api_secret_enc)
-                if key and secret:
-                    return (key, secret)
-        except Exception:
-            pass
-        # Fallback: check users table directly
-        if current_user.binance_api_key_enc:
-            try:
-                key = decrypt(current_user.binance_api_key_enc)
-                secret = decrypt(current_user.binance_api_secret_enc)
-                if key and secret:
-                    return (key, secret)
-            except Exception:
-                pass
-    settings = get_settings()
-    if settings.BROKER_API_KEY and settings.BROKER_API_SECRET:
-        return (settings.BROKER_API_KEY, settings.BROKER_API_SECRET)
+    """Resolve Binance API keys from broker_accounts table only.
+
+    No .env fallback, no test accounts. The user connects their broker
+    through the Connections page and those keys are used.
+    """
+    try:
+        session = SessionLocal()
+        from app.database.models.broker_account import BrokerAccount as BA
+        row = session.query(BA).filter_by(broker_id="binance").first()
+        if row and row.api_key_enc:
+            key = decrypt(row.api_key_enc)
+            secret = decrypt(row.api_secret_enc)
+            if key and secret:
+                session.close()
+                return (key, secret)
+        session.close()
+    except Exception:
+        pass
     return None
 
 
@@ -43,20 +34,28 @@ def resolve_broker_credentials(
     broker_id: str = "binance",
     current_user=None,
 ) -> BrokerCredentials | None:
-    """Resolve broker credentials into a normalized BrokerCredentials object.
+    """Resolve broker credentials from broker_accounts table only.
 
-    Returns None if no credentials are found.
+    Broker-agnostic: works with any broker_id (binance, coinbase, okx, etc.).
+    No .env fallback, no test accounts. The user connects their broker
+    through the Connections page and those keys are used.
     """
-    keys = resolve_binancekeys(current_user)
-    if not keys:
-        return None
-    settings = get_settings()
-    return BrokerCredentials(
-        broker_id=broker_id,
-        api_key=keys[0],
-        api_secret=keys[1],
-        testnet=getattr(settings, "BINANCE_TESTNET", False),
-    )
+    try:
+        session = SessionLocal()
+        from app.database.models.broker_account import BrokerAccount as BA
+        row = session.query(BA).filter_by(broker_id=broker_id).first()
+        session.close()
+        if row and row.api_key_enc:
+            return BrokerCredentials(
+                broker_id=broker_id,
+                api_key=decrypt(row.api_key_enc),
+                api_secret=decrypt(row.api_secret_enc),
+                passphrase=decrypt(row.passphrase_enc) if row.passphrase_enc else None,
+                testnet=row.environment in ("testnet", "demo", "sandbox"),
+            )
+    except Exception:
+        pass
+    return None
 
 
 def build_strategy(name: str, settings):
