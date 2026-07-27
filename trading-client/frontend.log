@@ -273,3 +273,9 @@
     at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
     at App (<anonymous>)
 [2026-07-27T18:26:01.073Z] [ERROR] Unhandled promise rejection | Not Found
+[2026-07-27T13:50:54.236702] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders

@@ -37,7 +37,7 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
 
 export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
-  const [balances, setBalances] = useState<any[]>([]);
+  const [balanceData, setBalanceData] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
@@ -54,13 +54,13 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
       setLoading(true);
       try {
         const [bal, pos, ord, tr] = await Promise.all([
-          api<any[]>("/api/wallet/balances").catch(() => []),
+          api<any>("/api/binance/balance").catch(() => null),
           api<any[]>("/api/positions").catch(() => []),
           api<any[]>("/api/orders").catch(() => []),
           api<any[]>("/api/trades?limit=20").catch(() => []),
         ]);
         if (!alive) return;
-        setBalances(bal);
+        setBalanceData(bal);
         setPositions(pos);
         setOrders(ord);
         setTrades(tr);
@@ -116,9 +116,9 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
       {loading ? (
         <LoadingSkeleton lines={5} />
       ) : module === "overview" ? (
-        <OverviewModule balances={balances} positions={positions} orders={orders} />
+        <OverviewModule balanceData={balanceData} positions={positions} orders={orders} />
       ) : module === "portfolio" ? (
-        <PortfolioModule balances={balances} />
+        <PortfolioModule balanceData={balanceData} />
       ) : module === "markets" ? (
         <MarketsModule />
       ) : module === "orders" ? (
@@ -137,10 +137,12 @@ export function BrokerPage({ brokerId, moduleId }: BrokerPageProps) {
   );
 }
 
-function OverviewModule({ balances, positions, orders }: { balances: any[]; positions: any[]; orders: any[] }) {
-  const totalUsd = balances.reduce((s, b) => s + (b.usd_value || 0), 0);
+function OverviewModule({ balanceData, positions, orders }: { balanceData: any; positions: any[]; orders: any[] }) {
+  const assets: any[] = balanceData?.assets || [];
+  const totalUsd = balanceData?.total_usd || 0;
+  const totalMxn = balanceData?.total_mxn || 0;
   const activePositions = positions.filter((p) => p.status === "open").length;
-  const activeOrders = orders.filter((o) => o.status === "open" || o.status === "pending").length;
+  const activeOrders = orders.filter((o) => o.status === "SUBMITTED" || o.status === "PARTIALLY_FILLED" || o.status === "PENDING_APPROVAL").length;
 
   return (
     <div className="space-y-4">
@@ -148,6 +150,9 @@ function OverviewModule({ balances, positions, orders }: { balances: any[]; posi
         <div className="panel p-4">
           <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase">Balance Total</p>
           <p className="text-[22px] font-extrabold text-[var(--color-text)] mt-1">${fmtVol(totalUsd)}</p>
+          {totalMxn > 0 && (
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">≈ ${fmtVol(totalMxn)} MXN</p>
+          )}
         </div>
         <div className="panel p-4">
           <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase">Posiciones</p>
@@ -159,13 +164,19 @@ function OverviewModule({ balances, positions, orders }: { balances: any[]; posi
         </div>
       </div>
 
+      {balanceData?.error && (
+        <div className="panel p-3 border-l-2 border-[var(--color-warning)]">
+          <p className="text-[12px] text-[var(--color-warning)]">{balanceData.error}</p>
+        </div>
+      )}
+
       <div className="panel p-4">
         <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Top Holdings</h3>
-        {balances.length === 0 ? (
+        {assets.length === 0 ? (
           <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin balances disponibles</p>
         ) : (
           <div className="space-y-1.5">
-            {balances.slice(0, 8).map((b, i) => (
+            {assets.slice(0, 8).map((b, i) => (
               <div key={i} className="flex items-center gap-3 h-8">
                 <span className="text-[12px] font-bold text-[var(--color-text)] w-16 truncate">{b.asset}</span>
                 <span className="text-[12px] text-[var(--color-text-muted)] flex-1">{fmt(b.free)} (free) · {fmt(b.locked)} (locked)</span>
@@ -179,13 +190,17 @@ function OverviewModule({ balances, positions, orders }: { balances: any[]; posi
   );
 }
 
-function PortfolioModule({ balances }: { balances: any[] }) {
-  const total = balances.reduce((s, b) => s + (b.usd_value || 0), 0);
+function PortfolioModule({ balanceData }: { balanceData: any }) {
+  const assets: any[] = balanceData?.assets || [];
+  const total = balanceData?.total_usd || 0;
 
   return (
     <div className="panel p-4">
       <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Portafolio Completo</h3>
-      {balances.length === 0 ? (
+      {balanceData?.error && (
+        <p className="text-[12px] text-[var(--color-warning)] mb-3">{balanceData.error}</p>
+      )}
+      {assets.length === 0 ? (
         <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin balances disponibles</p>
       ) : (
         <table className="w-full text-[12px]">
@@ -199,7 +214,7 @@ function PortfolioModule({ balances }: { balances: any[] }) {
             </tr>
           </thead>
           <tbody>
-            {balances.map((b, i) => (
+            {assets.map((b, i) => (
               <tr key={i} className="border-b border-[var(--color-border)]/50">
                 <td className="py-2 font-bold text-[var(--color-text)]">{b.asset}</td>
                 <td className="text-right text-[var(--color-text-muted)]">{fmt(b.free)}</td>
@@ -226,7 +241,7 @@ function MarketsModule() {
 }
 
 function OrdersModule({ orders }: { orders: any[] }) {
-  const active = orders.filter((o) => o.status === "open" || o.status === "pending");
+  const active = orders.filter((o) => o.status === "SUBMITTED" || o.status === "PARTIALLY_FILLED" || o.status === "PENDING_APPROVAL" || o.status === "APPROVED");
   return (
     <div className="panel p-4">
       <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Órdenes Activas ({active.length})</h3>
@@ -240,6 +255,7 @@ function OrdersModule({ orders }: { orders: any[] }) {
               <th className="text-left pb-2">Side</th>
               <th className="text-left pb-2">Type</th>
               <th className="text-right pb-2">Qty</th>
+              <th className="text-right pb-2">Filled</th>
               <th className="text-right pb-2">Price</th>
               <th className="text-right pb-2">Status</th>
             </tr>
@@ -249,9 +265,10 @@ function OrdersModule({ orders }: { orders: any[] }) {
               <tr key={i} className="border-b border-[var(--color-border)]/50">
                 <td className="py-2 font-bold text-[var(--color-text)]">{o.symbol}</td>
                 <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
-                <td className="text-[var(--color-text-muted)]">{o.type}</td>
+                <td className="text-[var(--color-text-muted)]">{o.order_type}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
-                <td className="text-right text-[var(--color-text)]">{fmt(o.price)}</td>
+                <td className="text-right text-[var(--color-text-muted)]">{fmt(o.filled_quantity)}</td>
+                <td className="text-right text-[var(--color-text)]">{o.price ? fmt(o.price) : "—"}</td>
                 <td className="text-right text-[var(--color-text-muted)]">{o.status}</td>
               </tr>
             ))}
@@ -288,7 +305,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
                 <td className={cn("font-bold", t.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{t.side}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.quantity)}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.price)}</td>
-                <td className="text-right font-bold text-[var(--color-text)]">${fmtVol(t.total || t.quantity * t.price)}</td>
+                <td className="text-right font-bold text-[var(--color-text)]">${fmtVol(Number(t.quantity) * Number(t.price))}</td>
               </tr>
             ))}
           </tbody>
