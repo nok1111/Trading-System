@@ -186,6 +186,38 @@ function OverviewModule({ balanceData, positions, orders }: { balanceData: any; 
           </div>
         )}
       </div>
+
+      {activePositions > 0 && (
+        <div className="panel p-4">
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Posiciones Activas ({activePositions})</h3>
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                <th className="text-left pb-2">Symbol</th>
+                <th className="text-left pb-2">Side</th>
+                <th className="text-right pb-2">Qty</th>
+                <th className="text-right pb-2">Entry</th>
+                <th className="text-right pb-2">Current</th>
+                <th className="text-right pb-2">PnL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positions.filter((p) => p.status === "open").map((p, i) => (
+                <tr key={i} className="border-b border-[var(--color-border)]/50">
+                  <td className="py-2 font-bold text-[var(--color-text)]">{p.symbol}</td>
+                  <td className={cn("font-bold", p.side === "long" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{p.side}</td>
+                  <td className="text-right text-[var(--color-text)]">{fmt(p.quantity)}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{fmt(p.entry_price)}</td>
+                  <td className="text-right text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</td>
+                  <td className={cn("text-right font-bold", Number(p.unrealized_pnl) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                    {Number(p.unrealized_pnl) !== 0 ? fmtVol(p.unrealized_pnl) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

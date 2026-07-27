@@ -279,3 +279,34 @@ FROM orders ORDER BY orders.id DESC
  LIMIT ? OFFSET ?]
 [parameters: (50, 0)]
 (Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-27T13:55:27.039952] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-27T18:58:36.875Z] [ERROR] React crash | v.toFixed is not a function | Stack: TypeError: v.toFixed is not a function
+    at fmtVol (http://127.0.0.1:53403/src/lib/utils.ts:25:12)
+    at http://127.0.0.1:53403/src/pages/BrokerPage.tsx?t=1785178716557:457:220
+    at Array.map (<anonymous>)
+    at OverviewModule (http://127.0.0.1:53403/src/pages/BrokerPage.tsx?t=1785178716557:430:98)
+    at Object.react_stack_bottom_frame (http://127.0.0.1:53403/node_modules/.vite/deps/react-dom_client.js?v=6b77db38:18509:20)
+    at renderWithHooks (http://127.0.0.1:53403/node_modules/.vite/deps/react-dom_client.js?v=6b77db38:5654:24)
+    at updateFunctionComponent (http://127.0.0.1:53403/node_modules/.vite/deps/react-dom_client.js?v=6b77db38:7475:21)
+    at beginWork (http://127.0.0.1:53403/node_modules/.vite/deps/react-dom_client.js?v=6b77db38:8525:20)
+    at runWithFiberInDEV (http://127.0.0.1:53403/node_modules/.vite/deps/react-dom_client.js?v=6b77db38:997:72)
+    at performUnitOfWork (http://127.0.0.1:53403/node_modules/.vite/deps/react-dom_client.js?v=6b77db38:12561:98) | ComponentStack: 
+    at OverviewModule (http://127.0.0.1:53403/src/pages/BrokerPage.tsx?t=1785178716557:247:27)
+    at div (<anonymous>)
+    at BrokerPage (http://127.0.0.1:53403/src/pages/BrokerPage.tsx?t=1785178716557:78:30)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://127.0.0.1:53403/src/components/layout/Layout.tsx?t=1785178439908:119:26)
+    at BrokerAwareContent (http://127.0.0.1:53403/src/App.tsx?t=1785178439908:95:3)
+    at BrokerProvider (http://127.0.0.1:53403/src/context/BrokerContext.tsx:35:34)
+    at AppContent (http://127.0.0.1:53403/src/App.tsx?t=1785178439908:47:46)
+    at AuthProvider (http://127.0.0.1:53403/src/context/AuthContext.tsx:21:32)
+    at ThemeProvider (http://127.0.0.1:53403/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://127.0.0.1:53403/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)
