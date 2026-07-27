@@ -457,6 +457,58 @@ def get_binance_open_orders(
     return {"orders": orders, "count": len(orders)}
 
 
+@router.get("/binance/all-orders")
+def get_binance_all_orders(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    limit: int = 50,
+) -> dict:
+    """Consulta el historial completo de órdenes desde Binance en tiempo real."""
+    creds = resolve_broker_credentials("binance", current_user)
+    if not creds:
+        return {"error": "No tienes API keys de Binance configuradas.", "orders": []}
+
+    from app.brokers.adapters.binance_adapter import BinanceAdapter
+
+    adapter = BinanceAdapter(creds)
+
+    try:
+        resp = adapter._broker._signed_request("GET", "/api/v3/allOrders", {"limit": limit})
+    except Exception as exc:
+        return {"error": f"No se pudo consultar órdenes: {exc}", "orders": []}
+
+    orders = []
+    for o in resp:
+        status = o.get("status", "")
+        is_active = status in ("NEW", "PARTIALLY_FILLED", "PENDING_NEW", "PENDING_CANCEL")
+        orders.append({
+            "orderId": str(o.get("orderId", "")),
+            "clientOrderId": o.get("clientOrderId", ""),
+            "symbol": o.get("symbol", ""),
+            "side": o.get("side", ""),
+            "type": o.get("type", ""),
+            "status": status,
+            "is_active": is_active,
+            "quantity": float(o.get("origQty", "0")),
+            "filled_quantity": float(o.get("executedQty", "0")),
+            "price": float(o.get("price", "0")) if o.get("price") and o.get("price") != "0" else None,
+            "avg_price": float(o.get("avgPrice", "0")) if o.get("avgPrice") and o.get("avgPrice") != "0" else None,
+            "stop_price": float(o.get("stopPrice", "0")) if o.get("stopPrice") and o.get("stopPrice") != "0" else None,
+            "time": o.get("time", 0),
+            "updateTime": o.get("updateTime", 0),
+        })
+
+    active = [o for o in orders if o["is_active"]]
+    filled = [o for o in orders if not o["is_active"]]
+
+    return {
+        "orders": orders,
+        "active": active,
+        "filled": filled,
+        "count": len(orders),
+        "active_count": len(active),
+    }
+
+
 @router.get("/binance/account")
 def get_binance_account(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
