@@ -1,15 +1,19 @@
 """License validation endpoint — used by the Trading Client to verify subscriptions."""
 
+import hashlib
+import hmac
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
+from app.config import get_settings
 from app.database.models.user import User
 from app.services.auth import get_current_user
 from app.services.rate_limit import get_plan_limits
 
 router = APIRouter(prefix="/api/license", tags=["license"])
+settings = get_settings()
 
 
 class LicenseResponse(BaseModel):
@@ -44,6 +48,37 @@ def validate_license(
         subscription=current_user.subscription,
         plan_limits=limits,
     )
+
+
+@router.post("/verify-hmac")
+def verify_hmac(
+    x_hmac_signature: Annotated[str | None, Header()] = None,
+    x_hmac_timestamp: Annotated[str | None, Header()] = None,
+    x_hmac_nonce: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Verify HMAC signature from the AI Server (service-to-service).
+
+    The AI Server calls this endpoint to verify that its HMAC secret is valid
+    and synchronized with the Auth Server. This is used for key rotation
+    and health checks.
+    """
+    if not x_hmac_signature or not x_hmac_timestamp or not x_hmac_nonce:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing HMAC headers",
+        )
+
+    hmac_secret = getattr(settings, "HMAC_SECRET", None) or getattr(settings, "JWT_SECRET", "")
+    payload = f"{x_hmac_timestamp}\n{x_hmac_nonce}\nverify"
+    expected = hmac.new(hmac_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected, x_hmac_signature):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid HMAC signature",
+        )
+
+    return {"valid": True, "service": "ai-server"}
 
 
 @router.get("/check", response_model=LicenseResponse)

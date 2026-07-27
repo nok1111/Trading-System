@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  ai-server:
+    build: .
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - AUTH_SERVER_URL=http://auth-server:8000
+    depends_on:
+      - auth-server
+    restart: unless-stopped
