@@ -29,28 +29,37 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const root = document.documentElement;
+    const cs = getComputedStyle(root);
+    const cssVar = (name: string) => cs.getPropertyValue(name).trim() || "#333333";
+    const cBorder = cssVar("--color-border");
+    const cTextMuted = cssVar("--color-text-muted");
+    const cSuccess = cssVar("--color-success");
+    const cDanger = cssVar("--color-danger");
+    const cSurface = cssVar("--color-surface");
+
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "var(--color-text-muted)",
+        background: { type: ColorType.Solid, color: cSurface },
+        textColor: cTextMuted,
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: "var(--color-border)" },
-        horzLines: { color: "var(--color-border)" },
+        vertLines: { color: cBorder },
+        horzLines: { color: cBorder },
       },
       crosshair: {
         mode: 1,
-        vertLine: { color: "var(--color-text-muted)", width: 1, style: 2 },
-        horzLine: { color: "var(--color-text-muted)", width: 1, style: 2 },
+        vertLine: { color: cTextMuted, width: 1, style: 2 },
+        horzLine: { color: cTextMuted, width: 1, style: 2 },
       },
       rightPriceScale: {
-        borderColor: "var(--color-border)",
+        borderColor: cBorder,
       },
       timeScale: {
-        borderColor: "var(--color-border)",
+        borderColor: cBorder,
         timeVisible: true,
         secondsVisible: false,
       },
@@ -59,12 +68,12 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     chartRef.current = chart;
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "var(--color-success)",
-      downColor: "var(--color-danger)",
-      borderUpColor: "var(--color-success)",
-      borderDownColor: "var(--color-danger)",
-      wickUpColor: "var(--color-success)",
-      wickDownColor: "var(--color-danger)",
+      upColor: cSuccess,
+      downColor: cDanger,
+      borderUpColor: cSuccess,
+      borderDownColor: cDanger,
+      wickUpColor: cSuccess,
+      wickDownColor: cDanger,
     });
     seriesRef.current = candleSeries;
 
@@ -102,6 +111,18 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         const data = await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=300`);
         if (!alive) return;
 
+        const root = document.documentElement;
+        const cs = getComputedStyle(root);
+        const hexToRgba = (hex: string, alpha: number) => {
+          const h = hex.replace("#", "");
+          const r = parseInt(h.substring(0, 2), 16);
+          const g = parseInt(h.substring(2, 4), 16);
+          const b = parseInt(h.substring(4, 6), 16);
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+        const volUp = hexToRgba(cs.getPropertyValue("--color-success").trim() || "#22d39a", 0.3);
+        const volDown = hexToRgba(cs.getPropertyValue("--color-danger").trim() || "#ff5f6d", 0.3);
+
         const candles = data.map((k) => ({
           time: Math.floor(k.time / 1000) as any,
           open: Number(k.open),
@@ -113,9 +134,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         const volumes = data.map((k) => ({
           time: Math.floor(k.time / 1000) as any,
           value: Number(k.volume),
-          color: Number(k.close) >= Number(k.open)
-            ? "rgba(var(--color-success-rgb), 0.3)"
-            : "rgba(var(--color-danger-rgb), 0.3)",
+          color: Number(k.close) >= Number(k.open) ? volUp : volDown,
         }));
 
         seriesRef.current!.setData(candles);
