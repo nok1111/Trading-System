@@ -413,3 +413,38 @@ def get_technical_signal(
             "signal": "HOLD",
             "signal_reasons": [f"Analysis failed: {exc}"],
         }
+
+
+# ---------------------------------------------------------------------------
+# Backtesting Endpoints
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BaseModel
+
+
+class BacktestRequest(_BaseModel):
+    symbol: str
+    strategy: str = "trend_momentum"
+    interval: str = "1h"
+    limit: int = 500
+    initial_cash: float = 10000.0
+
+
+@router.post("/backtest/run")
+def run_backtest_endpoint(req: BacktestRequest) -> dict:
+    """Run a backtest and return results."""
+    from app.services.backtest_service import run_backtest
+
+    try:
+        result = run_backtest(
+            symbol=req.symbol,
+            strategy=req.strategy,
+            interval=req.interval,
+            limit=req.limit,
+            initial_cash=req.initial_cash,
+        )
+        return result.to_dict()
+    except Exception as exc:
+        logger.warning("Backtest failed: %s", exc)
+        return {"error": str(exc)}
+

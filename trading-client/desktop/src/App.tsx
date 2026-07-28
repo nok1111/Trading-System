@@ -8,6 +8,7 @@ import { IntelligencePage } from "./pages/IntelligencePage";
 import { RisksPage } from "./pages/RisksPage";
 import { NewsPage } from "./pages/NewsPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { BacktestPage } from "./pages/BacktestPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { SecurityPage } from "./pages/SecurityPage";
@@ -91,7 +92,7 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} />;
   }
 
-  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "alerts", "connections", "security", "preferences"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "alerts", "connections", "security", "preferences"];
 
   const pages: Record<TabId, React.ReactNode> = {
     dashboard: <DashboardPage />,
@@ -99,6 +100,7 @@ function BrokerAwareContent({
     risks: <RisksPage />,
     news: <NewsPage />,
     reports: <ReportsPage />,
+    backtest: <BacktestPage />,
     alerts: <AlertsPage />,
     connections: <ConnectionsPage />,
     security: <SecurityPage />,

@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CircleUser,
+  FlaskConical,
 } from "lucide-react";
 import { cn, fmtDate } from "../../lib/utils";
 import { api } from "../../lib/api";
@@ -40,6 +41,7 @@ export type TabId =
   | "risks"
   | "news"
   | "reports"
+  | "backtest"
   | "alerts"
   | "connections"
   | "security"
@@ -59,6 +61,7 @@ const generalItems: NavItem[] = [
   { id: "risks", label: "Alertas", icon: <ShieldAlert size={17} />, group: "general" },
   { id: "news", label: "Noticias", icon: <Newspaper size={17} />, group: "general" },
   { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
+  { id: "backtest", label: "Backtest", icon: <FlaskConical size={17} />, group: "general" },
 ];
 
 const sistemaItems: NavItem[] = [
@@ -74,6 +77,7 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   risks: { title: "Alertas", subtitle: "Crash risk, whale alerts y eventos de alto impacto" },
   news: { title: "Noticias", subtitle: "Feed de noticias con sentiment" },
   reports: { title: "Reportes", subtitle: "Reportes periódicos generados por IA" },
+  backtest: { title: "Backtest", subtitle: "Prueba estrategias con datos históricos" },
   alerts: { title: "Notificaciones", subtitle: "Centro de notificaciones" },
   connections: { title: "Conexiones", subtitle: "Gestión de brokers" },
   security: { title: "Seguridad", subtitle: "Configuración de seguridad" },
