@@ -97,9 +97,9 @@ export function AIAgentPage() {
     loadLog();
     loadStats();
     loadPlan();
-    const id1 = setInterval(loadStatus, 3000);
-    const id2 = setInterval(loadLog, 3000);
-    const id3 = setInterval(loadStats, 10000);
+    const id1 = setInterval(loadStatus, 5000);
+    const id2 = setInterval(loadLog, 5000);
+    const id3 = setInterval(loadStats, 15000);
     return () => {
       clearInterval(id1);
       clearInterval(id2);
@@ -487,7 +487,7 @@ export function AIAgentPage() {
           <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">🧠 AI Reasoning — Latest Decisions</h3>
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {decisions.slice(0, 10).map((d, i) => (
-              <ReasoningCard key={i} entry={d} />
+              <ReasoningCard key={i} entry={d} defaultExpanded={i < 3} />
             ))}
           </div>
         </Card>
@@ -555,8 +555,8 @@ function PnlSparkline({ data }: { data: number[] }) {
   );
 }
 
-function ReasoningCard({ entry }: { entry: any }) {
-  const [expanded, setExpanded] = useState(false);
+function ReasoningCard({ entry, defaultExpanded = false }: { entry: any; defaultExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const actions: any[] = entry.actions || [];
   const time = entry.timestamp ? new Date(entry.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   const hasActions = actions.length > 0;

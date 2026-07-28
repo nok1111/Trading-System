@@ -1,24 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Layout, type TabId } from "./components/layout/Layout";
 import { Toast } from "./components/ui/Toast";
 import { DashboardPage } from "./pages/DashboardPage";
-import { IntelligencePage } from "./pages/IntelligencePage";
-import { RisksPage } from "./pages/RisksPage";
-import { NewsPage } from "./pages/NewsPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { BacktestPage } from "./pages/BacktestPage";
-import { AIAgentPage } from "./pages/AIAgentPage";
-import { AlertsPage } from "./pages/AlertsPage";
-import { ConnectionsPage } from "./pages/ConnectionsPage";
-import { SecurityPage } from "./pages/SecurityPage";
-import { PreferencesPage } from "./pages/PreferencesPage";
 import { logger } from "./lib/logger";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { BrokerProvider, useBrokerContext } from "./context/BrokerContext";
 import { BrokerOnboarding } from "./components/brokers/BrokerOnboarding";
+
+const IntelligencePage = lazy(() => import("./pages/IntelligencePage").then(m => ({ default: m.IntelligencePage })));
+const RisksPage = lazy(() => import("./pages/RisksPage").then(m => ({ default: m.RisksPage })));
+const NewsPage = lazy(() => import("./pages/NewsPage").then(m => ({ default: m.NewsPage })));
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then(m => ({ default: m.ReportsPage })));
+const BacktestPage = lazy(() => import("./pages/BacktestPage").then(m => ({ default: m.BacktestPage })));
+const AIAgentPage = lazy(() => import("./pages/AIAgentPage").then(m => ({ default: m.AIAgentPage })));
+const AlertsPage = lazy(() => import("./pages/AlertsPage").then(m => ({ default: m.AlertsPage })));
+const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then(m => ({ default: m.ConnectionsPage })));
+const SecurityPage = lazy(() => import("./pages/SecurityPage").then(m => ({ default: m.SecurityPage })));
+const PreferencesPage = lazy(() => import("./pages/PreferencesPage").then(m => ({ default: m.PreferencesPage })));
 
 window.addEventListener("error", (e) => {
   logger.error("Uncaught error", e.message + " | " + (e.filename || "") + ":" + (e.lineno || ""));
@@ -114,7 +115,11 @@ function BrokerAwareContent({
     <Layout activeTab={activeTab} onTabChange={onTabChange}>
       {tabs.map((tab) => (
         <div key={tab} style={{ display: tab === activeTab ? "block" : "none" }}>
-          {visitedTabs.has(tab) ? pages[tab] : null}
+          {visitedTabs.has(tab) ? (
+            <Suspense fallback={<div className="flex items-center justify-center py-20 text-[var(--color-text-muted)] text-[13px]">Cargando...</div>}>
+              {pages[tab]}
+            </Suspense>
+          ) : null}
         </div>
       ))}
     </Layout>

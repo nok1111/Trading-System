@@ -29,27 +29,40 @@ from app.risk.engine import RiskEngine
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Eres un agente de trading que SOLO COMPRA. Devuelves SOLO JSON:
+SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que SOLO COMPRA. Devuelves SOLO JSON:
 {"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
 
-SOLO COMPRAS. Las ventas son automáticas con trailing stop (protege profit, nunca deja volver a loss) y take-profit. NO incluyas "sell".
+SOLO COMPRAS. Las ventas son automáticas con trailing stop y take-profit. NO incluyas "sell".
 
-Reglas: actions=[] si no hay oportunidad clara. confidence 0-1. Cash>$5000=suficiente. SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical.
+FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son SELL/STRONG_SELL, o ya tienes 5 posiciones abiertas. En cualquier otro caso, BUSCA oportunidades.
+
+PRIORIDAD DE COMPRA (compra el mejor candidato del ciclo):
+1. Technical signal BUY o STRONG_BUY → compra INMEDIATAMENTE
+2. RSI < 40 + trend bullish → compra (rebote inminente)
+3. Gainer con volume_relative > 1.2 + cambio > 2% → compra (momentum)
+4. Precio cerca de soporte (Bollinger lower band) → compra
+5. Si hay cash > $1000 y 0 posiciones → compra el MEJOR candidato disponible
+
+confidence 0-1. Cash>$5000=suficiente. SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical.
 
 DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
-- signal "STRONG_BUY" o "BUY" = oportunidad alcista confirmada
-- RSI < 35 = oversold (posible rebote)
-- EMA trend bullish = momentum positivo
-- volume_relative > 1.5 = volumen confirmado
+- signal "STRONG_BUY" o "BUY" = oportunidad alcista confirmada → COMPRA
+- RSI < 40 = oversold (posible rebote) → COMPRA con SL ajustado
+- RSI < 30 = oversold extremo → COMPRA con confianza alta
+- EMA trend bullish = momentum positivo → COMPRA
+- volume_relative > 1.2 = volumen confirmado → refuerza la compra
 - ATR_pct = volatilidad, úsalo para ajustar stop_loss_pct (mayor ATR = mayor SL)
 - NO compres símbolos con signal "SELL" o "STRONG_SELL"
-- Prefiere símbolos con signal "BUY" y razones técnicas sólidas
+- Si no hay technical data, usa gainers con momentum del spot/futures
 
 CADA COMPRA debe incluir:
-- stop_loss_pct: % de pérdida máxima (2-5% según ATR_pct)
-- take_profit_pct: % de ganancia objetivo (5-15% según potencial)
+- stop_loss_pct: % de pérdida máxima (2-5% según ATR_pct, mínimo 2%)
+- take_profit_pct: % de ganancia objetivo (4-12% según potencial)
+- reason: explicación técnica concreta (ej: "RSI 32 + volume 2.1x + EMA bullish")
 
-DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Busca ALTO POTENCIAL a corto plazo: gainers con momentum positivo y volumen alto."""
+DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, COMPRA algo — no quedes en HOLD con el capital parado.
+
+BUY_CANDIDATES: El contexto incluye "buy_candidates" con los mejores símbolos rankeados por score técnico. USA esta lista como prioridad de compra. El primer candidato con score más alto = mejor oportunidad."""
 
 
 class AITradingAgent:
@@ -900,13 +913,29 @@ class AITradingAgent:
             if isinstance(risk_events, list) and risk_events:
                 ctx["rejections"] = [{"s": e.get("symbol"), "r": e.get("reason")} for e in risk_events[:3]]
 
-            # Technical analysis for tracked symbols
+            # Technical analysis for tracked symbols + top movers
             try:
                 from app.services.technical_analysis import analyze_symbol
                 from app.config import get_settings
                 settings = get_settings()
                 tech_data = []
-                for sym in settings.symbols_list[:10]:
+
+                # Analyze tracked symbols
+                tracked = list(settings.symbols_list[:10])
+
+                # Also analyze top spot gainers (more opportunities for the LLM)
+                spot = ctx.get("spot", {})
+                for g in spot.get("up", [])[:5]:
+                    sym = g.get("s", "")
+                    if sym and sym not in tracked:
+                        tracked.append(sym)
+                fut = ctx.get("futures", {})
+                for g in fut.get("up", [])[:3]:
+                    sym = g.get("s", "")
+                    if sym and sym not in tracked:
+                        tracked.append(sym)
+
+                for sym in tracked[:18]:
                     try:
                         ta = analyze_symbol(sym, interval="1h")
                         tech_data.append({
@@ -925,6 +954,23 @@ class AITradingAgent:
                         continue
                 if tech_data:
                     ctx["technical"] = tech_data
+
+                    # Build ranked buy candidates for the LLM
+                    buy_candidates = []
+                    for t in tech_data:
+                        sig = t.get("sig", "")
+                        rsi = t.get("rsi", 50)
+                        vol_rel = t.get("vol_rel", 1)
+                        score = 0
+                        if sig == "STRONG_BUY": score += 3
+                        elif sig == "BUY": score += 2
+                        if rsi < 30: score += 2
+                        elif rsi < 40: score += 1
+                        if vol_rel > 1.5: score += 1
+                        if score > 0:
+                            buy_candidates.append({"s": t["s"], "score": score, "sig": sig, "rsi": rsi, "vol_rel": vol_rel})
+                    buy_candidates.sort(key=lambda x: x["score"], reverse=True)
+                    ctx["buy_candidates"] = buy_candidates[:5]
             except Exception:
                 pass
 

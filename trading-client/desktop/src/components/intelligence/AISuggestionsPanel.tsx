@@ -5,6 +5,7 @@ import { useBrokerContext } from "../../context/BrokerContext";
 import { isBrokerConnected } from "../../lib/brokerTypes";
 import { cn, fmt, fmtDate } from "../../lib/utils";
 import { LoadingSkeleton } from "../common/LoadingSkeleton";
+import { CryptoIcon } from "../CryptoIcon";
 
 interface Signal {
   id: number;
@@ -276,6 +277,7 @@ export function AISuggestionsPanel() {
                 {/* Top row: rank + symbol + decision + rating */}
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-extrabold text-[var(--color-text-muted)] w-5">#{idx + 1}</span>
+                  <CryptoIcon symbol={s.symbol} size={20} />
                   <DecisionIcon size={14} style={{ color: decisionColor }} className="flex-shrink-0" />
                   <span className="text-[13px] font-extrabold text-[var(--color-text)] flex-1">{s.symbol}</span>
                   <span className={cn("text-[11px] font-extrabold", RATING_COLORS[s.rating])}>{s.rating}</span>
