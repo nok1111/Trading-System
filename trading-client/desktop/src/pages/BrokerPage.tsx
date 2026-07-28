@@ -317,8 +317,24 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
+  const [quoteCurrency, setQuoteCurrency] = useState("USDT");
 
-  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "DOGEUSDT", "AVAXUSDT", "XRPUSDT", "ADAUSDT", "LINKUSDT", "DOTUSDT"];
+  const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA", "LINK", "DOT"];
+  const symbols = baseSymbols.map((s) => s + quoteCurrency);
+
+  // Detect quote currency from user's balance
+  useEffect(() => {
+    api<any>("/api/binance/balance").then((data) => {
+      if (!data?.assets) return;
+      const stablecoins = ["USDT", "BUSD", "USDC", "FDUSD", "TUSD", "EUR", "TRY", "BRL", "MXN"];
+      for (const a of data.assets) {
+        if (stablecoins.includes(a.asset) && a.total > 0) {
+          setQuoteCurrency(a.asset);
+          break;
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (presetSymbol) setSymbol(presetSymbol);
@@ -483,7 +499,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           {orderType === "MARKET" && side === "BUY" ? (
             <div>
               <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
-                Monto en USDT
+                Monto en {quoteCurrency}
               </label>
               <div className="relative">
                 <input
@@ -493,13 +509,13 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                   placeholder="100"
                   className="w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-[14px] font-bold text-[var(--color-text)] focus:border-[var(--color-primary)] outline-none"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold text-[var(--color-text-muted)]">USDT</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold text-[var(--color-text-muted)]">{quoteCurrency}</span>
               </div>
             </div>
           ) : (
             <div>
               <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
-                Cantidad ({symbol.replace("USDT", "")})
+                Cantidad ({symbol.replace(quoteCurrency, "")})
               </label>
               <input
                 type="number"
@@ -515,7 +531,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           {orderType === "LIMIT" && (
             <div>
               <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
-                Precio límite (USDT)
+                Precio límite ({quoteCurrency})
               </label>
               <input
                 type="number"
@@ -547,7 +563,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                   />
                   <span className="text-[11px] text-[var(--color-text-muted)]">
                     {livePrice && stopLossPrice && parseFloat(riskPct) > 0
-                      ? `Posición sugerida: ${((parseFloat(amountUsd || "0") * parseFloat(riskPct) / 100) / Math.abs(livePrice - parseFloat(stopLossPrice))).toFixed(6)} ${symbol.replace("USDT", "")}`
+                      ? `Posición sugerida: ${((parseFloat(amountUsd || "0") * parseFloat(riskPct) / 100) / Math.abs(livePrice - parseFloat(stopLossPrice))).toFixed(6)} ${symbol.replace(quoteCurrency, "")}`
                       : "Ingresa SL para calcular"}
                   </span>
                 </div>
@@ -556,7 +572,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-danger)] mb-1">
-                    Stop-Loss (USDT)
+                    Stop-Loss ({quoteCurrency})
                   </label>
                   <input
                     type="number"
@@ -568,7 +584,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-success)] mb-1">
-                    Take-Profit (USDT)
+                    Take-Profit ({quoteCurrency})
                   </label>
                   <input
                     type="number"
@@ -611,13 +627,13 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
             {computedQty > 0 && (
               <div className="flex justify-between">
                 <span className="text-[var(--color-text-muted)]">Cantidad aprox.</span>
-                <span className="font-bold text-[var(--color-text)]">{computedQty.toFixed(6)} {symbol.replace("USDT", "")}</span>
+                <span className="font-bold text-[var(--color-text)]">{computedQty.toFixed(6)} {symbol.replace(quoteCurrency, "")}</span>
               </div>
             )}
             {amountUsd && (
               <div className="flex justify-between">
                 <span className="text-[var(--color-text-muted)]">Total</span>
-                <span className="font-bold text-[var(--color-text)]">${parseFloat(amountUsd).toLocaleString("en-US")} USDT</span>
+                <span className="font-bold text-[var(--color-text)]">${parseFloat(amountUsd).toLocaleString("en-US")} {quoteCurrency}</span>
               </div>
             )}
             {stopLossPrice && (
@@ -647,7 +663,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                   : "bg-[var(--color-danger)] text-white hover:opacity-90"
             )}
           >
-            {submitting ? "Enviando..." : `${side === "BUY" ? "Comprar" : "Vender"} ${symbol.replace("USDT", "")}`}
+            {submitting ? "Enviando..." : `${side === "BUY" ? "Comprar" : "Vender"} ${symbol.replace(quoteCurrency, "")}`}
           </button>
 
           {/* Error */}
@@ -676,8 +692,25 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
 }
 
 function MarketsModule() {
+  const [quoteCurrency, setQuoteCurrency] = useState("USDT");
   const [symbol, setSymbol] = useState("BTCUSDT");
-  const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "DOGEUSDT", "AVAXUSDT", "XRPUSDT", "ADAUSDT"];
+
+  useEffect(() => {
+    api<any>("/api/binance/balance").then((data) => {
+      if (!data?.assets) return;
+      const stablecoins = ["USDT", "BUSD", "USDC", "FDUSD", "TUSD", "EUR", "TRY", "BRL", "MXN"];
+      for (const a of data.assets) {
+        if (stablecoins.includes(a.asset) && a.total > 0) {
+          setQuoteCurrency(a.asset);
+          setSymbol("BTC" + a.asset);
+          break;
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA"];
+  const symbols = baseSymbols.map((s) => s + quoteCurrency);
 
   return (
     <div className="space-y-4">
@@ -814,6 +847,10 @@ function HistoryModule({ trades }: { trades: any[] }) {
 
 function PositionsModule({ positions }: { positions: any[] }) {
   const [expandedCharts, setExpandedCharts] = useState<Set<string>>(new Set());
+  const [paperStatus, setPaperStatus] = useState<any>(null);
+  const [paperAction, setPaperAction] = useState("");
+  const [depositAmount, setDepositAmount] = useState("1000");
+  const [paperInterval, setPaperInterval] = useState("30");
 
   const openPositions = positions.filter((p) => p.status === "open");
   const totalPnl = openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl || 0), 0);
@@ -827,20 +864,157 @@ function PositionsModule({ positions }: { positions: any[] }) {
     });
   };
 
+  const loadPaperStatus = useCallback(async () => {
+    try {
+      const s = await api<any>("/api/paper-trading/status");
+      setPaperStatus(s);
+      if (s.interval_seconds) setPaperInterval(String(s.interval_seconds));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadPaperStatus();
+    const id = setInterval(loadPaperStatus, 10000);
+    return () => clearInterval(id);
+  }, [loadPaperStatus]);
+
+  const handlePaperStart = async () => {
+    setPaperAction("starting");
+    try {
+      await api("/api/paper-trading/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategies: ["trend"], interval_seconds: parseInt(paperInterval) }),
+      });
+      await loadPaperStatus();
+    } catch {}
+    setPaperAction("");
+  };
+
+  const handlePaperStop = async () => {
+    setPaperAction("stopping");
+    try {
+      await api("/api/paper-trading/stop", { method: "POST" });
+      await loadPaperStatus();
+    } catch {}
+    setPaperAction("");
+  };
+
+  const handlePaperDeposit = async () => {
+    try {
+      await api("/api/paper-trading/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parseFloat(depositAmount) }),
+      });
+    } catch {}
+  };
+
+  const handlePaperInterval = async () => {
+    try {
+      await api("/api/paper-trading/interval", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_seconds: parseInt(paperInterval) }),
+      });
+      await loadPaperStatus();
+    } catch {}
+  };
+
+  const paperTradingPanel = (
+    <div className="panel p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[13px] font-bold text-[var(--color-text)]">Paper Trading</h3>
+        <span
+          className={`text-[11px] font-bold px-2 h-5 rounded flex items-center ${
+            paperStatus?.status === "running"
+              ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
+              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+          }`}
+        >
+          {paperStatus?.status === "running" ? "RUNNING" : "STOPPED"}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-3 items-end">
+        {paperStatus?.status === "running" ? (
+          <button
+            onClick={handlePaperStop}
+            disabled={!!paperAction}
+            className="h-8 px-3 rounded-[8px] text-[12px] font-bold bg-[var(--color-danger)] text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {paperAction === "stopping" ? "Stopping..." : "Stop"}
+          </button>
+        ) : (
+          <button
+            onClick={handlePaperStart}
+            disabled={!!paperAction}
+            className="h-8 px-3 rounded-[8px] text-[12px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {paperAction === "starting" ? "Starting..." : "Start"}
+          </button>
+        )}
+        <div>
+          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Interval (sec)</label>
+          <div className="flex gap-1">
+            <input
+              type="number"
+              value={paperInterval}
+              onChange={(e) => setPaperInterval(e.target.value)}
+              min={5}
+              className="w-20 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+            />
+            <button
+              onClick={handlePaperInterval}
+              className="h-8 px-2 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+            >
+              Set
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Deposit (USDT)</label>
+          <div className="flex gap-1">
+            <input
+              type="number"
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              className="w-24 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+            />
+            <button
+              onClick={handlePaperDeposit}
+              className="h-8 px-2 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+            >
+              Deposit
+            </button>
+          </div>
+        </div>
+        {paperStatus?.local_time && (
+          <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">
+            {paperStatus.local_time}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
   if (openPositions.length === 0) {
     return (
-      <div className="panel p-6 text-center">
-        <Layers size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
-        <p className="text-[13px] font-bold text-[var(--color-text)]">Sin posiciones abiertas</p>
-        <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
-          Las posiciones que abras — manualmente o vía IA — aparecerán aquí con su gráfico en tiempo real.
-        </p>
+      <div className="space-y-4">
+        {paperTradingPanel}
+        <div className="panel p-6 text-center">
+          <Layers size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+          <p className="text-[13px] font-bold text-[var(--color-text)]">Sin posiciones abiertas</p>
+          <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
+            Las posiciones que abras — manualmente o vía IA — aparecerán aquí con su gráfico en tiempo real.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {paperTradingPanel}
       {/* Summary */}
       <div className="panel p-4 flex items-center gap-4">
         <div className="flex-1">
@@ -862,9 +1036,9 @@ function PositionsModule({ positions }: { positions: any[] }) {
           ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
           : 0;
         const isExpanded = expandedCharts.has(p.symbol);
-        const chartSymbol = p.symbol.includes("USDT") || p.symbol.includes("BTC") || p.symbol.includes("ETH") || p.symbol.includes("BNB")
+        const chartSymbol = p.symbol.includes("USDT") || p.symbol.includes("BTC") || p.symbol.includes("ETH") || p.symbol.includes("BNB") || p.symbol.includes("FDUSD") || p.symbol.includes("TUSD")
           ? p.symbol.replace("/", "")
-          : p.symbol + "USDT";
+          : p.symbol.replace("/", "") + "USDT";
 
         return (
           <div key={i} className="panel overflow-hidden">

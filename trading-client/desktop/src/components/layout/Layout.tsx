@@ -113,7 +113,10 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
       const detail = (e as CustomEvent).detail;
       if (detail?.page === "trade" && detail?.asset) {
         const brokerId = detail.broker || "binance";
-        const symbol = detail.asset.toUpperCase().replace("/", "") + "USDT";
+        const rawAsset = detail.asset.toUpperCase().replace("/", "");
+        const symbol = rawAsset.endsWith("USDT") || rawAsset.endsWith("BTC") || rawAsset.endsWith("ETH") || rawAsset.endsWith("BNB") || rawAsset.endsWith("FDUSD") || rawAsset.endsWith("TUSD")
+          ? rawAsset
+          : rawAsset + "USDT";
         setSelectedBrokerModule({ brokerId, moduleId: "trade" });
         setPresetTradeSymbol(symbol);
         onTabChange("broker");
