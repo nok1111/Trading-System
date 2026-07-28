@@ -771,7 +771,9 @@ function PositionsModule({ positions }: { positions: any[] }) {
           ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
           : 0;
         const isExpanded = expandedCharts.has(p.symbol);
-        const chartSymbol = p.symbol.includes("/") ? p.symbol.replace("/", "") : p.symbol + "USDT";
+        const chartSymbol = p.symbol.includes("USDT") || p.symbol.includes("BTC") || p.symbol.includes("ETH") || p.symbol.includes("BNB")
+          ? p.symbol.replace("/", "")
+          : p.symbol + "USDT";
 
         return (
           <div key={i} className="panel overflow-hidden">
