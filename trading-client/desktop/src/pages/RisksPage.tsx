@@ -254,7 +254,6 @@ export function RisksPage() {
               label="Max Open Positions"
               value={riskConfig.max_open_positions}
               step={1}
-              isInt={true}
               onSave={(v) => handleSaveConfig({ max_open_positions: Math.round(v) })}
               saving={savingConfig}
             />
@@ -317,11 +316,10 @@ export function RisksPage() {
   );
 }
 
-function RiskInput({ label, value, step, isInt, onSave, saving }: {
+function RiskInput({ label, value, step, onSave, saving }: {
   label: string;
   value: number;
   step: number;
-  isInt?: boolean;
   onSave: (v: number) => void;
   saving: boolean;
 }) {

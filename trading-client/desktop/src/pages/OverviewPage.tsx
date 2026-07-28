@@ -368,7 +368,7 @@ export function OverviewPage() {
                   Sin balances disponibles.
                 </p>
               ) : (
-                walletAssets.map((a, idx) => {
+                walletAssets.map((a) => {
                   const sparkData = (sparkRef.current[a.asset + "USDT"] || sparkRef.current[a.asset] || []).map((v, i) => ({ i, v }));
                   const sparkUp = sparkData.length > 1 && sparkData[sparkData.length - 1].v >= sparkData[0].v;
                   return (
@@ -805,7 +805,7 @@ export function OverviewPage() {
                 Conectando...
               </div>
             ))
-          : tickers.map((t, idx) => {
+          : tickers.map((t) => {
               const first = t.spark[0]?.v ?? 0;
               const last = t.spark[t.spark.length - 1]?.v ?? 0;
               const up = last >= first;

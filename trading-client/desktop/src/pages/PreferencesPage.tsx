@@ -84,7 +84,7 @@ export function PreferencesPage() {
   const { theme, toggleTheme } = useTheme();
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
 
-  const [profile, setProfile] = useState<UserProfileData | null>(null);
+  const [_profile, setProfile] = useState<UserProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
