@@ -17,9 +17,11 @@ const PROVIDERS = [
 
 const MODELS: Record<string, { value: string; label: string }[]> = {
   gemini: [
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (rápido)" },
+    { value: "gemini-flash-latest", label: "Gemini Flash Latest (recomendado)" },
+    { value: "gemini-flash-lite-latest", label: "Gemini Flash Lite Latest" },
+    { value: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview" },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
     { value: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite" },
-    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (potente)" },
   ],
   groq: [
     { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile" },
@@ -49,7 +51,7 @@ export function AIAgentPage() {
   const [log, setLog] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [provider, setProvider] = useState("gemini");
-  const [model, setModel] = useState("gemini-2.0-flash");
+  const [model, setModel] = useState("gemini-flash-latest");
   const [interval, setIntervalVal] = useState(30);
   const [tradeMode, setTradeMode] = useState<"paper" | "live">("paper");
   const [autoTrade, setAutoTrade] = useState(true);

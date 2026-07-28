@@ -242,23 +242,19 @@ def ai_agent_test_key(
     settings = get_settings()
     provider = req.provider or getattr(settings, "AI_PROVIDER", "groq")
 
-    # Resolve keys: request > user stored > .env
-    groq_key = req.groq_api_key
-    gemini_key = req.gemini_api_key
-    if not groq_key and current_user and current_user.ai_groq_key_enc:
-        try:
-            groq_key = decrypt(current_user.ai_groq_key_enc)
-        except Exception:
-            pass
-    if not gemini_key and current_user and current_user.ai_gemini_key_enc:
-        try:
-            gemini_key = decrypt(current_user.ai_gemini_key_enc)
-        except Exception:
-            pass
-    if not groq_key:
-        groq_key = getattr(settings, "GROQ_API_KEY", None)
-    if not gemini_key:
-        gemini_key = getattr(settings, "GEMINI_API_KEY", None)
+    # Load user's stored keys from DB
+    user_keys = _load_user_keys(current_user.id) if current_user else {}
+
+    # Resolve keys: request body > user DB > .env (only for paid)
+    subscription = current_user.subscription if current_user else "free"
+    is_free = subscription == "free"
+    groq_key = req.groq_api_key or user_keys.get("groq")
+    gemini_key = req.gemini_api_key or user_keys.get("gemini")
+    if not is_free:
+        if not groq_key:
+            groq_key = getattr(settings, "GROQ_API_KEY", None)
+        if not gemini_key:
+            gemini_key = getattr(settings, "GEMINI_API_KEY", None)
 
     model = req.model or getattr(settings, "AI_MODEL", "")
 
