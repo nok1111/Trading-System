@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart } from "lucide-react";
+import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
@@ -20,6 +20,7 @@ const MODULE_LABELS: Record<string, string> = {
   portfolio: "Portafolio",
   trade: "Comprar / Vender",
   markets: "Mercados",
+  positions: "Posiciones",
   orders: "Órdenes",
   history: "Historial",
   earn: "Earn",
@@ -32,6 +33,7 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   portfolio: <Wallet size={16} />,
   trade: <TrendingUp size={16} />,
   markets: <TrendingUp size={16} />,
+  positions: <Layers size={16} />,
   orders: <SettingsIcon size={16} />,
   history: <History size={16} />,
   earn: <LineChart size={16} />,
@@ -67,6 +69,9 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
         }
         if (module === "overview" || module === "orders") {
           tasks.push({ key: "orders", fn: () => api<any>("/api/binance/all-orders?limit=50").catch(() => null) });
+        }
+        if (module === "overview" || module === "positions") {
+          tasks.push({ key: "positions", fn: () => api<any>("/api/binance/positions").catch(() => null) });
         }
         if (module === "history") {
           tasks.push({ key: "trades", fn: () => api<any[]>("/api/trades?limit=20").catch(() => []) });
@@ -149,6 +154,8 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
         <TradeModule brokerId={brokerId} presetSymbol={presetSymbol} />
       ) : module === "markets" ? (
         <MarketsModule />
+      ) : module === "positions" ? (
+        <PositionsModule positions={positions} />
       ) : module === "orders" ? (
         <OrdersModule activeOrders={binanceActiveOrders} filledOrders={binanceFilledOrders} />
       ) : module === "history" ? (
@@ -709,6 +716,102 @@ function HistoryModule({ trades }: { trades: any[] }) {
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+function PositionsModule({ positions }: { positions: any[] }) {
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+  const openPositions = positions.filter((p) => p.status === "open");
+  const totalPnl = openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl || 0), 0);
+
+  if (openPositions.length === 0) {
+    return (
+      <div className="panel p-6 text-center">
+        <Layers size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+        <p className="text-[13px] font-bold text-[var(--color-text)]">Sin posiciones abiertas</p>
+        <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
+          Las posiciones que abras — manualmente o vía IA — aparecerán aquí con su gráfico en tiempo real.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="panel p-4 flex items-center gap-4">
+        <div className="flex-1">
+          <h3 className="text-[13px] font-bold text-[var(--color-text)]">Posiciones Abiertas ({openPositions.length})</h3>
+          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">PnL Total</p>
+          <p className={cn("text-[16px] font-extrabold", totalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+            {totalPnl >= 0 ? "+" : ""}{fmtVol(totalPnl)} USD
+          </p>
+        </div>
+      </div>
+
+      {/* Positions table */}
+      <div className="panel p-4 border-l-2 border-[var(--color-primary)]">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+              <th className="text-left pb-2">Symbol</th>
+              <th className="text-left pb-2">Side</th>
+              <th className="text-right pb-2">Qty</th>
+              <th className="text-right pb-2">Entry</th>
+              <th className="text-right pb-2">Current</th>
+              <th className="text-right pb-2">PnL</th>
+              <th className="text-right pb-2">SL / TP</th>
+              <th className="text-left pb-2">Strategy</th>
+              <th className="text-center pb-2">Chart</th>
+            </tr>
+          </thead>
+          <tbody>
+            {openPositions.map((p, i) => {
+              const pnl = Number(p.unrealized_pnl || 0);
+              const pnlPct = p.entry_price && p.current_price
+                ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
+                : 0;
+              return (
+                <tr key={i} className="border-b border-[var(--color-border)]/50">
+                  <td className="py-2 font-bold text-[var(--color-text)]">{p.symbol}</td>
+                  <td className={cn("font-bold", p.side === "long" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{p.side}</td>
+                  <td className="text-right text-[var(--color-text)]">{fmt(p.quantity)}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{fmt(p.entry_price)}</td>
+                  <td className="text-right text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</td>
+                  <td className={cn("text-right font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                    {pnl !== 0 ? `${pnl >= 0 ? "+" : ""}${fmtVol(pnl)}` : "—"}
+                    {pnlPct !== 0 && <span className="text-[10px] block">{pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%</span>}
+                  </td>
+                  <td className="text-right text-[var(--color-text-muted)] text-[10px]">
+                    {p.stop_loss && <div>SL: {fmt(p.stop_loss)}</div>}
+                    {p.take_profit && <div>TP: {fmt(p.take_profit)}</div>}
+                    {!p.stop_loss && !p.take_profit && "—"}
+                  </td>
+                  <td className="text-[10px] text-[var(--color-text-muted)]">{p.strategy_name || "—"}</td>
+                  <td className="text-center">
+                    <button
+                      onClick={() => setSelectedSymbol(selectedSymbol === p.symbol ? null : p.symbol)}
+                      className="px-2 h-6 rounded-[6px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-primary)]/12 hover:text-[var(--color-primary)] transition-colors"
+                    >
+                      {selectedSymbol === p.symbol ? "Ocultar" : "Ver"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Chart for selected position */}
+      {selectedSymbol && (
+        <PriceChart symbol={selectedSymbol} interval="1h" height={380} />
       )}
     </div>
   );

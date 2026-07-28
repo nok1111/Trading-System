@@ -99,6 +99,7 @@ export const BROKER_MODULE_MAP: BrokerModuleDef[] = [
   { id: "portfolio", label: "Portafolio", capability: "spot" },
   { id: "trade", label: "Comprar / Vender", capability: "marketOrders" },
   { id: "markets", label: "Mercados", capability: "spot" },
+  { id: "positions", label: "Posiciones", capability: "spot" },
   { id: "orders", label: "Órdenes", capability: "marketOrders" },
   { id: "history", label: "Historial", capability: "spot" },
   { id: "earn", label: "Earn", capability: "earn", comingSoon: true },
