@@ -345,3 +345,28 @@ FROM orders ORDER BY orders.id DESC
 [2026-07-27T21:36:23.483Z] [ERROR] Uncaught error | Uncaught  | http://127.0.0.1:53403/:
 [2026-07-27T21:36:57.269Z] [ERROR] Uncaught error | Uncaught  | http://localhost:1420/:
 [2026-07-27T21:37:04.170Z] [ERROR] Uncaught error | Uncaught  | http://localhost:1420/:
+[2026-07-28T02:12:29.131Z] [ERROR] React crash | ChevronDown is not defined | Stack: ReferenceError: ChevronDown is not defined
+    at http://localhost:1420/src/pages/BrokerPage.tsx?t=1785204747704:1738:49
+    at Array.map (<anonymous>)
+    at PositionsModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785204747704:1597:19)
+    at Object.react_stack_bottom_frame (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:18509:20)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:5654:24)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:7475:21)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:8525:20)
+    at runWithFiberInDEV (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:997:72)
+    at performUnitOfWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12561:98)
+    at workLoopSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12424:43) | ComponentStack: 
+    at PositionsModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785204747704:1513:28)
+    at div (<anonymous>)
+    at BrokerPage (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785204747704:91:30)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://localhost:1420/src/components/layout/Layout.tsx?t=1785203579961:119:26)
+    at BrokerAwareContent (http://localhost:1420/src/App.tsx?t=1785203579961:95:3)
+    at BrokerProvider (http://localhost:1420/src/context/BrokerContext.tsx?t=1785188165710:35:34)
+    at AppContent (http://localhost:1420/src/App.tsx?t=1785203579961:47:46)
+    at AuthProvider (http://localhost:1420/src/context/AuthContext.tsx?t=1785188165710:21:32)
+    at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)

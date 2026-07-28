@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers } from "lucide-react";
+import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
@@ -722,10 +722,19 @@ function HistoryModule({ trades }: { trades: any[] }) {
 }
 
 function PositionsModule({ positions }: { positions: any[] }) {
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [expandedCharts, setExpandedCharts] = useState<Set<string>>(new Set());
 
   const openPositions = positions.filter((p) => p.status === "open");
   const totalPnl = openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl || 0), 0);
+
+  const toggleChart = (symbol: string) => {
+    setExpandedCharts((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbol)) next.delete(symbol);
+      else next.add(symbol);
+      return next;
+    });
+  };
 
   if (openPositions.length === 0) {
     return (
@@ -745,7 +754,7 @@ function PositionsModule({ positions }: { positions: any[] }) {
       <div className="panel p-4 flex items-center gap-4">
         <div className="flex-1">
           <h3 className="text-[13px] font-bold text-[var(--color-text)]">Posiciones Abiertas ({openPositions.length})</h3>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real</p>
+          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real · Click en una posición para ver su gráfico</p>
         </div>
         <div className="text-right">
           <p className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">PnL Total</p>
@@ -755,64 +764,84 @@ function PositionsModule({ positions }: { positions: any[] }) {
         </div>
       </div>
 
-      {/* Positions table */}
-      <div className="panel p-4 border-l-2 border-[var(--color-primary)]">
-        <table className="w-full text-[12px]">
-          <thead>
-            <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-              <th className="text-left pb-2">Symbol</th>
-              <th className="text-left pb-2">Side</th>
-              <th className="text-right pb-2">Qty</th>
-              <th className="text-right pb-2">Entry</th>
-              <th className="text-right pb-2">Current</th>
-              <th className="text-right pb-2">PnL</th>
-              <th className="text-right pb-2">SL / TP</th>
-              <th className="text-left pb-2">Strategy</th>
-              <th className="text-center pb-2">Chart</th>
-            </tr>
-          </thead>
-          <tbody>
-            {openPositions.map((p, i) => {
-              const pnl = Number(p.unrealized_pnl || 0);
-              const pnlPct = p.entry_price && p.current_price
-                ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
-                : 0;
-              return (
-                <tr key={i} className="border-b border-[var(--color-border)]/50">
-                  <td className="py-2 font-bold text-[var(--color-text)]">{p.symbol}</td>
-                  <td className={cn("font-bold", p.side === "long" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{p.side}</td>
-                  <td className="text-right text-[var(--color-text)]">{fmt(p.quantity)}</td>
-                  <td className="text-right text-[var(--color-text-muted)]">{fmt(p.entry_price)}</td>
-                  <td className="text-right text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</td>
-                  <td className={cn("text-right font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
-                    {pnl !== 0 ? `${pnl >= 0 ? "+" : ""}${fmtVol(pnl)}` : "—"}
-                    {pnlPct !== 0 && <span className="text-[10px] block">{pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%</span>}
-                  </td>
-                  <td className="text-right text-[var(--color-text-muted)] text-[10px]">
-                    {p.stop_loss && <div>SL: {fmt(p.stop_loss)}</div>}
-                    {p.take_profit && <div>TP: {fmt(p.take_profit)}</div>}
-                    {!p.stop_loss && !p.take_profit && "—"}
-                  </td>
-                  <td className="text-[10px] text-[var(--color-text-muted)]">{p.strategy_name || "—"}</td>
-                  <td className="text-center">
-                    <button
-                      onClick={() => setSelectedSymbol(selectedSymbol === p.symbol ? null : p.symbol)}
-                      className="px-2 h-6 rounded-[6px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-primary)]/12 hover:text-[var(--color-primary)] transition-colors"
-                    >
-                      {selectedSymbol === p.symbol ? "Ocultar" : "Ver"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* Position cards with charts */}
+      {openPositions.map((p, i) => {
+        const pnl = Number(p.unrealized_pnl || 0);
+        const pnlPct = p.entry_price && p.current_price
+          ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
+          : 0;
+        const isExpanded = expandedCharts.has(p.symbol);
+        const chartSymbol = p.symbol.includes("/") ? p.symbol.replace("/", "") : p.symbol + "USDT";
 
-      {/* Chart for selected position */}
-      {selectedSymbol && (
-        <PriceChart symbol={selectedSymbol} interval="1h" height={380} />
-      )}
+        return (
+          <div key={i} className="panel overflow-hidden">
+            {/* Position header row */}
+            <button
+              onClick={() => toggleChart(p.symbol)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
+            >
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className={cn(
+                  "w-7 h-7 rounded-[8px] flex items-center justify-center text-[10px] font-extrabold",
+                  p.side === "long" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+                )}>
+                  {p.side === "long" ? "L" : "S"}
+                </div>
+                <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
+              </div>
+
+              <div className="flex items-center gap-4 flex-1 text-[11px]">
+                <div>
+                  <span className="text-[var(--color-text-muted)]">Qty </span>
+                  <span className="font-bold text-[var(--color-text)]">{fmt(p.quantity)}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--color-text-muted)]">Entry </span>
+                  <span className="font-bold text-[var(--color-text)]">{fmt(p.entry_price)}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--color-text-muted)]">Live </span>
+                  <span className="font-bold text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</span>
+                </div>
+                {(p.stop_loss || p.take_profit) && (
+                  <div className="text-[10px] text-[var(--color-text-muted)]">
+                    {p.stop_loss && <span className="text-[var(--color-danger)]">SL {fmt(p.stop_loss)}</span>}
+                    {p.stop_loss && p.take_profit && " · "}
+                    {p.take_profit && <span className="text-[var(--color-success)]">TP {fmt(p.take_profit)}</span>}
+                  </div>
+                )}
+                {p.strategy_name && (
+                  <div className="text-[10px] text-[var(--color-text-muted)] italic">{p.strategy_name}</div>
+                )}
+              </div>
+
+              {/* PnL */}
+              <div className="text-right flex-shrink-0">
+                <p className={cn("text-[13px] font-extrabold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                  {pnl >= 0 ? "+" : ""}{fmtVol(pnl)} USD
+                </p>
+                {pnlPct !== 0 && (
+                  <p className={cn("text-[10px] font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                    {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
+                  </p>
+                )}
+              </div>
+
+              {/* Expand icon */}
+              <div className="flex-shrink-0 text-[var(--color-text-muted)]">
+                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </div>
+            </button>
+
+            {/* Inline chart */}
+            {isExpanded && (
+              <div className="border-t border-[var(--color-border)] p-3">
+                <PriceChart symbol={chartSymbol} interval="1h" height={300} />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
