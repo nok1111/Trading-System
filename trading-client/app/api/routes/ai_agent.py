@@ -126,8 +126,8 @@ def ai_agent_start(
     user_keys = _load_user_keys(current_user.id) if current_user else {}
 
     # Resolve API keys: request body > user DB > server .env (only for paid)
-    groq_key = req.groq_api_key or user_keys.get("groq")
-    gemini_key = req.gemini_api_key or user_keys.get("gemini")
+    groq_key = (req.groq_api_key or user_keys.get("groq") or "").strip() or None
+    gemini_key = (req.gemini_api_key or user_keys.get("gemini") or "").strip() or None
 
     # FREE users: must have their own key — no server fallback
     if is_free:
@@ -245,16 +245,13 @@ def ai_agent_test_key(
     # Load user's stored keys from DB
     user_keys = _load_user_keys(current_user.id) if current_user else {}
 
-    # Resolve keys: request body > user DB > .env (only for paid)
-    subscription = current_user.subscription if current_user else "free"
-    is_free = subscription == "free"
-    groq_key = req.groq_api_key or user_keys.get("groq")
-    gemini_key = req.gemini_api_key or user_keys.get("gemini")
-    if not is_free:
-        if not groq_key:
-            groq_key = getattr(settings, "GROQ_API_KEY", None)
-        if not gemini_key:
-            gemini_key = getattr(settings, "GEMINI_API_KEY", None)
+    # Resolve keys: request body > user DB > .env (test-key always allows .env fallback for convenience)
+    groq_key = (req.groq_api_key or user_keys.get("groq") or "").strip() or None
+    gemini_key = (req.gemini_api_key or user_keys.get("gemini") or "").strip() or None
+    if not groq_key:
+        groq_key = getattr(settings, "GROQ_API_KEY", None)
+    if not gemini_key:
+        gemini_key = getattr(settings, "GEMINI_API_KEY", None)
 
     model = req.model or getattr(settings, "AI_MODEL", "")
 
