@@ -5,7 +5,6 @@ import { Layout, type TabId } from "./components/layout/Layout";
 import { Toast } from "./components/ui/Toast";
 import { DashboardPage } from "./pages/DashboardPage";
 import { IntelligencePage } from "./pages/IntelligencePage";
-import { OpportunitiesPage } from "./pages/OpportunitiesPage";
 import { RisksPage } from "./pages/RisksPage";
 import { NewsPage } from "./pages/NewsPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -82,12 +81,11 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} />;
   }
 
-  const tabs: TabId[] = ["dashboard", "intelligence", "opportunities", "risks", "news", "reports", "alerts", "connections", "security", "preferences"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "alerts", "connections", "security", "preferences"];
 
   const pages: Record<TabId, React.ReactNode> = {
     dashboard: <DashboardPage />,
     intelligence: <IntelligencePage />,
-    opportunities: <OpportunitiesPage />,
     risks: <RisksPage />,
     news: <NewsPage />,
     reports: <ReportsPage />,

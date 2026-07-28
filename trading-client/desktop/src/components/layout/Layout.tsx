@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   LayoutDashboard,
   Brain,
-  Target,
   ShieldAlert,
   Newspaper,
   FileText,
@@ -38,7 +37,6 @@ import {
 export type TabId =
   | "dashboard"
   | "intelligence"
-  | "opportunities"
   | "risks"
   | "news"
   | "reports"
@@ -58,14 +56,13 @@ interface NavItem {
 const generalItems: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} />, group: "general" },
   { id: "intelligence", label: "Market Intelligence", icon: <Brain size={17} />, group: "general" },
-  { id: "opportunities", label: "Oportunidades", icon: <Target size={17} />, group: "general" },
-  { id: "risks", label: "Riesgos", icon: <ShieldAlert size={17} />, group: "general" },
+  { id: "risks", label: "Alertas", icon: <ShieldAlert size={17} />, group: "general" },
   { id: "news", label: "Noticias", icon: <Newspaper size={17} />, group: "general" },
   { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
 ];
 
 const sistemaItems: NavItem[] = [
-  { id: "alerts", label: "Alertas", icon: <Bell size={17} />, group: "sistema" },
+  { id: "alerts", label: "Notificaciones", icon: <Bell size={17} />, group: "sistema" },
   { id: "connections", label: "Conexiones", icon: <Plug size={17} />, group: "sistema" },
   { id: "security", label: "Seguridad", icon: <Shield size={17} />, group: "sistema" },
   { id: "preferences", label: "Preferencias", icon: <SettingsIcon size={17} />, group: "sistema" },
@@ -74,11 +71,10 @@ const sistemaItems: NavItem[] = [
 const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   dashboard: { title: "Dashboard", subtitle: "Vista general del mercado e inteligencia" },
   intelligence: { title: "Market Intelligence", subtitle: "Análisis profundo de mercado" },
-  opportunities: { title: "Oportunidades", subtitle: "Señales activas del Consensus" },
-  risks: { title: "Riesgos", subtitle: "Alertas de riesgo y monitor de crash" },
+  risks: { title: "Alertas", subtitle: "Crash risk, whale alerts y eventos de alto impacto" },
   news: { title: "Noticias", subtitle: "Feed de noticias con sentiment" },
   reports: { title: "Reportes", subtitle: "Reportes periódicos generados por IA" },
-  alerts: { title: "Alertas", subtitle: "Centro de notificaciones" },
+  alerts: { title: "Notificaciones", subtitle: "Centro de notificaciones" },
   connections: { title: "Conexiones", subtitle: "Gestión de brokers" },
   security: { title: "Seguridad", subtitle: "Configuración de seguridad" },
   preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
@@ -469,7 +465,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                         <button
                           key={s.id}
                           onClick={() => {
-                            onTabChange("opportunities");
+                            onTabChange("intelligence");
                             setNotifOpen(false);
                           }}
                           className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--color-surface-hover)] text-left"
