@@ -50,7 +50,7 @@ async def license_check(request: Request, call_next):
     Skips public paths (health, dashboard HTML, docs).
     Attaches license info to request.state for downstream use.
     """
-    if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images"):
+    if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images") or request.url.path.startswith("/api/binance/"):
         return await call_next(request)
 
     # Allow CORS preflight requests without auth

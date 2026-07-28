@@ -310,9 +310,7 @@ def ai_agent_set_interval(interval_seconds: int = Query(30, ge=10)) -> dict:
 
 
 @router.get("/binance/balance")
-def get_binance_balance(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-) -> dict:
+def get_binance_balance() -> dict:
     """Consulta el saldo real de Binance en tiempo real.
 
     Retorna todos los activos con balance > 0, valor en USD y MXN.
@@ -324,7 +322,7 @@ def get_binance_balance(
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado", "assets": [], "total_usd": 0, "total_mxn": 0}
 
-    creds = resolve_broker_credentials("binance", current_user)
+    creds = resolve_broker_credentials("binance", None)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "assets": [], "total_usd": 0, "total_mxn": 0}
 
@@ -420,17 +418,15 @@ def get_binance_balance(
 
 
 @router.get("/binance/open-orders")
-def get_binance_open_orders(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-) -> dict:
+def get_binance_open_orders() -> dict:
     """Consulta las órdenes abiertas reales en Binance en tiempo real."""
     settings = get_settings()
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado", "orders": []}
 
-    creds = resolve_broker_credentials("binance", current_user)
+    creds = resolve_broker_credentials("binance", None)
     if not creds:
-        return {"error": "No tienes API keys de Binance configuradas.", "orders": []}
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "orders": []}
 
     from app.brokers.adapters.binance_adapter import BinanceAdapter
 
@@ -462,17 +458,14 @@ def get_binance_open_orders(
 
 
 @router.get("/binance/all-orders")
-def get_binance_all_orders(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-    limit: int = 50,
-) -> dict:
+def get_binance_all_orders(limit: int = 50) -> dict:
     """Consulta el historial completo de órdenes desde Binance en tiempo real.
 
     Binance /api/v3/allOrders requires a symbol parameter, so we first get
     the user's balances to find which symbols they trade, then query orders
     for each. Also fetches open orders (which don't require symbol).
     """
-    creds = resolve_broker_credentials("binance", current_user)
+    creds = resolve_broker_credentials("binance", None)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "orders": [], "active": [], "filled": []}
 
@@ -578,13 +571,11 @@ def get_binance_all_orders(
 
 
 @router.get("/binance/account")
-def get_binance_account(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-) -> dict:
+def get_binance_account() -> dict:
     """Consulta la info de la cuenta de Binance (permisos, comisiones, etc)."""
-    creds = resolve_broker_credentials("binance", current_user)
+    creds = resolve_broker_credentials("binance", None)
     if not creds:
-        return {"error": "No tienes API keys de Binance configuradas."}
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones."}
 
     from app.brokers.adapters.binance_adapter import BinanceAdapter
 
@@ -696,9 +687,7 @@ def get_binance_price(symbol: str = Query(...)) -> dict:
 
 
 @router.get("/binance/positions")
-def get_binance_positions(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
-) -> dict:
+def get_binance_positions() -> dict:
     """Consulta posiciones abiertas desde la DB con precios en vivo de Binance."""
     from app.database.session import SessionLocal
     from app.database.models.position import Position
@@ -706,9 +695,9 @@ def get_binance_positions(
     from app.brokers.models import BrokerCredentials, normalize_symbol
     from decimal import Decimal as Dec
 
-    creds = resolve_broker_credentials("binance", current_user)
+    creds = resolve_broker_credentials("binance", None)
     if not creds:
-        return {"error": "No tienes API keys de Binance configuradas.", "positions": []}
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "positions": []}
 
     db = SessionLocal()
     try:
