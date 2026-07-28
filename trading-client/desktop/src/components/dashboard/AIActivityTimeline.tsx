@@ -83,7 +83,7 @@ export function AIActivityTimeline({ data, loading }: { data: AIActivityData | n
           <Activity size={16} className="text-[var(--color-primary)]" />
           <h3 className="text-[14px] font-bold text-[var(--color-text)]">Actividad de la IA</h3>
         </div>
-        <p className="text-[12px] text-[var(--color-text-muted)]">No hay actividad registrada. El scheduler está recopilando datos.</p>
+        <p className="text-[12px] text-[var(--color-text-muted)]">Todavía no hay actividad. En cuanto los agentes empiecen a analizar, vas a ver aquí qué van haciendo.</p>
       </div>
     );
   }
@@ -92,8 +92,8 @@ export function AIActivityTimeline({ data, loading }: { data: AIActivityData | n
     <div className="panel p-5">
       <div className="flex items-center gap-2 mb-4">
         <Activity size={16} className="text-[var(--color-primary)]" />
-        <h3 className="text-[14px] font-bold text-[var(--color-text)]">Actividad de la IA</h3>
-        <span className="text-[10px] text-[var(--color-text-muted)]">— decisiones de los agentes en tiempo real</span>
+        <h3 className="text-[14px] font-bold text-[var(--color-text)]">Lo que mis agentes han estado haciendo</h3>
+        <span className="text-[10px] text-[var(--color-text-muted)]">— en tiempo real</span>
       </div>
 
       <div className="relative">
@@ -105,7 +105,7 @@ export function AIActivityTimeline({ data, loading }: { data: AIActivityData | n
       <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-[var(--color-border)]">
         <Bot size={12} className="text-[var(--color-text-muted)]" />
         <span className="text-[10px] text-[var(--color-text-muted)]">
-          {data.entries.length} eventos registrados en las últimas 24h
+          {data.entries.length} cosas que pasaron mientras no estabas
         </span>
       </div>
     </div>

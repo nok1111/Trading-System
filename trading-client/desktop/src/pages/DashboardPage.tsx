@@ -121,7 +121,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <AIActivityTimeline data={activity} loading={loading} />
         <div className="panel p-4">
-          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Señales Activas</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Señales que están activas ahora</h3>
           {loading ? <LoadingSkeleton lines={3} /> : <SignalList signals={signals} />}
         </div>
       </div>

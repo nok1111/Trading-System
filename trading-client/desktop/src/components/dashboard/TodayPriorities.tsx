@@ -1,6 +1,7 @@
 import { Check, X, Clock, AlertTriangle, Shield } from "lucide-react";
 import type { TodayPrioritiesData, PriorityAsset } from "../../lib/intelligenceTypes";
 import { cn } from "../../lib/utils";
+import { CryptoIcon } from "../CryptoIcon";
 
 const REC_COLORS: Record<string, string> = {
   "BUY": "text-[var(--color-success)] bg-[var(--color-success)]/10",
@@ -24,7 +25,8 @@ function PriorityCard({ asset }: { asset: PriorityAsset }) {
   return (
     <div className="panel p-4 hover:border-[var(--color-primary)]/30 transition-colors cursor-pointer">
       <div className="flex items-start justify-between mb-3">
-        <div>
+        <div className="flex items-center gap-2">
+          <CryptoIcon symbol={asset.asset + "USDT"} size={24} />
           <span className="text-[16px] font-extrabold text-[var(--color-text)]">{asset.asset}</span>
           <span className={cn("ml-2 px-2 py-0.5 rounded-[6px] text-[11px] font-bold", REC_COLORS[asset.recommendation] || REC_COLORS["HOLD"])}>
             {asset.recommendation}
@@ -101,9 +103,9 @@ export function TodayPriorities({ data, loading }: { data: TodayPrioritiesData |
       <div className="panel p-5">
         <div className="flex items-center gap-2 mb-2">
           <AlertTriangle size={16} className="text-[var(--color-warning)]" />
-          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Qué revisar hoy</h3>
+          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Lo que yo revisaría hoy</h3>
         </div>
-        <p className="text-[12px] text-[var(--color-text-muted)]">No hay prioridades disponibles. Abre posiciones para generar recomendaciones.</p>
+        <p className="text-[12px] text-[var(--color-text-muted)]">Aún no hay prioridades. En cuanto abras posiciones, te diré en qué fijarte.</p>
       </div>
     );
   }
@@ -112,8 +114,8 @@ export function TodayPriorities({ data, loading }: { data: TodayPrioritiesData |
     <div>
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle size={16} className="text-[var(--color-warning)]" />
-        <h3 className="text-[14px] font-bold text-[var(--color-text)]">Qué revisar hoy</h3>
-        <span className="text-[11px] text-[var(--color-text-muted)]">— ordenado por prioridad según Consensus Agent</span>
+        <h3 className="text-[14px] font-bold text-[var(--color-text)]">Lo que yo revisaría hoy</h3>
+        <span className="text-[11px] text-[var(--color-text-muted)]">— te lo ordené por prioridad</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {data.priorities.map((p) => (

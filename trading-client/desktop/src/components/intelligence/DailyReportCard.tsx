@@ -20,7 +20,7 @@ export function DailyReportCard({ report, loading, className }: DailyReportCardP
     <div className={cn("rounded-[12px] bg-[var(--color-surface)] border border-[var(--color-border)] p-4 space-y-3", className)}>
       <div className="flex items-center gap-2">
         <FileText size={16} className="text-[var(--color-primary)]" />
-        <span className="text-[14px] font-bold text-[var(--color-text)]">Reporte Diario</span>
+        <span className="text-[14px] font-bold text-[var(--color-text)]">Mi reporte del día</span>
         <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{fmtDate(report.date)}</span>
       </div>
       <p className="text-[12px] text-[var(--color-text)]">{report.summary}</p>

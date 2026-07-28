@@ -193,6 +193,78 @@ def _get_top_movers(session: Session) -> list[dict[str, Any]]:
     return movers[:5]
 
 
+def _build_buy_reason(a: IntelligenceAnalysis) -> str:
+    """Build a conversational, partner-like reason for why this asset is a buy."""
+    parts: list[str] = []
+    reasons = a.reasons if isinstance(a.reasons, dict) else {}
+    metrics = a.metrics if isinstance(a.metrics, dict) else {}
+    votes = a.agent_votes if isinstance(a.agent_votes, dict) else {}
+
+    # Technical reason
+    tech = reasons.get("technical", "").strip()
+    if tech:
+        parts.append(tech)
+
+    # On-chain reason
+    onchain = reasons.get("onchain", "").strip()
+    if onchain:
+        parts.append(f"on-chain: {onchain}")
+
+    # News reason
+    news = reasons.get("news", "").strip()
+    if news:
+        parts.append(f"noticias: {news}")
+
+    # Macro reason
+    macro = reasons.get("macro", "").strip()
+    if macro:
+        parts.append(f"macro: {macro}")
+
+    # Metrics-based insights
+    rsi = metrics.get("rsi")
+    if rsi is not None:
+        rsi_val = float(rsi)
+        if rsi_val < 35:
+            parts.append(f"RSI en {rsi_val:.0f} (oversold — posible rebote)")
+        elif rsi_val > 70:
+            parts.append(f"RSI en {rsi_val:.0f} (sobrecomprado, cuidado)")
+        else:
+            parts.append(f"RSI en {rsi_val:.0f}")
+
+    fear_greed = metrics.get("fear_greed")
+    if fear_greed is not None:
+        fg = int(fear_greed)
+        if fg < 25:
+            parts.append("mercado con miedo extremo (suele ser buen momento para comprar)")
+        elif fg > 75:
+            parts.append("mercado con greed extremo")
+
+    # Agent consensus
+    buy_votes = sum(1 for v in votes.values() if v == "BUY")
+    total_votes = len(votes)
+    if total_votes > 0:
+        parts.append(f"{buy_votes}/{total_votes} agentes de IA coinciden en BUY")
+
+    # Confidence level
+    conf = float(a.confidence) if a.confidence else 0
+    if conf >= 0.8:
+        parts.append("alta convicción")
+    elif conf >= 0.6:
+        parts.append("convicción moderada")
+
+    # Risk context
+    risk = a.risk_level or "medium"
+    if risk == "low":
+        parts.append("riesgo bajo")
+    elif risk == "high":
+        parts.append("ojo: riesgo alto")
+
+    if not parts:
+        return "Señal de compra detectada por el análisis técnico automatizado."
+
+    return ". ".join(parts[:4]) + "."
+
+
 def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
     """Get buy recommendations with broker info for quick action."""
     # Get assets with BUY decision from analysis
@@ -231,7 +303,7 @@ def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
             "confidence": float(a.confidence) * 100 if a.confidence else 50,
             "riskLevel": a.risk_level,
             "brokers": broker_names,
-            "reason": a.reasons.get("technical", "") if isinstance(a.reasons, dict) else "",
+            "reason": _build_buy_reason(a),
         })
 
     return recommendations[:3]
