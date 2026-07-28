@@ -146,7 +146,7 @@ export function AIAgentPage() {
   const testKey = async () => {
     setTestResult("Probando...");
     try {
-      const body: any = { provider };
+      const body: any = { provider, model };
       if (groqKey) body.groq_api_key = groqKey;
       if (geminiKey) body.gemini_api_key = geminiKey;
       if (premiumKey) body.premium_api_key = premiumKey;
@@ -156,8 +156,8 @@ export function AIAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      setTestResult(r.valid ? "✓ API Key válida" : "✗ API Key inválida");
-      toast(r.valid ? "API Key válida" : "API Key inválida", r.valid);
+      setTestResult(r.ok ? "✓ API Key válida" : "✗ " + (r.error || "API Key inválida"));
+      toast(r.ok ? "API Key válida" : (r.error || "API Key inválida"), r.ok);
     } catch (e: any) {
       setTestResult("✗ Error: " + e.message);
       toast(e.message, false);

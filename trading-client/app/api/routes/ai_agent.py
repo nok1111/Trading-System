@@ -275,7 +275,7 @@ def ai_agent_test_key(
         elif provider == "gemini":
             if not gemini_key:
                 return {"ok": False, "error": "GEMINI_API_KEY no configurada"}
-            gemini_model = model or "gemini-2.0-flash"
+            gemini_model = model or "gemini-flash-latest"
             resp = req_lib.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}",
                 headers={"Content-Type": "application/json"},
