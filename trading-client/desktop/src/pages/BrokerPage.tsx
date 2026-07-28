@@ -58,34 +58,38 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
     const load = async () => {
       setLoading(true);
       try {
-        // Only load what's needed for the active module
-        const needsBalance = module === "overview" || module === "portfolio";
-        const needsPositions = module === "overview";
-        const needsOrders = module === "overview" || module === "orders";
-        const needsTrades = module === "history";
+        const tasks: { key: string; fn: () => Promise<any> }[] = [];
+        if (module === "overview" || module === "portfolio") {
+          tasks.push({ key: "balance", fn: () => api<any>("/api/binance/balance").catch(() => null) });
+        }
+        if (module === "overview") {
+          tasks.push({ key: "positions", fn: () => api<any>("/api/binance/positions").catch(() => null) });
+        }
+        if (module === "overview" || module === "orders") {
+          tasks.push({ key: "orders", fn: () => api<any>("/api/binance/all-orders?limit=50").catch(() => null) });
+        }
+        if (module === "history") {
+          tasks.push({ key: "trades", fn: () => api<any[]>("/api/trades?limit=20").catch(() => []) });
+        }
 
-        const promises: Promise<any>[] = [];
-        if (needsBalance) promises.push(api<any>("/api/binance/balance").catch(() => null));
-        if (needsPositions) promises.push(api<any>("/api/binance/positions").catch(() => null));
-        if (needsOrders) promises.push(api<any>("/api/binance/all-orders?limit=50").catch(() => null));
-        if (needsTrades) promises.push(api<any[]>("/api/trades?limit=20").catch(() => []));
-
-        if (promises.length === 0) {
+        if (tasks.length === 0) {
           if (alive) setLoading(false);
           return;
         }
 
-        const results = await Promise.all(promises);
+        const results = await Promise.all(tasks.map(t => t.fn()));
         if (!alive) return;
-        let idx = 0;
-        if (needsBalance) setBalanceData(results[idx++]);
-        if (needsPositions) setPositions(results[idx]?.positions || []);
-        if (needsOrders) {
-          const ordersData = needsBalance ? results[idx + 1] : results[idx];
-          setBinanceActiveOrders(ordersData?.active || []);
-          setBinanceFilledOrders(ordersData?.filled || []);
-        }
-        if (needsTrades) setTrades(results[results.length - 1] || []);
+
+        tasks.forEach((t, i) => {
+          const data = results[i];
+          if (t.key === "balance") setBalanceData(data);
+          else if (t.key === "positions") setPositions(data?.positions || []);
+          else if (t.key === "orders") {
+            setBinanceActiveOrders(data?.active || []);
+            setBinanceFilledOrders(data?.filled || []);
+          }
+          else if (t.key === "trades") setTrades(data || []);
+        });
       } catch {
         // graceful
       } finally {

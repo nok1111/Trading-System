@@ -496,14 +496,20 @@ def get_binance_all_orders(limit: int = 50) -> dict:
     # Always include common symbols
     symbols_to_query.update({"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"})
 
-    # 3. Query all orders per symbol
-    all_orders = []
-    for sym in symbols_to_query:
+    # 3. Query all orders per symbol in parallel
+    import concurrent.futures
+
+    def fetch_symbol_orders(sym: str):
         try:
-            resp = adapter._broker._signed_request("GET", "/api/v3/allOrders", {"symbol": sym, "limit": limit})
-            all_orders.extend(resp)
+            return adapter._broker._signed_request("GET", "/api/v3/allOrders", {"symbol": sym, "limit": limit})
         except Exception:
-            pass
+            return []
+
+    all_orders = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_symbol_orders, sym): sym for sym in symbols_to_query}
+        for future in concurrent.futures.as_completed(futures):
+            all_orders.extend(future.result())
 
     # 4. Merge open orders + historical, deduplicate by orderId
     seen_ids = set()
