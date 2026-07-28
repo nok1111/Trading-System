@@ -8,6 +8,7 @@ import { getAlerts, getWhaleActivity, getNews } from "../lib/intelligenceApi";
 import { api } from "../lib/api";
 import type { IntelligenceAlert, WhaleActivity, NewsItem } from "../lib/intelligenceTypes";
 import { cn } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 
 interface RiskConfig {
   trailing_stop_pct: number;
@@ -288,7 +289,12 @@ export function RisksPage() {
                 <tbody>
                   {riskStatus.positions.map((p, i) => (
                     <tr key={i} className="border-b border-[var(--color-border)]/30">
-                      <td className="py-1.5 font-bold text-[var(--color-text)]">{p.symbol}</td>
+                      <td className="py-1.5 font-bold text-[var(--color-text)]">
+                        <div className="flex items-center gap-1.5">
+                          <CryptoIcon symbol={p.symbol} size={18} />
+                          {p.symbol}
+                        </div>
+                      </td>
                       <td className="text-right text-[var(--color-text-muted)]">{p.quantity.toFixed(6)}</td>
                       <td className="text-right text-[var(--color-text-muted)]">${p.entry_price.toFixed(4)}</td>
                       <td className="text-right text-[var(--color-text-muted)]">${p.current_price.toFixed(4)}</td>

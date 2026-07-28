@@ -5,6 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Input";
 import { toast } from "../components/ui/Toast";
 import { cn } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 
 const PROVIDERS = [
   { value: "gemini", label: "Gemini (Google Cloud) — Gratis" },
@@ -460,7 +461,10 @@ export function AIAgentPage() {
             {Object.entries(stats.by_symbol).map(([sym, data]: [string, any]) => (
               <div key={sym} className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[12px] font-bold text-[var(--color-text)]">{sym}</span>
+                  <span className="flex items-center gap-1.5 text-[12px] font-bold text-[var(--color-text)]">
+                    <CryptoIcon symbol={sym} size={16} />
+                    {sym}
+                  </span>
                   <span className={cn(
                     "text-[11px] font-bold",
                     data.pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
@@ -581,9 +585,10 @@ function ReasoningCard({ entry }: { entry: any }) {
           {hasActions ? (
             actions.map((a, i) => (
               <span key={i} className={cn(
-                "text-[10px] font-bold px-2 h-5 rounded flex items-center",
+                "text-[10px] font-bold px-2 h-5 rounded flex items-center gap-1",
                 a.type === "buy" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
               )}>
+                <CryptoIcon symbol={a.symbol} size={12} />
                 {a.type === "buy" ? "BUY" : "SELL"} {a.symbol}
                 {a.confidence && <span className="ml-1 opacity-60">{Math.round(a.confidence * 100)}%</span>}
               </span>
@@ -621,9 +626,10 @@ function ReasoningCard({ entry }: { entry: any }) {
                 <div key={i} className="rounded-[6px] bg-[var(--color-surface-2)] p-2">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={cn(
-                      "text-[11px] font-bold",
+                      "text-[11px] font-bold flex items-center gap-1",
                       a.type === "buy" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
                     )}>
+                      <CryptoIcon symbol={a.symbol} size={14} />
                       {a.type === "buy" ? "BUY" : "SELL"} {a.symbol}
                     </span>
                     {a.confidence != null && (

@@ -564,26 +564,12 @@ export function OverviewPage() {
               </div>
             ) : (
               transactions.map((t) => {
-                const buy = t.side === "BUY";
                 return (
                   <div
                     key={`${t.id}-${t.status}`}
                     className="flex items-center gap-2.5 px-4 py-2 hover:bg-[var(--color-surface-hover)] transition-colors"
                   >
-                    <span
-                      className={cn(
-                        "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0",
-                        buy
-                          ? "bg-[var(--color-success)]/14 text-[var(--color-success)]"
-                          : "bg-[var(--color-danger)]/14 text-[var(--color-danger)]"
-                      )}
-                    >
-                      {buy ? (
-                        <ArrowDownRight size={14} />
-                      ) : (
-                        <ArrowUpRight size={14} />
-                      )}
-                    </span>
+                    <CryptoIcon symbol={t.symbol} size={28} />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-bold text-[var(--color-text)] truncate leading-none">
                         {t.symbol}
@@ -887,7 +873,8 @@ export function OverviewPage() {
                   >
                     {s.signal_type}
                   </Badge>
-                  <span className="text-[13px] font-bold text-[var(--color-text)] flex-1 min-w-0 truncate">
+                  <span className="flex items-center gap-1.5 text-[13px] font-bold text-[var(--color-text)] flex-1 min-w-0 truncate">
+                    <CryptoIcon symbol={s.symbol} size={16} />
                     {s.symbol}
                   </span>
                   <span className="num text-[11px] text-[var(--color-text-muted)]">

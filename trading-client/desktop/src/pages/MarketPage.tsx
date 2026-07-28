@@ -6,6 +6,7 @@ import { Select } from "../components/ui/Input";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { toast } from "../components/ui/Toast";
 import { fmt, fmtVol } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 
 export function MarketPage() {
   const [movers, setMovers] = useState<{
@@ -96,7 +97,12 @@ export function MarketPage() {
             <tbody>
               {movers?.gainers?.slice(0, 15).map((m) => (
                 <Tr key={m.symbol}>
-                  <Td>{m.symbol}</Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <CryptoIcon symbol={m.symbol} size={18} />
+                      {m.symbol}
+                    </div>
+                  </Td>
                   <Td>${fmt(m.price)}</Td>
                   <Td className="text-[var(--color-success)] font-semibold">
                     +{fmt(m.change_pct)}%
@@ -142,7 +148,12 @@ export function MarketPage() {
             <tbody>
               {movers?.losers?.slice(0, 15).map((m) => (
                 <Tr key={m.symbol}>
-                  <Td>{m.symbol}</Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <CryptoIcon symbol={m.symbol} size={18} />
+                      {m.symbol}
+                    </div>
+                  </Td>
                   <Td>${fmt(m.price)}</Td>
                   <Td className="text-[var(--color-danger)] font-semibold">
                     {fmt(m.change_pct)}%
@@ -195,7 +206,12 @@ export function MarketPage() {
             ) : (
               livePrices.map((p) => (
                 <Tr key={p.symbol}>
-                  <Td className="font-semibold">{p.symbol}</Td>
+                  <Td className="font-semibold">
+                    <div className="flex items-center gap-1.5">
+                      <CryptoIcon symbol={p.symbol} size={18} />
+                      {p.symbol}
+                    </div>
+                  </Td>
                   <Td>${fmt(p.price)}</Td>
                   <Td className="text-[var(--color-text-muted)]">
                     {new Date(p.timestamp).toLocaleTimeString("es-ES")}

@@ -6,6 +6,7 @@ import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { NotConnectedState } from "../components/common/NotConnectedState";
 import { BrokerStatusBadge } from "../components/brokers/BrokerStatusBadge";
 import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 import { PriceChart } from "../components/charts/PriceChart";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
@@ -719,12 +720,13 @@ function MarketsModule() {
           <button
             key={s}
             onClick={() => setSymbol(s)}
-            className={`px-3 h-8 rounded-[8px] text-[12px] font-bold transition-colors ${
+            className={`px-3 h-8 rounded-[8px] text-[12px] font-bold transition-colors flex items-center gap-1.5 ${
               symbol === s
                 ? "bg-[var(--color-primary)] text-white"
                 : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
             }`}
           >
+            <CryptoIcon symbol={s} size={16} />
             {s}
           </button>
         ))}
@@ -759,7 +761,12 @@ function OrdersModule({ activeOrders, filledOrders }: { activeOrders: any[]; fil
           <tbody>
             {activeOrders.map((o, i) => (
               <tr key={i} className="border-b border-[var(--color-border)]/50">
-                <td className="py-2 font-bold text-[var(--color-text)]">{o.symbol}</td>
+                <td className="py-2 font-bold text-[var(--color-text)]">
+                  <div className="flex items-center gap-1.5">
+                    <CryptoIcon symbol={o.symbol} size={18} />
+                    {o.symbol}
+                  </div>
+                </td>
                 <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
                 <td className="text-[var(--color-text-muted)]">{o.type}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
@@ -793,7 +800,12 @@ function OrdersModule({ activeOrders, filledOrders }: { activeOrders: any[]; fil
               {filledOrders.map((o, i) => (
                 <tr key={i} className="border-b border-[var(--color-border)]/50">
                   <td className="py-2 text-[var(--color-text-muted)]">{o.time ? new Date(o.time).toLocaleString() : "—"}</td>
-                  <td className="font-bold text-[var(--color-text)]">{o.symbol}</td>
+                  <td className="font-bold text-[var(--color-text)]">
+                    <div className="flex items-center gap-1.5">
+                      <CryptoIcon symbol={o.symbol} size={18} />
+                      {o.symbol}
+                    </div>
+                  </td>
                   <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
                   <td className="text-[var(--color-text-muted)]">{o.type}</td>
                   <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
@@ -831,7 +843,12 @@ function HistoryModule({ trades }: { trades: any[] }) {
             {trades.map((t, i) => (
               <tr key={i} className="border-b border-[var(--color-border)]/50">
                 <td className="py-2 text-[var(--color-text-muted)]">{fmtDate(t.timestamp)}</td>
-                <td className="font-bold text-[var(--color-text)]">{t.symbol}</td>
+                <td className="font-bold text-[var(--color-text)]">
+                  <div className="flex items-center gap-1.5">
+                    <CryptoIcon symbol={t.symbol} size={18} />
+                    {t.symbol}
+                  </div>
+                </td>
                 <td className={cn("font-bold", t.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{t.side}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.quantity)}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.price)}</td>
@@ -1048,6 +1065,7 @@ function PositionsModule({ positions }: { positions: any[] }) {
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
             >
               <div className="flex items-center gap-2 flex-shrink-0">
+                <CryptoIcon symbol={p.symbol} size={24} />
                 <div className={cn(
                   "w-7 h-7 rounded-[8px] flex items-center justify-center text-[10px] font-extrabold",
                   p.side === "long" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
