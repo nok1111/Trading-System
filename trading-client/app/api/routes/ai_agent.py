@@ -19,9 +19,46 @@ from app.api.helpers import (
 )
 from app.config import get_settings
 from app.database.session import SessionLocal
+from app.database.models.user_settings import UserSettings
 from app.services.auth import LocalUser, get_current_user
 from app.services.crypto import decrypt
-from app.services.rate_limit import get_plan_limits
+from app.services.rate_limit import get_plan_limits, has_feature
+
+PREMIUM_PROVIDERS = {"openai", "deepseek", "mistral", "together", "perplexity", "grok"}
+
+
+def _load_user_keys(user_id: int) -> dict:
+    """Load user's stored AI keys from DB, decrypted."""
+    db = SessionLocal()
+    try:
+        s = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if not s:
+            return {}
+        keys = {}
+        if s.ai_groq_key_enc:
+            try:
+                keys["groq"] = decrypt(s.ai_groq_key_enc)
+            except Exception:
+                pass
+        if s.ai_gemini_key_enc:
+            try:
+                keys["gemini"] = decrypt(s.ai_gemini_key_enc)
+            except Exception:
+                pass
+        if s.ai_premium_key_enc:
+            try:
+                keys["premium"] = decrypt(s.ai_premium_key_enc)
+            except Exception:
+                pass
+        if s.ai_premium_provider:
+            keys["premium_provider"] = s.ai_premium_provider
+        if s.ai_premium_base_url:
+            keys["premium_base_url"] = s.ai_premium_base_url
+        if s.ai_premium_model:
+            keys["premium_model"] = s.ai_premium_model
+        return keys
+    finally:
+        db.close()
 
 router = APIRouter(prefix="/api", tags=["ai-agent"])
 
@@ -55,10 +92,10 @@ def ai_agent_start(
 ) -> dict:
     """Inicia el agente de IA autónomo.
 
-    Key resolution order:
-    1. User-provided keys in request body (from UI input)
-    2. User's stored encrypted keys (from settings)
-    3. Server .env keys (fallback for FREE users)
+    Key resolution & plan enforcement:
+    - FREE: Must bring own API key (BYOK). Server keys NOT used.
+    - PRO/PREMIUM: Can use server keys (included in subscription) or BYOK.
+    - Premium providers (OpenAI, DeepSeek, Mistral, etc.) require PRO/PREMIUM.
 
     Interval is enforced based on plan:
     - FREE: min 120s
@@ -72,25 +109,46 @@ def ai_agent_start(
     provider = req.provider or getattr(settings, "AI_PROVIDER", "groq")
     agent.provider = provider
 
-    # Resolve API keys: request > user stored > .env
-    groq_key = req.groq_api_key
-    gemini_key = req.gemini_api_key
+    # Plan info
+    subscription = current_user.subscription if current_user else "free"
+    is_free = subscription == "free"
+    is_paid = subscription in ("pro", "premium")
 
-    if not groq_key and current_user and current_user.ai_groq_key_enc:
-        try:
-            groq_key = decrypt(current_user.ai_groq_key_enc)
-        except Exception:
-            pass
-    if not gemini_key and current_user and current_user.ai_gemini_key_enc:
-        try:
-            gemini_key = decrypt(current_user.ai_gemini_key_enc)
-        except Exception:
-            pass
+    # Block premium providers for FREE users
+    if provider in PREMIUM_PROVIDERS and is_free:
+        raise HTTPException(
+            status_code=403,
+            detail=f"El proveedor '{provider}' requiere suscripción PRO o PREMIUM. "
+                   f"Usuarios FREE pueden usar Groq o Gemini (gratis) con su propia API key.",
+        )
 
-    if not groq_key:
-        groq_key = getattr(settings, "GROQ_API_KEY", None)
-    if not gemini_key:
-        gemini_key = getattr(settings, "GEMINI_API_KEY", None)
+    # Load user's stored keys from DB
+    user_keys = _load_user_keys(current_user.id) if current_user else {}
+
+    # Resolve API keys: request body > user DB > server .env (only for paid)
+    groq_key = req.groq_api_key or user_keys.get("groq")
+    gemini_key = req.gemini_api_key or user_keys.get("gemini")
+
+    # FREE users: must have their own key — no server fallback
+    if is_free:
+        if provider == "groq" and not groq_key:
+            raise HTTPException(
+                status_code=403,
+                detail="Usuarios FREE deben ingresar su propia Groq API key. "
+                       "Obtén una gratis en console.groq.com",
+            )
+        if provider == "gemini" and not gemini_key:
+            raise HTTPException(
+                status_code=403,
+                detail="Usuarios FREE deben ingresar su propia Gemini API key. "
+                       "Obtén una gratis en aistudio.google.com",
+            )
+    else:
+        # Paid users: fallback to server keys
+        if not groq_key:
+            groq_key = getattr(settings, "GROQ_API_KEY", None)
+        if not gemini_key:
+            gemini_key = getattr(settings, "GEMINI_API_KEY", None)
 
     if groq_key:
         agent.groq_api_key = groq_key
@@ -118,20 +176,15 @@ def ai_agent_start(
         "grok": "https://api.x.ai/v1",
     }
     if provider in PREMIUM_BASE_URLS:
-        premium_key = req.premium_api_key
-        if not premium_key and current_user and current_user.ai_premium_key_enc:
-            try:
-                premium_key = decrypt(current_user.ai_premium_key_enc)
-            except Exception:
-                pass
+        premium_key = req.premium_api_key or user_keys.get("premium")
         if premium_key:
             agent.openai_api_key = premium_key
-        base_url = req.premium_base_url or (current_user.ai_premium_base_url if current_user else None) or PREMIUM_BASE_URLS[provider]
+        base_url = req.premium_base_url or user_keys.get("premium_base_url") or PREMIUM_BASE_URLS[provider]
         agent.openai_base_url = base_url
         if req.model:
             agent.openai_model = req.model
-        elif current_user and current_user.ai_premium_model:
-            agent.openai_model = current_user.ai_premium_model
+        elif user_keys.get("premium_model"):
+            agent.openai_model = user_keys["premium_model"]
 
     # Enforce plan-based interval minimum
     if current_user:
@@ -292,6 +345,36 @@ def ai_agent_status() -> dict:
     """Obtiene el estado del agente de IA."""
     agent = get_or_create_agent()
     return agent.get_status()
+
+
+@router.get("/ai-agent/plan")
+def ai_agent_plan(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Returns user's plan info, features, and BYOK status for the frontend."""
+    subscription = current_user.subscription if current_user else "free"
+    limits = get_plan_limits(subscription)
+    user_keys = _load_user_keys(current_user.id) if current_user else {}
+
+    return {
+        "subscription": subscription,
+        "is_free": subscription == "free",
+        "is_paid": subscription in ("pro", "premium"),
+        "max_ai_requests_per_day": limits["max_ai_requests_per_day"],
+        "min_interval_seconds": limits["max_ai_interval_seconds"],
+        "features": limits["features"],
+        "has_groq_key": bool(user_keys.get("groq")),
+        "has_gemini_key": bool(user_keys.get("gemini")),
+        "has_premium_key": bool(user_keys.get("premium")),
+        "premium_provider": user_keys.get("premium_provider"),
+        "premium_model": user_keys.get("premium_model"),
+        "free_providers": ["groq", "gemini", "ollama"],
+        "premium_providers": list(PREMIUM_PROVIDERS),
+        "get_keys_links": {
+            "groq": "https://console.groq.com/keys",
+            "gemini": "https://aistudio.google.com/apikey",
+        },
+    }
 
 
 @router.get("/ai-agent/log")

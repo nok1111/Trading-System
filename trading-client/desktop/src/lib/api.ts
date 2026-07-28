@@ -28,6 +28,7 @@ const TTL_RULES: { pattern: string; ttl: number }[] = [
   { pattern: "/api/ai-agent/log", ttl: 2_000 },
   { pattern: "/api/ai-agent/status", ttl: 2_000 },
   { pattern: "/api/ai-agent/stats", ttl: 8_000 },
+  { pattern: "/api/ai-agent/plan", ttl: 30_000 },
 ];
 const DEFAULT_TTL = 30_000; // 30 seconds
 

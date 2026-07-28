@@ -59,6 +59,7 @@ export function AIAgentPage() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<"conservative" | "balanced" | "aggressive">("balanced");
   const [showConfig, setShowConfig] = useState(false);
+  const [plan, setPlan] = useState<any>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -81,10 +82,18 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadPlan = useCallback(async () => {
+    try {
+      const p = await api<any>("/api/ai-agent/plan");
+      setPlan(p);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadLog();
     loadStats();
+    loadPlan();
     const id1 = setInterval(loadStatus, 3000);
     const id2 = setInterval(loadLog, 3000);
     const id3 = setInterval(loadStats, 10000);
@@ -93,7 +102,7 @@ export function AIAgentPage() {
       clearInterval(id2);
       clearInterval(id3);
     };
-  }, [loadStatus, loadLog, loadStats]);
+  }, [loadStatus, loadLog, loadStats, loadPlan]);
 
   const start = async () => {
     try {
@@ -115,8 +124,10 @@ export function AIAgentPage() {
       });
       toast("AI Agent activado");
       loadStatus();
+      loadPlan();
     } catch (e: any) {
-      toast(e.message, false);
+      const msg = e?.message || "Error al iniciar";
+      toast(msg, false);
     }
   };
 
@@ -174,6 +185,20 @@ export function AIAgentPage() {
   const isRunning = status?.is_running ?? false;
   const decisions = log.filter((e) => e.phase === "decision");
   const activityLog = log.slice(0, 60);
+
+  // Plan info
+  const isFree = plan?.is_free ?? true;
+  const isPaid = plan?.is_paid ?? false;
+  const subscription = plan?.subscription ?? "free";
+  const hasGroqKey = plan?.has_groq_key ?? false;
+  const hasGeminiKey = plan?.has_gemini_key ?? false;
+  const hasPremiumKey = plan?.has_premium_key ?? false;
+  const maxRequestsPerDay = plan?.max_ai_requests_per_day ?? 50;
+  const minInterval = plan?.min_interval_seconds ?? 120;
+  const isPremiumProvider = PROVIDERS.find((p) => p.value === provider)?.premium ?? false;
+  const needsByok = isFree && (provider === "groq" || provider === "gemini");
+  const byokReady = (provider === "groq" && (hasGroqKey || !!groqKey)) || (provider === "gemini" && (hasGeminiKey || !!geminiKey));
+  const canStart = !isRunning && (!needsByok || byokReady) && (!isPremiumProvider || isPaid);
   const totalTrades = stats?.total_trades ?? 0;
   const winRate = stats?.win_rate ?? 0;
   const totalPnl = stats?.total_pnl ?? 0;
@@ -218,11 +243,54 @@ export function AIAgentPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="success" onClick={start} disabled={isRunning} className="h-9">▶ Start</Button>
+            <Button variant="success" onClick={start} disabled={!canStart} className="h-9">▶ Start</Button>
             <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9">⏹ Stop</Button>
             <Button variant="default" onClick={() => setShowConfig(!showConfig)} className="h-9">⚙ Config</Button>
           </div>
         </div>
+
+        {/* Plan badge + quota info */}
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <span className={cn(
+            "text-[10px] font-bold px-2.5 h-6 rounded-full flex items-center uppercase tracking-wide",
+            isPaid
+              ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)]"
+              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+          )}>
+            {isPaid ? "⭐ " : ""}{subscription}
+          </span>
+          <span className="text-[11px] text-[var(--color-text-muted)]">
+            {maxRequestsPerDay === 99999 ? "Unlimited" : `${maxRequestsPerDay} req/day`} · min interval {minInterval}s
+          </span>
+        </div>
+
+        {/* BYOK notice for FREE users with free providers */}
+        {needsByok && !byokReady && (
+          <div className="mt-3 p-3 rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30">
+            <p className="text-[12px] font-bold text-[var(--color-warning)]">
+              🔑 Bring Your Own Key required for FREE plan
+            </p>
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
+              {provider === "groq" ? (
+                <>Get a free Groq API key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">console.groq.com/keys</a> and paste it in Config below.</>
+              ) : (
+                <>Get a free Gemini API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">aistudio.google.com/apikey</a> and paste it in Config below.</>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* Premium provider locked for FREE */}
+        {isPremiumProvider && isFree && (
+          <div className="mt-3 p-3 rounded-lg bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
+            <p className="text-[12px] font-bold text-[var(--color-danger)]">
+              🔒 {provider} requires PRO or PREMIUM subscription
+            </p>
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
+              Upgrade to use premium AI providers, or switch to Groq/Gemini (free) with your own key.
+            </p>
+          </div>
+        )}
 
         {/* AI Mode selector */}
         <div className="mt-4 flex gap-2 flex-wrap">
@@ -288,20 +356,28 @@ export function AIAgentPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {provider === "groq" && (
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Groq API Key</label>
-                  <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder="Configured in .env" className="w-full" />
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                    Groq API Key {isFree && <span className="text-[var(--color-warning)]">*required</span>}
+                    {hasGroqKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
+                  </label>
+                  <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Using saved key" : isFree ? "Paste your free Groq key" : "Server key available"} className="w-full" />
                 </div>
               )}
               {provider === "gemini" && (
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Gemini API Key</label>
-                  <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder="Configured in .env" className="w-full" />
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                    Gemini API Key {isFree && <span className="text-[var(--color-warning)]">*required</span>}
+                    {hasGeminiKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
+                  </label>
+                  <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Using saved key" : isFree ? "Paste your free Gemini key" : "Server key available"} className="w-full" />
                 </div>
               )}
               {PROVIDERS.find((p) => p.value === provider)?.premium && (
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Premium API Key</label>
-                  <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder="Enter your API key" className="w-full" />
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                    Premium API Key {hasPremiumKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
+                  </label>
+                  <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Using saved key" : "Enter your API key"} className="w-full" />
                 </div>
               )}
             </div>
