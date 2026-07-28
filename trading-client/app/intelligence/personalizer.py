@@ -195,74 +195,86 @@ def _get_top_movers(session: Session) -> list[dict[str, Any]]:
 
 def _build_buy_reason(a: IntelligenceAnalysis) -> str:
     """Build a conversational, partner-like reason for why this asset is a buy."""
-    parts: list[str] = []
     reasons = a.reasons if isinstance(a.reasons, dict) else {}
     metrics = a.metrics if isinstance(a.metrics, dict) else {}
     votes = a.agent_votes if isinstance(a.agent_votes, dict) else {}
 
-    # Technical reason
+    sentences: list[str] = []
+
+    # --- Core thesis (technical) ---
     tech = reasons.get("technical", "").strip()
-    if tech:
-        parts.append(tech)
-
-    # On-chain reason
     onchain = reasons.get("onchain", "").strip()
-    if onchain:
-        parts.append(f"on-chain: {onchain}")
-
-    # News reason
     news = reasons.get("news", "").strip()
-    if news:
-        parts.append(f"noticias: {news}")
-
-    # Macro reason
     macro = reasons.get("macro", "").strip()
-    if macro:
-        parts.append(f"macro: {macro}")
 
-    # Metrics-based insights
+    if tech:
+        sentences.append(tech.rstrip("."))
+
+    # --- Context layers, woven naturally ---
+    context_parts: list[str] = []
+    if onchain:
+        context_parts.append(f"on-chain {onchain.lower()}")
+    if news:
+        context_parts.append(f"las noticias son {news.lower()}")
+    if macro:
+        context_parts.append(f"el contexto macro está {macro.lower()}")
+    if context_parts:
+        sentences.append(", y ".join(context_parts))
+
+    # --- Metrics as color commentary ---
     rsi = metrics.get("rsi")
+    fear_greed = metrics.get("fear_greed")
+    metric_bits: list[str] = []
     if rsi is not None:
         rsi_val = float(rsi)
-        if rsi_val < 35:
-            parts.append(f"RSI en {rsi_val:.0f} (oversold — posible rebote)")
+        if rsi_val < 30:
+            metric_bits.append(f"RSI en {rsi_val:.0f} — muy oversold, cuidado con el rebote")
+        elif rsi_val < 45:
+            metric_bits.append(f"RSI en {rsi_val:.0f}, todavía hay espacio antes de sobrecompra")
         elif rsi_val > 70:
-            parts.append(f"RSI en {rsi_val:.0f} (sobrecomprado, cuidado)")
+            metric_bits.append(f"RSI en {rsi_val:.0f} — ya algo estirado")
         else:
-            parts.append(f"RSI en {rsi_val:.0f}")
-
-    fear_greed = metrics.get("fear_greed")
+            metric_bits.append(f"RSI en {rsi_val:.0f}")
     if fear_greed is not None:
         fg = int(fear_greed)
         if fg < 25:
-            parts.append("mercado con miedo extremo (suele ser buen momento para comprar)")
+            metric_bits.append("el mercado está con miedo, que suele ser buen momento para entrar")
         elif fg > 75:
-            parts.append("mercado con greed extremo")
+            metric_bits.append("el mercado está eufórico, ojo")
+    if metric_bits:
+        sentences.append(". ".join(metric_bits))
 
-    # Agent consensus
+    # --- Consensus & conviction ---
     buy_votes = sum(1 for v in votes.values() if v == "BUY")
     total_votes = len(votes)
-    if total_votes > 0:
-        parts.append(f"{buy_votes}/{total_votes} agentes de IA coinciden en BUY")
-
-    # Confidence level
     conf = float(a.confidence) if a.confidence else 0
-    if conf >= 0.8:
-        parts.append("alta convicción")
-    elif conf >= 0.6:
-        parts.append("convicción moderada")
-
-    # Risk context
     risk = a.risk_level or "medium"
-    if risk == "low":
-        parts.append("riesgo bajo")
-    elif risk == "high":
-        parts.append("ojo: riesgo alto")
 
-    if not parts:
+    closing_bits: list[str] = []
+    if total_votes > 0 and buy_votes > 0:
+        closing_bits.append(f"{buy_votes}/{total_votes} de mis agentes coinciden en que es compra")
+    if conf >= 0.8:
+        closing_bits.append("yo le tengo alta convicción")
+    elif conf >= 0.6:
+        closing_bits.append("convicción moderada, no es un trade seguro pero el setup se ve bien")
+    if risk == "low":
+        closing_bits.append("y el riesgo es bajo")
+    elif risk == "high":
+        closing_bits.append("ojo que el riesgo es alto — position sizing cuidado")
+    if closing_bits:
+        sentences.append(", ".join(closing_bits))
+
+    if not sentences:
         return "Señal de compra detectada por el análisis técnico automatizado."
 
-    return ". ".join(parts[:4]) + "."
+    # Join into a flowing paragraph
+    text = ". ".join(sentences)
+    if not text.endswith("."):
+        text += "."
+    # Capitalize first letter
+    if text:
+        text = text[0].upper() + text[1:]
+    return text
 
 
 def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
