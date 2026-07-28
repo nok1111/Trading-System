@@ -15,6 +15,10 @@ export function PositionsPage() {
   const [filter, setFilter] = useState("");
   const [prices, setPrices] = useState<Record<string, number>>({});
   const priceHistoryRef = useRef<Record<string, number[]>>({});
+  const [paperStatus, setPaperStatus] = useState<any>(null);
+  const [paperAction, setPaperAction] = useState("");
+  const [depositAmount, setDepositAmount] = useState("1000");
+  const [paperInterval, setPaperInterval] = useState("30");
 
   const load = useCallback(async () => {
     try {
@@ -51,6 +55,63 @@ export function PositionsPage() {
     const id = setInterval(load, 3000);
     return () => clearInterval(id);
   }, [load]);
+
+  const loadPaperStatus = useCallback(async () => {
+    try {
+      const s = await api<any>("/api/paper-trading/status");
+      setPaperStatus(s);
+      if (s.interval_seconds) setPaperInterval(String(s.interval_seconds));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadPaperStatus();
+    const id = setInterval(loadPaperStatus, 10000);
+    return () => clearInterval(id);
+  }, [loadPaperStatus]);
+
+  const handlePaperStart = async () => {
+    setPaperAction("starting");
+    try {
+      await api("/api/paper-trading/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategies: ["trend"], interval_seconds: parseInt(paperInterval) }),
+      });
+      await loadPaperStatus();
+    } catch {}
+    setPaperAction("");
+  };
+
+  const handlePaperStop = async () => {
+    setPaperAction("stopping");
+    try {
+      await api("/api/paper-trading/stop", { method: "POST" });
+      await loadPaperStatus();
+    } catch {}
+    setPaperAction("");
+  };
+
+  const handlePaperDeposit = async () => {
+    try {
+      await api("/api/paper-trading/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parseFloat(depositAmount) }),
+      });
+    } catch {}
+  };
+
+  const handlePaperInterval = async () => {
+    try {
+      await api("/api/paper-trading/interval", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_seconds: parseInt(paperInterval) }),
+      });
+      await loadPaperStatus();
+    } catch {}
+  };
 
   const open = positions.filter((p) => p.status === "open");
   const closed = positions.filter((p) => p.status === "closed");
@@ -93,6 +154,83 @@ export function PositionsPage() {
           </CardValue>
         </Card>
       </div>
+
+      {/* Paper Trading Control Panel */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-[var(--color-primary)]">
+            Paper Trading
+          </h3>
+          <span
+            className={`text-[11px] font-bold px-2 h-5 rounded flex items-center ${
+              paperStatus?.status === "running"
+                ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+            }`}
+          >
+            {paperStatus?.status === "running" ? "RUNNING" : "STOPPED"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-3 items-end">
+          {paperStatus?.status === "running" ? (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handlePaperStop}
+              disabled={!!paperAction}
+            >
+              {paperAction === "stopping" ? "Stopping..." : "Stop"}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handlePaperStart}
+              disabled={!!paperAction}
+            >
+              {paperAction === "starting" ? "Starting..." : "Start"}
+            </Button>
+          )}
+          <div>
+            <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+              Interval (sec)
+            </label>
+            <div className="flex gap-1">
+              <input
+                type="number"
+                value={paperInterval}
+                onChange={(e) => setPaperInterval(e.target.value)}
+                min={5}
+                className="w-20 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+              />
+              <Button variant="default" size="sm" onClick={handlePaperInterval}>
+                Set
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+              Deposit (USDT)
+            </label>
+            <div className="flex gap-1">
+              <input
+                type="number"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                className="w-24 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+              />
+              <Button variant="default" size="sm" onClick={handlePaperDeposit}>
+                Deposit
+              </Button>
+            </div>
+          </div>
+          {paperStatus?.local_time && (
+            <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">
+              {paperStatus.local_time}
+            </span>
+          )}
+        </div>
+      </Card>
 
       {/* Filter */}
       <div className="flex gap-2 items-center">
