@@ -338,19 +338,22 @@ def get_binance_balance() -> dict:
             err_msg = "Binance rechazó las credenciales. Verifica que tu API key tenga permisos de lectura y que tu IP esté autorizada en Binance."
         return {"error": f"No se pudo conectar a Binance: {err_msg}", "assets": [], "total_usd": 0, "total_mxn": 0}
 
-    assets = []
-    total_usd = 0.0
-
-    # Get MXN/USDT rate (USDTMXN exists on Binance)
-    mxn_rate = 0.0
+    # Batch-fetch all ticker prices in one call
+    price_map: dict[str, float] = {}
     try:
-        r = _httpx.get("https://api.binance.com/api/v3/ticker/price", params={"symbol": "USDTMXN"}, timeout=5)
-        if r.status_code == 200:
-            mxn_rate = float(r.json()["price"])
+        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+        for t in tickers:
+            price_map[t["symbol"]] = float(t["price"])
     except Exception:
         pass
+
+    # Get MXN/USDT rate
+    mxn_rate = price_map.get("USDTMXN", 0.0)
     if mxn_rate == 0:
         mxn_rate = 18.5  # fallback approximate
+
+    assets = []
+    total_usd = 0.0
 
     for b in balances:
         free = float(b.free)
@@ -365,27 +368,11 @@ def get_binance_balance() -> dict:
         if asset in ("USDT", "BUSD", "USDC", "UST", "USD", "EUR"):
             usd_value = total
             if asset == "EUR":
-                # EUR is ~1.08 USD, try to get exact rate
-                try:
-                    r = _httpx.get("https://api.binance.com/api/v3/ticker/price", params={"symbol": "EURUSDT"}, timeout=5)
-                    if r.status_code == 200:
-                        usd_value = total * float(r.json()["price"])
-                except Exception:
-                    usd_value = total * 1.08
+                usd_value = total * price_map.get("EURUSDT", 1.08)
         elif asset == "MXN":
             usd_value = total / mxn_rate
         else:
-            # Try to get price in USDT
-            try:
-                r = _httpx.get(
-                    "https://api.binance.com/api/v3/ticker/price",
-                    params={"symbol": f"{asset}USDT"},
-                    timeout=5,
-                )
-                if r.status_code == 200:
-                    usd_value = total * float(r.json()["price"])
-            except Exception:
-                pass
+            usd_value = total * price_map.get(f"{asset}USDT", 0.0)
 
         total_usd += usd_value
         assets.append({
@@ -711,17 +698,24 @@ def get_binance_positions() -> dict:
         if not positions:
             return {"positions": [], "count": 0}
 
-        adapter = BinanceAdapter(creds)
+        # Batch-fetch all ticker prices in one call
+        import httpx as _httpx
+        price_map: dict[str, float] = {}
+        try:
+            tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+            for t in tickers:
+                price_map[t["symbol"]] = float(t["price"])
+        except Exception:
+            pass
+
         result = []
         for p in positions:
             current_price = None
             unrealized = 0.0
-            try:
-                ticker = adapter.get_ticker(normalize_symbol(p.symbol))
-                current_price = float(ticker.price)
-                unrealized = (float(ticker.price) - float(p.entry_price)) * float(p.quantity)
-            except Exception:
-                pass
+            broker_sym = p.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+            if broker_sym in price_map:
+                current_price = price_map[broker_sym]
+                unrealized = (current_price - float(p.entry_price)) * float(p.quantity)
 
             if current_price:
                 p.current_price = Dec(str(current_price))

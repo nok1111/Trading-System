@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { LoginScreen } from "./components/auth/LoginScreen";
 import { Layout, type TabId } from "./components/layout/Layout";
@@ -68,6 +68,16 @@ function BrokerAwareContent({
   onOnboardingDone: () => void;
 }) {
   const { hasConnectedAccounts, isLoading } = useBrokerContext();
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(new Set(["dashboard"]));
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   if (isLoading) {
     return (
@@ -100,7 +110,7 @@ function BrokerAwareContent({
     <Layout activeTab={activeTab} onTabChange={onTabChange}>
       {tabs.map((tab) => (
         <div key={tab} style={{ display: tab === activeTab ? "block" : "none" }}>
-          {pages[tab]}
+          {visitedTabs.has(tab) ? pages[tab] : null}
         </div>
       ))}
     </Layout>

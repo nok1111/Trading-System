@@ -1,5 +1,26 @@
 const API_BASE = "http://localhost:18652";
 
+// In-memory cache for GET requests with TTL
+const _cache = new Map<string, { data: any; expires: number }>();
+const DEFAULT_TTL = 30_000; // 30 seconds
+
+export function cacheGet<T>(path: string): T | null {
+  const entry = _cache.get(path);
+  if (entry && entry.expires > Date.now()) return entry.data as T;
+  if (entry) _cache.delete(path);
+  return null;
+}
+
+export function cacheSet(path: string, data: any, ttl: number = DEFAULT_TTL) {
+  _cache.set(path, { data, expires: Date.now() + ttl });
+}
+
+export function cacheInvalidate(pathPrefix: string) {
+  for (const key of _cache.keys()) {
+    if (key.startsWith(pathPrefix)) _cache.delete(key);
+  }
+}
+
 // Read token from localStorage on module init (survives Vite hot reloads)
 let authToken: string | null = null;
 try { authToken = localStorage.getItem("jwt"); } catch {}
@@ -23,6 +44,19 @@ export async function api<T = any>(
   path: string,
   opts: RequestInit = {}
 ): Promise<T> {
+  const method = (opts.method || "GET").toUpperCase();
+
+  // Invalidate cache on mutations
+  if (method !== "GET") {
+    cacheInvalidate(path.split("?")[0]);
+  }
+
+  // Check cache for GET
+  if (method === "GET") {
+    const cached = cacheGet<T>(path);
+    if (cached !== null) return cached;
+  }
+
   const headers: Record<string, string> = {
     ...(opts.headers as Record<string, string>),
   };
@@ -45,7 +79,14 @@ export async function api<T = any>(
     const e = await r.json().catch(() => ({ detail: "Error" }));
     throw new Error(e.detail || "Error");
   }
-  return r.json();
+  const data = await r.json();
+
+  // Cache successful GET responses
+  if (method === "GET") {
+    cacheSet(path, data);
+  }
+
+  return data;
 }
 
 export async function authApi<T = any>(
