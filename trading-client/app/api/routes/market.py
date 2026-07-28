@@ -126,31 +126,34 @@ def get_klines(
     interval: str = Query("1m", pattern="^(1m|3m|5m|15m|30m|1h|2h|4h|1d|1w)$"),
     limit: int = Query(200, ge=1, le=1000),
 ) -> list[dict]:
-    """Klines (OHLCV) desde Binance via BinanceAdapter."""
-    from app.brokers.adapters.binance_adapter import BinanceAdapter
-    from app.brokers.models import BrokerCredentials, normalize_symbol
-    from app.config import get_settings
+    """Klines (OHLCV) desde Binance public API — no credentials needed."""
+    import httpx
 
-    settings = get_settings()
-    creds = BrokerCredentials(
-        broker_id="binance",
-        api_key=getattr(settings, "BROKER_API_KEY", "") or "",
-        api_secret=getattr(settings, "BROKER_API_SECRET", "") or "",
-        testnet=getattr(settings, "BINANCE_TESTNET", False),
-    )
-    adapter = BinanceAdapter(creds)
+    broker_symbol = symbol.upper().replace("/", "").replace("-", "").replace("_", "")
     try:
-        candles = adapter.get_klines(normalize_symbol(symbol), interval, limit)
-        return [
-            {
-                "time": int(c.timestamp.timestamp() * 1000),
-                "open": float(c.open),
-                "high": float(c.high),
-                "low": float(c.low),
-                "close": float(c.close),
-                "volume": float(c.volume),
-            }
-            for c in candles
-        ]
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        resp = httpx.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": broker_symbol, "interval": interval, "limit": limit},
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 400:
+            raise HTTPException(status_code=400, detail=f"Simbolo {symbol} no existe en Binance") from exc
+        raise HTTPException(status_code=502, detail=f"Error HTTP {exc.response.status_code}: {exc}") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=504, detail=f"Timeout conectando a Binance: {exc}") from exc
+
+    raw = resp.json()
+    from datetime import datetime, UTC
+    return [
+        {
+            "time": int(k[0]),
+            "open": float(k[1]),
+            "high": float(k[2]),
+            "low": float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        }
+        for k in raw
+    ]

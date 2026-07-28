@@ -64,14 +64,14 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
         if (module === "overview" || module === "portfolio") {
           tasks.push({ key: "balance", fn: () => api<any>("/api/binance/balance").catch(() => null) });
         }
-        if (module === "overview") {
-          tasks.push({ key: "positions", fn: () => api<any>("/api/binance/positions").catch(() => null) });
-        }
-        if (module === "overview" || module === "orders") {
-          tasks.push({ key: "orders", fn: () => api<any>("/api/binance/all-orders?limit=50").catch(() => null) });
-        }
         if (module === "overview" || module === "positions") {
           tasks.push({ key: "positions", fn: () => api<any>("/api/binance/positions").catch(() => null) });
+        }
+        if (module === "overview") {
+          tasks.push({ key: "open-orders", fn: () => api<any>("/api/binance/open-orders").catch(() => null) });
+        }
+        if (module === "orders") {
+          tasks.push({ key: "orders", fn: () => api<any>("/api/binance/all-orders?limit=50").catch(() => null) });
         }
         if (module === "history") {
           tasks.push({ key: "trades", fn: () => api<any[]>("/api/trades?limit=20").catch(() => []) });
@@ -89,6 +89,9 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
           const data = results[i];
           if (t.key === "balance") setBalanceData(data);
           else if (t.key === "positions") setPositions(data?.positions || []);
+          else if (t.key === "open-orders") {
+            setBinanceActiveOrders(data?.orders || []);
+          }
           else if (t.key === "orders") {
             setBinanceActiveOrders(data?.active || []);
             setBinanceFilledOrders(data?.filled || []);

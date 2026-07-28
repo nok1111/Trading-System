@@ -134,7 +134,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
   }, [symbol, interval]);
 
   return (
-    <div className="panel p-4">
+    <div className="panel p-4 relative">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[13px] font-bold text-[var(--color-text)]">{symbol} · Chart</h3>
         <div className="flex gap-1">
@@ -159,12 +159,12 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
       )}
 
       {loading && !error && (
-        <div className="flex items-center justify-center" style={{ height }}>
+        <div className="flex items-center justify-center absolute inset-0 bg-[var(--color-surface)]/80 rounded-[12px] z-10" style={{ height }}>
           <div className="text-[12px] text-[var(--color-text-muted)]">Cargando {symbol}...</div>
         </div>
       )}
 
-      <div ref={containerRef} style={{ height, display: loading || error ? "none" : "block" }} />
+      <div ref={containerRef} style={{ height, visibility: error ? "hidden" : "visible" }} />
     </div>
   );
 }
