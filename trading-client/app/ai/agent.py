@@ -34,10 +34,19 @@ SYSTEM_PROMPT = """Eres un agente de trading que SOLO COMPRA. Devuelves SOLO JSO
 
 SOLO COMPRAS. Las ventas son automáticas con trailing stop (protege profit, nunca deja volver a loss) y take-profit. NO incluyas "sell".
 
-Reglas: actions=[] si no hay oportunidad clara. confidence 0-1. Cash>$5000=suficiente. SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn o positions.
+Reglas: actions=[] si no hay oportunidad clara. confidence 0-1. Cash>$5000=suficiente. SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical.
+
+DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
+- signal "STRONG_BUY" o "BUY" = oportunidad alcista confirmada
+- RSI < 35 = oversold (posible rebote)
+- EMA trend bullish = momentum positivo
+- volume_relative > 1.5 = volumen confirmado
+- ATR_pct = volatilidad, úsalo para ajustar stop_loss_pct (mayor ATR = mayor SL)
+- NO compres símbolos con signal "SELL" o "STRONG_SELL"
+- Prefiere símbolos con signal "BUY" y razones técnicas sólidas
 
 CADA COMPRA debe incluir:
-- stop_loss_pct: % de pérdida máxima (2-5% según volatilidad)
+- stop_loss_pct: % de pérdida máxima (2-5% según ATR_pct)
 - take_profit_pct: % de ganancia objetivo (5-15% según potencial)
 
 DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Busca ALTO POTENCIAL a corto plazo: gainers con momentum positivo y volumen alto."""
@@ -890,6 +899,34 @@ class AITradingAgent:
             risk_events = self._api_get("/api/risk-events?limit=3")
             if isinstance(risk_events, list) and risk_events:
                 ctx["rejections"] = [{"s": e.get("symbol"), "r": e.get("reason")} for e in risk_events[:3]]
+
+            # Technical analysis for tracked symbols
+            try:
+                from app.services.technical_analysis import analyze_symbol
+                from app.config import get_settings
+                settings = get_settings()
+                tech_data = []
+                for sym in settings.symbols_list[:10]:
+                    try:
+                        ta = analyze_symbol(sym, interval="1h")
+                        tech_data.append({
+                            "s": sym,
+                            "sig": ta.signal,
+                            "trend": ta.trend,
+                            "rsi": ta.rsi,
+                            "macd": ta.macd_signal,
+                            "atr_pct": ta.atr_pct,
+                            "vol_rel": ta.volume_relative,
+                            "sl": ta.stop_loss,
+                            "tp": ta.take_profit,
+                            "reasons": ta.signal_reasons[:3],
+                        })
+                    except Exception:
+                        continue
+                if tech_data:
+                    ctx["technical"] = tech_data
+            except Exception:
+                pass
 
             return ctx
 

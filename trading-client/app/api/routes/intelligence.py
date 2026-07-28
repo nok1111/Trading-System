@@ -346,3 +346,70 @@ def get_daily_report() -> dict:
             },
             "timestamp": datetime.now(UTC).isoformat(),
         }
+
+
+# ---------------------------------------------------------------------------
+# Technical Analysis Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/signals/technical")
+def get_technical_signals(
+    interval: str = "1h",
+    symbols: str | None = None,
+) -> list[dict]:
+    """Get technical analysis signals for all DEFAULT_SYMBOLS or specified symbols.
+
+    Query params:
+        interval: 1m, 5m, 15m, 1h, 4h, 1d (default 1h)
+        symbols: comma-separated list (default: from settings.DEFAULT_SYMBOLS)
+    """
+    from app.config import get_settings
+    from app.services.technical_analysis import analyze_symbol
+
+    settings = get_settings()
+    symbol_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else settings.symbols_list
+    )
+
+    results: list[dict] = []
+    for sym in symbol_list:
+        try:
+            analysis = analyze_symbol(sym, interval=interval)
+            results.append(analysis.to_dict())
+        except Exception as exc:
+            logger.warning("Technical analysis failed for %s: %s", sym, exc)
+            results.append({
+                "symbol": sym,
+                "interval": interval,
+                "error": str(exc),
+                "signal": "HOLD",
+                "signal_reasons": [f"Analysis failed: {exc}"],
+            })
+
+    signal_order = {"STRONG_BUY": 0, "BUY": 1, "HOLD": 2, "SELL": 3, "STRONG_SELL": 4}
+    results.sort(key=lambda x: signal_order.get(x.get("signal", "HOLD"), 2))
+    return results
+
+
+@router.get("/signals/technical/{symbol}")
+def get_technical_signal(
+    symbol: str,
+    interval: str = "1h",
+) -> dict:
+    """Get detailed technical analysis for a single symbol."""
+    from app.services.technical_analysis import analyze_symbol
+
+    try:
+        analysis = analyze_symbol(symbol, interval=interval)
+        return analysis.to_dict()
+    except Exception as exc:
+        logger.warning("Technical analysis failed for %s: %s", symbol, exc)
+        return {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "error": str(exc),
+            "signal": "HOLD",
+            "signal_reasons": [f"Analysis failed: {exc}"],
+        }
