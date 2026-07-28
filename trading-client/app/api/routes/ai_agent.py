@@ -598,6 +598,8 @@ class ManualOrderRequest(BaseModel):
     quantity: float | None = None
     quote_order_qty: float | None = None  # amount in USDT for market buys
     price: float | None = None  # required for LIMIT
+    stop_loss_price: float | None = None  # optional stop-loss
+    take_profit_price: float | None = None  # optional take-profit
 
 
 @router.post("/binance/manual-order")
@@ -644,7 +646,7 @@ def place_binance_manual_order(req: ManualOrderRequest) -> dict:
 
     try:
         resp = adapter._broker._signed_request("POST", "/api/v3/order", params)
-        return {
+        result = {
             "status": "ok",
             "orderId": str(resp.get("orderId", "")),
             "symbol": resp.get("symbol", symbol),
@@ -656,6 +658,32 @@ def place_binance_manual_order(req: ManualOrderRequest) -> dict:
             "status": resp.get("status", ""),
             "transactTime": resp.get("transactTime", ""),
         }
+
+        # Place stop-loss and take-profit as OCO order if provided and BUY
+        if side == "BUY" and req.stop_loss_price and req.take_profit_price:
+            executed_qty = resp.get("origQty", "")
+            if not executed_qty:
+                # For market orders, fetch executed qty
+                executed_qty = resp.get("executedQty", "")
+            if executed_qty and float(executed_qty) > 0:
+                try:
+                    oco_params = {
+                        "symbol": symbol,
+                        "side": "SELL",
+                        "quantity": executed_qty,
+                        "price": f"{req.take_profit_price:.8f}".rstrip("0").rstrip("."),
+                        "stopPrice": f"{req.stop_loss_price:.8f}".rstrip("0").rstrip("."),
+                        "stopLimitPrice": f"{req.stop_loss_price:.8f}".rstrip("0").rstrip("."),
+                        "stopLimitTimeInForce": "GTC",
+                    }
+                    oco_resp = adapter._broker._signed_request("POST", "/api/v3/order/oco", oco_params)
+                    result["ocoOrderId"] = str(oco_resp.get("orderListId", ""))
+                    result["stopLoss"] = req.stop_loss_price
+                    result["takeProfit"] = req.take_profit_price
+                except Exception as oco_exc:
+                    result["ocoError"] = str(oco_exc)
+
+        return result
     except Exception as exc:
         err_msg = str(exc)
         if "401" in err_msg or "-2015" in err_msg:

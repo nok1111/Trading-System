@@ -309,6 +309,9 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   const [amountUsd, setAmountUsd] = useState("100");
   const [quantity, setQuantity] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
+  const [stopLossPrice, setStopLossPrice] = useState("");
+  const [takeProfitPrice, setTakeProfitPrice] = useState("");
+  const [riskPct, setRiskPct] = useState("2");
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -374,6 +377,8 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
       if (orderType === "LIMIT") {
         payload.price = parseFloat(limitPrice);
       }
+      if (stopLossPrice) payload.stop_loss_price = parseFloat(stopLossPrice);
+      if (takeProfitPrice) payload.take_profit_price = parseFloat(takeProfitPrice);
 
       const r = await api<any>("/api/binance/manual-order", {
         method: "POST",
@@ -522,6 +527,77 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
             </div>
           )}
 
+          {/* Stop-Loss / Take-Profit (only for BUY) */}
+          {side === "BUY" && (
+            <div className="space-y-3 rounded-[10px] bg-[var(--color-surface-2)]/50 p-3 border border-[var(--color-border)]/30">
+              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Gestión de riesgo</div>
+
+              {/* Position sizer */}
+              <div>
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
+                  Riesgo por trade (% del capital)
+                </label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number"
+                    value={riskPct}
+                    onChange={(e) => setRiskPct(e.target.value)}
+                    step="0.5"
+                    className="w-20 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none"
+                  />
+                  <span className="text-[11px] text-[var(--color-text-muted)]">
+                    {livePrice && stopLossPrice && parseFloat(riskPct) > 0
+                      ? `Posición sugerida: ${((parseFloat(amountUsd || "0") * parseFloat(riskPct) / 100) / Math.abs(livePrice - parseFloat(stopLossPrice))).toFixed(6)} ${symbol.replace("USDT", "")}`
+                      : "Ingresa SL para calcular"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-[var(--color-danger)] mb-1">
+                    Stop-Loss (USDT)
+                  </label>
+                  <input
+                    type="number"
+                    value={stopLossPrice}
+                    onChange={(e) => setStopLossPrice(e.target.value)}
+                    placeholder={livePrice ? (livePrice * 0.97).toFixed(2) : "0"}
+                    className="w-full h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-danger)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[var(--color-success)] mb-1">
+                    Take-Profit (USDT)
+                  </label>
+                  <input
+                    type="number"
+                    value={takeProfitPrice}
+                    onChange={(e) => setTakeProfitPrice(e.target.value)}
+                    placeholder={livePrice ? (livePrice * 1.06).toFixed(2) : "0"}
+                    className="w-full h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-success)]"
+                  />
+                </div>
+              </div>
+
+              {/* R/R ratio display */}
+              {livePrice && stopLossPrice && takeProfitPrice &&
+                parseFloat(stopLossPrice) > 0 && parseFloat(takeProfitPrice) > 0 && (
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-[var(--color-text-muted)]">
+                    Riesgo: ${((livePrice - parseFloat(stopLossPrice)) * computedQty).toFixed(2)}
+                  </span>
+                  <span className="text-[var(--color-text-muted)]">
+                    Reward: ${((parseFloat(takeProfitPrice) - livePrice) * computedQty).toFixed(2)}
+                  </span>
+                  <span className="font-bold text-[var(--color-primary)]">
+                    R/R 1:{((parseFloat(takeProfitPrice) - livePrice) / (livePrice - parseFloat(stopLossPrice))).toFixed(1)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Summary */}
           <div className="rounded-[10px] bg-[var(--color-surface-2)] p-3 space-y-1.5 text-[12px]">
             <div className="flex justify-between">
@@ -542,6 +618,18 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               <div className="flex justify-between">
                 <span className="text-[var(--color-text-muted)]">Total</span>
                 <span className="font-bold text-[var(--color-text)]">${parseFloat(amountUsd).toLocaleString("en-US")} USDT</span>
+              </div>
+            )}
+            {stopLossPrice && (
+              <div className="flex justify-between">
+                <span className="text-[var(--color-danger)]">Stop-Loss</span>
+                <span className="font-bold text-[var(--color-danger)]">${parseFloat(stopLossPrice).toLocaleString("en-US")}</span>
+              </div>
+            )}
+            {takeProfitPrice && (
+              <div className="flex justify-between">
+                <span className="text-[var(--color-success)]">Take-Profit</span>
+                <span className="font-bold text-[var(--color-success)]">${parseFloat(takeProfitPrice).toLocaleString("en-US")}</span>
               </div>
             )}
           </div>

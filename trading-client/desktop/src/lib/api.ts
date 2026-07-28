@@ -2,7 +2,37 @@ const API_BASE = "http://localhost:18652";
 
 // In-memory cache for GET requests with TTL
 const _cache = new Map<string, { data: any; expires: number }>();
+
+// Per-endpoint TTL configuration (in ms)
+const TTL_RULES: { pattern: string; ttl: number }[] = [
+  // Fast-changing data (balance, positions, orders)
+  { pattern: "/api/binance/balance", ttl: 15_000 },
+  { pattern: "/api/binance/positions", ttl: 15_000 },
+  { pattern: "/api/binance/open-orders", ttl: 15_000 },
+  { pattern: "/api/binance/all-orders", ttl: 30_000 },
+  // Market data
+  { pattern: "/api/klines/", ttl: 60_000 },
+  { pattern: "/api/market/movers", ttl: 60_000 },
+  { pattern: "/api/prices/live", ttl: 5_000 },
+  // Intelligence — slow changing
+  { pattern: "/api/intelligence/fear-greed", ttl: 300_000 },
+  { pattern: "/api/intelligence/dominance", ttl: 300_000 },
+  { pattern: "/api/intelligence/market-overview", ttl: 300_000 },
+  { pattern: "/api/intelligence/macro-events", ttl: 600_000 },
+  { pattern: "/api/intelligence/daily-report", ttl: 300_000 },
+  { pattern: "/api/intelligence/whale-activity", ttl: 120_000 },
+  { pattern: "/api/intelligence/news", ttl: 120_000 },
+  // Technical signals
+  { pattern: "/api/intelligence/signals/technical", ttl: 60_000 },
+];
 const DEFAULT_TTL = 30_000; // 30 seconds
+
+function getTtlForPath(path: string): number {
+  for (const rule of TTL_RULES) {
+    if (path.startsWith(rule.pattern)) return rule.ttl;
+  }
+  return DEFAULT_TTL;
+}
 
 export function cacheGet<T>(path: string): T | null {
   const entry = _cache.get(path);
@@ -83,7 +113,7 @@ export async function api<T = any>(
 
   // Cache successful GET responses
   if (method === "GET") {
-    cacheSet(path, data);
+    cacheSet(path, data, getTtlForPath(path));
   }
 
   return data;
