@@ -1,12 +1,12 @@
 export const FEATURES = {
-  // Intelligence — AI Server endpoints
-  marketOverview: false,
-  fearGreed: false,
-  btcDominance: false,
-  news: false,
-  macroEvents: false,
-  whaleActivity: false,
-  dailyReport: false,
+  // Intelligence — now served from local backend (free public APIs)
+  marketOverview: true,
+  fearGreed: true,
+  btcDominance: true,
+  news: true,
+  macroEvents: true,
+  whaleActivity: true,
+  dailyReport: true,
   signals: true,
   alerts: true,
   agents: true,

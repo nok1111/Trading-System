@@ -21,61 +21,29 @@ import type {
   TodayPrioritiesData,
   AIActivityData,
 } from "./intelligenceTypes";
-import {
-  MOCK_MARKET_OVERVIEW,
-  MOCK_FEAR_GREED,
-  MOCK_DOMINANCE,
-  MOCK_MACRO_EVENTS,
-  MOCK_WHALE_ACTIVITY,
-  MOCK_DAILY_REPORT,
-} from "./intelligenceMocks";
-
-function getAiServerUrl(): string {
-  return localStorage.getItem("aiServerUrl") || "http://localhost:8000";
-}
-
-async function aiServerFetch<T>(
-  path: string,
-  opts: RequestInit = {}
-): Promise<T> {
-  const headers: Record<string, string> = {
-    ...(opts.headers as Record<string, string>),
-  };
-  const token = localStorage.getItem("jwt");
-  if (token) headers["Authorization"] = "Bearer " + token;
-  if (opts.body && !headers["Content-Type"])
-    headers["Content-Type"] = "application/json";
-
-  const r = await fetch(getAiServerUrl() + path, { ...opts, headers });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({ detail: "Error" }));
-    throw new Error(e.detail || "AI Server error");
-  }
-  return r.json();
-}
 
 export async function getMarketOverview(): Promise<MarketOverview | null> {
-  if (!isFeatureEnabled("marketOverview")) return MOCK_MARKET_OVERVIEW;
+  if (!isFeatureEnabled("marketOverview")) return null;
   try {
-    return await aiServerFetch<MarketOverview>("/v1/intelligence/market-overview");
+    return await api<MarketOverview>("/api/intelligence/market-overview");
   } catch {
     return null;
   }
 }
 
 export async function getFearGreed(): Promise<FearGreedData | null> {
-  if (!isFeatureEnabled("fearGreed")) return MOCK_FEAR_GREED;
+  if (!isFeatureEnabled("fearGreed")) return null;
   try {
-    return await aiServerFetch<FearGreedData>("/v1/intelligence/fear-greed");
+    return await api<FearGreedData>("/api/intelligence/fear-greed");
   } catch {
     return null;
   }
 }
 
 export async function getDominance(): Promise<DominanceData | null> {
-  if (!isFeatureEnabled("btcDominance")) return MOCK_DOMINANCE;
+  if (!isFeatureEnabled("btcDominance")) return null;
   try {
-    return await aiServerFetch<DominanceData>("/v1/intelligence/dominance");
+    return await api<DominanceData>("/api/intelligence/dominance");
   } catch {
     return null;
   }
@@ -103,28 +71,28 @@ export async function getNews(limit?: number): Promise<NewsItem[]> {
 }
 
 export async function getMacroEvents(): Promise<MacroEvent[]> {
-  if (!isFeatureEnabled("macroEvents")) return MOCK_MACRO_EVENTS;
+  if (!isFeatureEnabled("macroEvents")) return [];
   try {
-    return await aiServerFetch<MacroEvent[]>("/v1/intelligence/macro-events");
+    return await api<MacroEvent[]>("/api/intelligence/macro-events");
   } catch {
     return [];
   }
 }
 
 export async function getWhaleActivity(limit?: number): Promise<WhaleActivity[]> {
-  if (!isFeatureEnabled("whaleActivity")) return MOCK_WHALE_ACTIVITY.slice(0, limit ?? 10);
+  if (!isFeatureEnabled("whaleActivity")) return [];
   try {
     const qs = limit ? `?limit=${limit}` : "";
-    return await aiServerFetch<WhaleActivity[]>(`/v1/intelligence/whale-activity${qs}`);
+    return await api<WhaleActivity[]>(`/api/intelligence/whale-activity${qs}`);
   } catch {
     return [];
   }
 }
 
 export async function getDailyReport(): Promise<DailyReport | null> {
-  if (!isFeatureEnabled("dailyReport")) return MOCK_DAILY_REPORT;
+  if (!isFeatureEnabled("dailyReport")) return null;
   try {
-    return await aiServerFetch<DailyReport>("/v1/intelligence/daily-report");
+    return await api<DailyReport>("/api/intelligence/daily-report");
   } catch {
     return null;
   }
@@ -134,7 +102,7 @@ export async function getSignals(limit?: number): Promise<IntelligenceSignal[]> 
   if (!isFeatureEnabled("signals")) return [];
   try {
     const qs = limit ? `?limit=${limit}` : "";
-    return await aiServerFetch<IntelligenceSignal[]>(`/v1/intelligence/signals${qs}`);
+    return await api<IntelligenceSignal[]>(`/api/intelligence/signals${qs}`);
   } catch {
     return [];
   }
@@ -144,7 +112,7 @@ export async function getAlerts(limit?: number): Promise<IntelligenceAlert[]> {
   if (!isFeatureEnabled("alerts")) return [];
   try {
     const qs = limit ? `?limit=${limit}` : "";
-    return await aiServerFetch<IntelligenceAlert[]>(`/v1/intelligence/alerts${qs}`);
+    return await api<IntelligenceAlert[]>(`/api/intelligence/alerts${qs}`);
   } catch {
     return [];
   }
@@ -153,7 +121,7 @@ export async function getAlerts(limit?: number): Promise<IntelligenceAlert[]> {
 export async function getAgents(): Promise<AgentInfo[]> {
   if (!isFeatureEnabled("agents")) return [];
   try {
-    return await aiServerFetch<AgentInfo[]>("/v1/intelligence/agents");
+    return await api<AgentInfo[]>("/api/intelligence/agents");
   } catch {
     return [];
   }
@@ -162,7 +130,7 @@ export async function getAgents(): Promise<AgentInfo[]> {
 export async function getScenarios(asset: string): Promise<Scenario[]> {
   if (!isFeatureEnabled("scenarios")) return [];
   try {
-    return await aiServerFetch<Scenario[]>(`/v1/intelligence/scenarios/${asset}`);
+    return await api<Scenario[]>(`/api/intelligence/scenarios/${asset}`);
   } catch {
     return [];
   }
@@ -171,7 +139,7 @@ export async function getScenarios(asset: string): Promise<Scenario[]> {
 export async function getSchedulerStatus(): Promise<SchedulerStatus | null> {
   if (!isFeatureEnabled("scheduler")) return null;
   try {
-    return await aiServerFetch<SchedulerStatus>("/v1/intelligence/scheduler/status");
+    return await api<SchedulerStatus>("/api/intelligence/scheduler/status");
   } catch {
     return null;
   }
@@ -179,12 +147,12 @@ export async function getSchedulerStatus(): Promise<SchedulerStatus | null> {
 
 export async function startScheduler(): Promise<void> {
   if (!isFeatureEnabled("scheduler")) return;
-  await aiServerFetch("/v1/intelligence/scheduler/start", { method: "POST" });
+  await api("/api/intelligence/scheduler/start", { method: "POST" });
 }
 
 export async function stopScheduler(): Promise<void> {
   if (!isFeatureEnabled("scheduler")) return;
-  await aiServerFetch("/v1/intelligence/scheduler/stop", { method: "POST" });
+  await api("/api/intelligence/scheduler/stop", { method: "POST" });
 }
 
 export async function getPendingNotifications(
@@ -192,8 +160,8 @@ export async function getPendingNotifications(
 ): Promise<PendingNotification[]> {
   if (!isFeatureEnabled("pending")) return [];
   try {
-    return await aiServerFetch<PendingNotification[]>(
-      `/v1/intelligence/pending?user_hash=${userHash}`
+    return await api<PendingNotification[]>(
+      `/api/intelligence/pending?user_hash=${userHash}`
     );
   } catch {
     return [];
@@ -205,7 +173,7 @@ export async function markNotificationRead(
   userHash: string
 ): Promise<void> {
   if (!isFeatureEnabled("pending")) return;
-  await aiServerFetch(`/v1/intelligence/pending/${id}/read`, {
+  await api(`/api/intelligence/pending/${id}/read`, {
     method: "POST",
     body: JSON.stringify({ user_hash: userHash }),
   });
@@ -216,8 +184,8 @@ export async function portfolioMatch(
 ): Promise<Recommendation | null> {
   if (!isFeatureEnabled("portfolioMatch")) return null;
   try {
-    return await aiServerFetch<Recommendation>(
-      "/v1/intelligence/portfolio-match",
+    return await api<Recommendation>(
+      "/api/intelligence/portfolio-match",
       { method: "POST", body: JSON.stringify(req) }
     );
   } catch {
@@ -228,24 +196,20 @@ export async function portfolioMatch(
 export async function getReports(asset: string): Promise<IntelligenceReport[]> {
   if (!isFeatureEnabled("reports")) return [];
   try {
-    return await aiServerFetch<IntelligenceReport[]>(
-      `/v1/intelligence/reports/${asset}`
+    return await api<IntelligenceReport[]>(
+      `/api/intelligence/reports/${asset}`
     );
   } catch {
     return [];
   }
 }
 
-export { getAiServerUrl };
-
 export async function getSinceLastVisit(): Promise<SinceLastVisitData | null> {
   try {
     const data = await api<SinceLastVisitData>("/api/intelligence/changes-since-last-login");
-    console.log("[getSinceLastVisit] response:", data);
-    if (!data || (data as any).error) { console.log("[getSinceLastVisit] returning null, error:", (data as any)?.error); return null; }
+    if (!data || (data as any).error) return null;
     return data;
-  } catch (e) {
-    console.error("[getSinceLastVisit] error:", e);
+  } catch {
     return null;
   }
 }
