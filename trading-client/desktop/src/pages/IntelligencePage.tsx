@@ -5,6 +5,7 @@ import { DominanceChart } from "../components/intelligence/DominanceChart";
 import { NewsFeed } from "../components/intelligence/NewsFeed";
 import { MacroCalendar } from "../components/intelligence/MacroCalendar";
 import { WhaleFeed } from "../components/intelligence/WhaleFeed";
+import { AISuggestionsPanel } from "../components/intelligence/AISuggestionsPanel";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import {
   getMarketOverview,
@@ -59,6 +60,8 @@ export function IntelligencePage() {
   return (
     <div className="p-5 space-y-4 max-w-[1200px] mx-auto">
       <RegimeBanner overview={overview} loading={loading} />
+
+      <AISuggestionsPanel />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="panel p-4">
