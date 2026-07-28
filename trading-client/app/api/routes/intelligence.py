@@ -448,3 +448,160 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict:
         logger.warning("Backtest failed: %s", exc)
         return {"error": str(exc)}
 
+
+# ---------------------------------------------------------------------------
+# Alerts & Notifications Endpoints
+# ---------------------------------------------------------------------------
+
+# In-memory price alerts store (simple, no DB needed)
+_price_alerts: list[dict] = []
+_alert_id_counter = 0
+
+
+class PriceAlertRequest(_BaseModel):
+    symbol: str
+    condition: str  # "above" or "below"
+    target_price: float
+    note: str | None = None
+
+
+@router.get("/alerts")
+def get_alerts(limit: int = 20) -> list[dict]:
+    """Get recent alerts — generated from price alerts and risk events."""
+    alerts: list[dict] = []
+
+    # Check price alerts that have been triggered
+    for a in _price_alerts:
+        if a.get("triggered"):
+            alerts.append({
+                "id": a["id"],
+                "type": "price_alert",
+                "symbol": a["symbol"],
+                "message": f"{a['symbol']} {'subió por encima de' if a['condition'] == 'above' else 'bajó por debajo de'} ${a['target_price']:,.2f}",
+                "severity": "info",
+                "timestamp": a.get("triggered_at", a.get("created_at")),
+            })
+
+    # Add recent signals as alerts
+    try:
+        from app.services.technical_analysis import analyze_symbol
+        from app.config import get_settings
+        settings = get_settings()
+        for sym in settings.symbols_list[:5]:
+            try:
+                ta = analyze_symbol(sym, interval="1h")
+                if ta.signal in ("STRONG_BUY", "STRONG_SELL"):
+                    alerts.append({
+                        "id": f"sig_{sym}_{ta.timestamp}",
+                        "type": "signal",
+                        "symbol": sym,
+                        "message": f"{sym}: señal {ta.signal} — {', '.join(ta.signal_reasons[:2])}",
+                        "severity": "high" if ta.signal == "STRONG_SELL" else "medium",
+                        "timestamp": ta.timestamp,
+                    })
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    alerts.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return alerts[:limit]
+
+
+@router.get("/pending")
+def get_pending_notifications(user_hash: str = "") -> list[dict]:
+    """Get pending notifications for a user (simplified local version)."""
+    # Return triggered price alerts that haven't been acknowledged
+    return [
+        {
+            "id": a["id"],
+            "type": "price_alert",
+            "title": f"Alerta de precio: {a['symbol']}",
+            "message": f"{a['symbol']} {'subió por encima de' if a['condition'] == 'above' else 'bajó por debajo de'} ${a['target_price']:,.2f}",
+            "read": a.get("acknowledged", False),
+            "timestamp": a.get("triggered_at", a.get("created_at")),
+        }
+        for a in _price_alerts
+        if a.get("triggered") and not a.get("acknowledged")
+    ]
+
+
+@router.post("/pending/{alert_id}/read")
+def mark_alert_read(alert_id: int) -> dict:
+    """Mark a price alert notification as read."""
+    for a in _price_alerts:
+        if a["id"] == alert_id:
+            a["acknowledged"] = True
+            return {"status": "ok"}
+    return {"status": "not_found"}
+
+
+@router.post("/price-alerts")
+def create_price_alert(req: PriceAlertRequest) -> dict:
+    """Create a new price alert."""
+    global _alert_id_counter
+    _alert_id_counter += 1
+    alert = {
+        "id": _alert_id_counter,
+        "symbol": req.symbol.upper(),
+        "condition": req.condition,
+        "target_price": req.target_price,
+        "note": req.note,
+        "triggered": False,
+        "acknowledged": False,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    _price_alerts.append(alert)
+    return {"status": "ok", "alert": alert}
+
+
+@router.get("/price-alerts")
+def list_price_alerts() -> list[dict]:
+    """List all price alerts."""
+    return list(_price_alerts)
+
+
+@router.delete("/price-alerts/{alert_id}")
+def delete_price_alert(alert_id: int) -> dict:
+    """Delete a price alert."""
+    global _price_alerts
+    _price_alerts = [a for a in _price_alerts if a["id"] != alert_id]
+    return {"status": "ok"}
+
+
+@router.post("/price-alerts/check")
+def check_price_alerts() -> dict:
+    """Check all active price alerts against current prices and trigger if met."""
+    if not _price_alerts:
+        return {"status": "ok", "triggered": 0}
+
+    # Fetch current prices
+    try:
+        resp = httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10)
+        resp.raise_for_status()
+        prices = {d["symbol"]: float(d["price"]) for d in resp.json()}
+    except Exception as exc:
+        logger.warning("Failed to fetch prices for alert check: %s", exc)
+        return {"status": "error", "error": str(exc)}
+
+    triggered_count = 0
+    for alert in _price_alerts:
+        if alert.get("triggered"):
+            continue
+        current = prices.get(alert["symbol"])
+        if current is None:
+            continue
+        if alert["condition"] == "above" and current >= alert["target_price"]:
+            alert["triggered"] = True
+            alert["triggered_at"] = datetime.now(UTC).isoformat()
+            alert["triggered_price"] = current
+            triggered_count += 1
+        elif alert["condition"] == "below" and current <= alert["target_price"]:
+            alert["triggered"] = True
+            alert["triggered_at"] = datetime.now(UTC).isoformat()
+            alert["triggered_price"] = current
+            triggered_count += 1
+
+    return {"status": "ok", "triggered": triggered_count}
+
+
