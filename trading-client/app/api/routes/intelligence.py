@@ -605,3 +605,114 @@ def check_price_alerts() -> dict:
     return {"status": "ok", "triggered": triggered_count}
 
 
+# ---------------------------------------------------------------------------
+# Risk Management Endpoints
+# ---------------------------------------------------------------------------
+
+# In-memory risk config (persisted via settings in production)
+_risk_config: dict = {
+    "trailing_stop_pct": 2.0,
+    "hard_stop_loss_pct": 3.0,
+    "take_profit_pct": 6.0,
+    "max_position_size_pct": 10.0,
+    "max_open_positions": 5,
+    "daily_loss_limit_pct": 5.0,
+    "circuit_breaker_enabled": True,
+}
+
+
+class RiskConfigRequest(_BaseModel):
+    trailing_stop_pct: float | None = None
+    hard_stop_loss_pct: float | None = None
+    take_profit_pct: float | None = None
+    max_position_size_pct: float | None = None
+    max_open_positions: int | None = None
+    daily_loss_limit_pct: float | None = None
+    circuit_breaker_enabled: bool | None = None
+
+
+@router.get("/risk/config")
+def get_risk_config() -> dict:
+    """Get current risk management configuration."""
+    return dict(_risk_config)
+
+
+@router.post("/risk/config")
+def update_risk_config(req: RiskConfigRequest) -> dict:
+    """Update risk management configuration."""
+    changes = []
+    for field, value in req.model_dump(exclude_none=True).items():
+        old = _risk_config.get(field)
+        _risk_config[field] = value
+        changes.append(f"{field}: {old} -> {value}")
+    logger.info("Risk config updated: %s", "; ".join(changes))
+    return {"status": "ok", "config": dict(_risk_config)}
+
+
+@router.get("/risk/status")
+def get_risk_status() -> dict:
+    """Get current risk status — open positions, exposure, circuit breaker state."""
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.position import Position
+        db = SessionLocal()
+        try:
+            positions = db.query(Position).filter(Position.status == "open").all()
+            total_exposure = sum(
+                abs(float(p.quantity or 0)) * float(p.current_price or p.entry_price or 0)
+                for p in positions
+            )
+            total_pnl = sum(float(p.unrealized_pnl or 0) for p in positions)
+
+            # Check circuit breaker conditions
+            daily_loss = abs(min(total_pnl, 0))
+            daily_loss_pct = (daily_loss / total_exposure * 100) if total_exposure > 0 else 0
+            circuit_triggered = (
+                _risk_config.get("circuit_breaker_enabled", True)
+                and daily_loss_pct >= _risk_config.get("daily_loss_limit_pct", 5.0)
+            )
+
+            return {
+                "open_positions": len(positions),
+                "max_open_positions": _risk_config.get("max_open_positions", 5),
+                "total_exposure": round(total_exposure, 2),
+                "total_unrealized_pnl": round(total_pnl, 2),
+                "daily_loss_pct": round(daily_loss_pct, 2),
+                "daily_loss_limit_pct": _risk_config.get("daily_loss_limit_pct", 5.0),
+                "circuit_breaker_enabled": _risk_config.get("circuit_breaker_enabled", True),
+                "circuit_breaker_triggered": circuit_triggered,
+                "trailing_stop_pct": _risk_config.get("trailing_stop_pct", 2.0),
+                "hard_stop_loss_pct": _risk_config.get("hard_stop_loss_pct", 3.0),
+                "take_profit_pct": _risk_config.get("take_profit_pct", 6.0),
+                "positions": [
+                    {
+                        "symbol": p.symbol,
+                        "quantity": float(p.quantity or 0),
+                        "entry_price": float(p.entry_price or 0),
+                        "current_price": float(p.current_price or 0),
+                        "unrealized_pnl": float(p.unrealized_pnl or 0),
+                        "unrealized_pnl_pct": (
+                            round(float(p.unrealized_pnl or 0) / (float(p.entry_price or 1) * float(p.quantity or 1)) * 100, 2)
+                            if p.entry_price and p.quantity else 0
+                        ),
+                    }
+                    for p in positions
+                ],
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Risk status fetch failed: %s", exc)
+        return {
+            "open_positions": 0,
+            "max_open_positions": _risk_config.get("max_open_positions", 5),
+            "total_exposure": 0,
+            "total_unrealized_pnl": 0,
+            "circuit_breaker_enabled": _risk_config.get("circuit_breaker_enabled", True),
+            "circuit_breaker_triggered": False,
+            "positions": [],
+            "error": str(exc),
+        }
+
+
+
