@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   CircleUser,
   FlaskConical,
+  Bot,
 } from "lucide-react";
 import { cn, fmtDate } from "../../lib/utils";
 import { api } from "../../lib/api";
@@ -46,7 +47,8 @@ export type TabId =
   | "connections"
   | "security"
   | "preferences"
-  | "broker";
+  | "broker"
+  | "ai-agent";
 
 interface NavItem {
   id: TabId;
@@ -62,6 +64,7 @@ const generalItems: NavItem[] = [
   { id: "news", label: "Noticias", icon: <Newspaper size={17} />, group: "general" },
   { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
   { id: "backtest", label: "Backtest", icon: <FlaskConical size={17} />, group: "general" },
+  { id: "ai-agent", label: "AI Agent", icon: <Bot size={17} />, group: "general" },
 ];
 
 const sistemaItems: NavItem[] = [
@@ -83,6 +86,7 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   security: { title: "Seguridad", subtitle: "Configuración de seguridad" },
   preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
   broker: { title: "Broker", subtitle: "Vista de broker" },
+  "ai-agent": { title: "AI Trading Agent", subtitle: "Agente de IA autónomo — razonamiento y estadísticas" },
 };
 
 interface LayoutProps {

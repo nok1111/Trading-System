@@ -24,6 +24,10 @@ const TTL_RULES: { pattern: string; ttl: number }[] = [
   { pattern: "/api/intelligence/news", ttl: 120_000 },
   // Technical signals
   { pattern: "/api/intelligence/signals/technical", ttl: 60_000 },
+  // AI Agent — near real-time
+  { pattern: "/api/ai-agent/log", ttl: 2_000 },
+  { pattern: "/api/ai-agent/status", ttl: 2_000 },
+  { pattern: "/api/ai-agent/stats", ttl: 8_000 },
 ];
 const DEFAULT_TTL = 30_000; // 30 seconds
 
