@@ -104,6 +104,7 @@ export function OverviewPage() {
   const [prices, setPrices] = useState<any[]>([]);
   const [txFilter, setTxFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
   const [rangeN, setRangeN] = useState(20);
+  const [resumen, setResumen] = useState<any>(null);
   const sparkRef = useRef<Record<string, number[]>>({});
 
   const loadData = useCallback(async () => {
@@ -156,6 +157,10 @@ export function OverviewPage() {
       const cap = await api<any>("/api/trading-mode");
       const allocated = cap?.allocated_capital ?? 0;
       setAllocatedCapital(allocated);
+    } catch {}
+    try {
+      const r = await api<any>("/api/binance/resumen");
+      setResumen(r);
     } catch {}
   }, []);
 
@@ -351,8 +356,8 @@ export function OverviewPage() {
         </div>
       </div>
 
-      {/* Row 1 — Wallet / Balance / Transacciones */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1fr] gap-4">
+      {/* Row 1 — Wallet / Balance / Transacciones / Portfolio */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.1fr] gap-4">
         <Panel
           title="Wallet"
           icon={<Wallet size={14} />}
@@ -586,6 +591,151 @@ export function OverviewPage() {
               })
             )}
           </div>
+        </Panel>
+
+        {/* Portfolio Resumen */}
+        <Panel
+          title="Portfolio"
+          icon={<Coins size={14} />}
+          tone="accent"
+          actions={
+            resumen?.positions_count != null ? (
+              <Badge variant="accent">{resumen.positions_count} pos.</Badge>
+            ) : undefined
+          }
+        >
+          {resumen?.error ? (
+            <p className="text-[12px] text-[var(--color-text-muted)] py-4">
+              {resumen.error}
+            </p>
+          ) : !resumen ? (
+            <p className="text-[12px] text-[var(--color-text-muted)] py-4">
+              Cargando portfolio...
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {/* Total Value */}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                  Valor Total
+                </span>
+                <span className="num text-[18px] font-extrabold text-[var(--color-text)]">
+                  ${fmt(resumen.total_value ?? 0)}
+                </span>
+              </div>
+
+              {/* Balance + PnL row */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-[var(--color-surface-2)] px-3 py-2">
+                  <div className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">
+                    Balance
+                  </div>
+                  <div className="num text-[14px] font-bold text-[var(--color-text)] mt-0.5">
+                    ${fmt(resumen.balance_usd ?? 0)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[var(--color-surface-2)] px-3 py-2">
+                  <div className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">
+                    PnL
+                  </div>
+                  <div className={`num text-[14px] font-bold mt-0.5 ${(resumen.total_pnl ?? 0) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>
+                    {(resumen.total_pnl ?? 0) >= 0 ? "+" : ""}${fmt(Math.abs(resumen.total_pnl ?? 0))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Distribution bar */}
+              {(resumen.distribution ?? []).length > 0 && (
+                <div>
+                  <div className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase mb-1.5">
+                    Distribución
+                  </div>
+                  <div className="flex h-6 rounded-lg overflow-hidden">
+                    {(resumen.distribution ?? []).slice(0, 8).map((d: any, i: number) => {
+                      const colors = [
+                        "var(--color-primary)",
+                        "var(--color-accent)",
+                        "var(--color-success)",
+                        "var(--color-warning)",
+                        "var(--color-cyan)",
+                        "var(--color-danger)",
+                        "#8b5cf6",
+                        "#ec4899",
+                      ];
+                      return (
+                        <div
+                          key={d.asset}
+                          style={{
+                            width: `${d.pct}%`,
+                            backgroundColor: colors[i % colors.length],
+                          }}
+                          className="flex items-center justify-center text-[9px] font-bold text-white transition-all hover:opacity-80"
+                          title={`${d.asset}: $${fmt(d.usd)} (${d.pct}%)`}
+                        >
+                          {d.pct > 8 && d.asset}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {(resumen.distribution ?? []).slice(0, 8).map((d: any) => (
+                      <div key={d.asset} className="flex items-center gap-1">
+                        <CryptoIcon symbol={d.asset + "USDT"} size={14} />
+                        <span className="text-[10px] text-[var(--color-text-muted)] font-medium">
+                          {d.asset} {d.pct}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top positions */}
+              {(resumen.positions ?? []).length > 0 && (
+                <div>
+                  <div className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase mb-1.5">
+                    Posiciones
+                  </div>
+                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto">
+                    {(resumen.positions ?? [])
+                      .sort((a: any, b: any) => Math.abs(b.usd_value) - Math.abs(a.usd_value))
+                      .slice(0, 6)
+                      .map((p: any, i: number) => {
+                        const isProfit = (p.unrealized_pnl ?? 0) >= 0;
+                        return (
+                          <div key={i} className="flex items-center gap-2">
+                            <CryptoIcon symbol={p.symbol} size={20} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[12px] font-bold text-[var(--color-text)] truncate leading-none">
+                                {p.symbol}
+                              </div>
+                              <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                                ${fmt(p.usd_value ?? 0)}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className={`num text-[11px] font-bold ${isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>
+                                {isProfit ? "+" : ""}{p.pnl_pct?.toFixed(2)}%
+                              </div>
+                              <div className={`num text-[10px] ${isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>
+                                {isProfit ? "+" : ""}${fmt(Math.abs(p.unrealized_pnl ?? 0))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* No positions */}
+              {(resumen.positions ?? []).length === 0 && (
+                <p className="text-[11px] text-[var(--color-text-muted)] text-center py-2">
+                  Sin posiciones abiertas
+                </p>
+              )}
+            </div>
+          )}
         </Panel>
       </div>
 

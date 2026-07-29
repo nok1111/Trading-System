@@ -6,6 +6,7 @@ import { Input, Select } from "../components/ui/Input";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { toast } from "../components/ui/Toast";
 import { fmt, fmtDate } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 
 export function ActivityPage() {
   const [signals, setSignals] = useState<any[]>([]);
@@ -167,7 +168,7 @@ export function ActivityPage() {
                 <Tr key={s.id}>
                   <Td>{s.id}</Td>
                   <Td>{fmtDate(s.timestamp)}</Td>
-                  <Td>{s.symbol}</Td>
+                  <Td><div className="flex items-center gap-1.5"><CryptoIcon symbol={s.symbol} size={18} />{s.symbol}</div></Td>
                   <Td>
                     <span
                       className={
@@ -230,7 +231,7 @@ export function ActivityPage() {
                 <Tr key={o.id}>
                   <Td>{o.id}</Td>
                   <Td>{fmtDate(o.timestamp)}</Td>
-                  <Td>{o.symbol}</Td>
+                  <Td><div className="flex items-center gap-1.5"><CryptoIcon symbol={o.symbol} size={18} />{o.symbol}</div></Td>
                   <Td>{o.side}</Td>
                   <Td>{fmt(o.quantity)}</Td>
                   <Td>${fmt(o.price)}</Td>
@@ -272,7 +273,7 @@ export function ActivityPage() {
                 <Tr key={t.id}>
                   <Td>{t.id}</Td>
                   <Td>{fmtDate(t.timestamp)}</Td>
-                  <Td>{t.symbol}</Td>
+                  <Td><div className="flex items-center gap-1.5"><CryptoIcon symbol={t.symbol} size={18} />{t.symbol}</div></Td>
                   <Td>{t.side}</Td>
                   <Td>{fmt(t.quantity)}</Td>
                   <Td>${fmt(t.price)}</Td>

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { cn } from "../lib/utils";
+import { CryptoIcon } from "../components/CryptoIcon";
 
 interface PriceAlert {
   id: number;
@@ -169,7 +170,7 @@ export function AlertsPage() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-[14px] font-extrabold text-[var(--color-text)]">{a.symbol}</span>
+                  <span className="text-[14px] font-extrabold text-[var(--color-text)] flex items-center gap-1.5"><CryptoIcon symbol={a.symbol} size={18} />{a.symbol}</span>
                   <span className="text-[12px] text-[var(--color-text-muted)]">
                     {a.condition === "above" ? "\u2265" : "\u2264"} ${a.target_price.toLocaleString("en-US")}
                   </span>
@@ -211,7 +212,7 @@ export function AlertsPage() {
                 )} />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    {a.symbol && <span className="text-[12px] font-bold text-[var(--color-text)]">{a.symbol}</span>}
+                    {a.symbol && <span className="text-[12px] font-bold text-[var(--color-text)] flex items-center gap-1"><CryptoIcon symbol={a.symbol} size={16} />{a.symbol}</span>}
                     <span className="text-[10px] text-[var(--color-text-muted)]">{a.type}</span>
                   </div>
                   <p className="text-[12px] text-[var(--color-text)] mt-0.5">{a.message}</p>

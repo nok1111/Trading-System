@@ -34,6 +34,7 @@ function AppContent() {
   const { user, loading, login, register } = useAuthContext();
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [brokerSkipped, setBrokerSkipped] = useState(false);
 
   if (loading) {
     return (
@@ -54,6 +55,8 @@ function AppContent() {
         onTabChange={setActiveTab}
         showOnboarding={showOnboarding}
         onOnboardingDone={() => setShowOnboarding(false)}
+        brokerSkipped={brokerSkipped}
+        onBrokerSkip={() => setBrokerSkipped(true)}
       />
     </BrokerProvider>
   );
@@ -64,11 +67,15 @@ function BrokerAwareContent({
   onTabChange,
   showOnboarding,
   onOnboardingDone,
+  brokerSkipped,
+  onBrokerSkip,
 }: {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   showOnboarding: boolean;
   onOnboardingDone: () => void;
+  brokerSkipped: boolean;
+  onBrokerSkip: () => void;
 }) {
   const { hasConnectedAccounts, isLoading } = useBrokerContext();
   const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(new Set(["dashboard"]));
@@ -90,8 +97,8 @@ function BrokerAwareContent({
     );
   }
 
-  if (!hasConnectedAccounts || showOnboarding) {
-    return <BrokerOnboarding onConnected={onOnboardingDone} />;
+  if ((!hasConnectedAccounts && !brokerSkipped) || showOnboarding) {
+    return <BrokerOnboarding onConnected={onOnboardingDone} onSkip={onBrokerSkip} />;
   }
 
   const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "alerts", "connections", "security", "preferences"];

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { authApi, getAuthToken, setAuthToken } from "../lib/api";
+import { api, authApi, getAuthToken, setAuthToken } from "../lib/api";
 
 export interface User {
   id: number;
@@ -47,6 +47,10 @@ export function useAuth() {
     setUser(data.user ?? { id: 0, email, username: "", subscription: "free" });
     setAuthServerOk(true);
     setLoading(false);
+
+    // Auto-import Binance positions after login
+    api("/api/binance/import-positions", { method: "POST" }).catch(() => {});
+
     return data.user;
   }, []);
 
@@ -62,6 +66,10 @@ export function useAuth() {
       setAuthToken(data.token);
       setUser(data.user);
       setAuthServerOk(true);
+
+      // Auto-import Binance positions after register
+      api("/api/binance/import-positions", { method: "POST" }).catch(() => {});
+
       return data.user;
     },
     []

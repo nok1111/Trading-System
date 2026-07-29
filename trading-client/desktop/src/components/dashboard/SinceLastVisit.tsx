@@ -155,7 +155,7 @@ function MoverChip({ mover }: { mover: NonNullable<SinceLastVisitData["movers"]>
   );
 }
 
-export function SinceLastVisit({ data, loading }: { data: SinceLastVisitData | null; loading: boolean }) {
+export function SinceLastVisit({ data, loading, username }: { data: SinceLastVisitData | null; loading: boolean; username?: string }) {
   const [expanded, setExpanded] = useState(false);
 
   if (loading) {
@@ -188,7 +188,7 @@ export function SinceLastVisit({ data, loading }: { data: SinceLastVisitData | n
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-[18px] font-extrabold text-[var(--color-text)]">
-          {data.greeting}, Nokturno.
+          {data.greeting}, {username || "Trader"}.
         </h2>
       </div>
       <p className="text-[12px] text-[var(--color-text-muted)] mb-4 flex items-center gap-1.5">

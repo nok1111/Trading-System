@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +15,14 @@ app = FastAPI(
     title="Alvora — AI Trading System",
     description="API REST para consulta y supervisión del sistema de trading algorítmico Alvora.",
     version="0.2.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 _DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
@@ -30,6 +39,7 @@ if _static_path.exists():
 from app.api.routes import (
     ai_agent,
     auth,
+    broker_accounts,
     market,
     ml,
     paper_trading,
@@ -48,6 +58,7 @@ app.include_router(paper_trading.router)
 app.include_router(ml.router)
 app.include_router(stats.router)
 app.include_router(ai_agent.router)
+app.include_router(broker_accounts.router)
 
 # ---------------------------------------------------------------------------
 # Startup / Shutdown events

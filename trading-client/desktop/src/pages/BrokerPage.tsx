@@ -243,7 +243,12 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
             <tbody>
               {positions.filter((p) => p.status === "open").map((p, i) => (
                 <tr key={i} className="border-b border-[var(--color-border)]/50">
-                  <td className="py-2 font-bold text-[var(--color-text)]">{p.symbol}</td>
+                  <td className="py-2 font-bold text-[var(--color-text)]">
+                    <div className="flex items-center gap-1.5">
+                      <CryptoIcon symbol={p.symbol} size={18} />
+                      {p.symbol}
+                    </div>
+                  </td>
                   <td className={cn("font-bold", p.side === "long" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{p.side}</td>
                   <td className="text-right text-[var(--color-text)]">{fmt(p.quantity)}</td>
                   <td className="text-right text-[var(--color-text-muted)]">{fmt(p.entry_price)}</td>
@@ -287,7 +292,12 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
           <tbody>
             {assets.map((b, i) => (
               <tr key={i} className="border-b border-[var(--color-border)]/50">
-                <td className="py-2 font-bold text-[var(--color-text)]">{b.asset}</td>
+                <td className="py-2 font-bold text-[var(--color-text)]">
+                  <div className="flex items-center gap-1.5">
+                    <CryptoIcon symbol={b.asset} size={18} />
+                    {b.asset}
+                  </div>
+                </td>
                 <td className="text-right text-[var(--color-text-muted)]">{fmt(b.free)}</td>
                 <td className="text-right text-[var(--color-text-muted)]">{fmt(b.locked)}</td>
                 <td className="text-right font-bold text-[var(--color-text)]">${fmtVol(b.usd_value || 0)}</td>

@@ -364,6 +364,7 @@ export function AIAgentPage() {
                     {hasGroqKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
                   </label>
                   <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Using saved key" : isFree ? "Paste your free Groq key" : "Server key available"} className="w-full" />
+                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis → console.groq.com/keys</a>
                 </div>
               )}
               {provider === "gemini" && (
@@ -373,6 +374,7 @@ export function AIAgentPage() {
                     {hasGeminiKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
                   </label>
                   <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Using saved key" : isFree ? "Paste your free Gemini key" : "Server key available"} className="w-full" />
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis → aistudio.google.com/apikey</a>
                 </div>
               )}
               {PROVIDERS.find((p) => p.value === provider)?.premium && (
@@ -381,6 +383,9 @@ export function AIAgentPage() {
                     Premium API Key {hasPremiumKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
                   </label>
                   <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Using saved key" : "Enter your API key"} className="w-full" />
+                  {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → platform.openai.com/api-keys</a>}
+                  {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → platform.deepseek.com/api_keys</a>}
+                  {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → console.mistral.ai/api-keys</a>}
                 </div>
               )}
             </div>

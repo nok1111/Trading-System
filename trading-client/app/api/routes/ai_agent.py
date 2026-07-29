@@ -386,7 +386,9 @@ def ai_agent_set_interval(interval_seconds: int = Query(30, ge=10)) -> dict:
 
 
 @router.get("/binance/balance")
-def get_binance_balance() -> dict:
+def get_binance_balance(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Consulta el saldo real de Binance en tiempo real.
 
     Retorna todos los activos con balance > 0, valor en USD y MXN.
@@ -398,7 +400,7 @@ def get_binance_balance() -> dict:
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado", "assets": [], "total_usd": 0, "total_mxn": 0}
 
-    creds = resolve_broker_credentials("binance", None)
+    creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "assets": [], "total_usd": 0, "total_mxn": 0}
 
@@ -481,13 +483,15 @@ def get_binance_balance() -> dict:
 
 
 @router.get("/binance/open-orders")
-def get_binance_open_orders() -> dict:
+def get_binance_open_orders(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Consulta las órdenes abiertas reales en Binance en tiempo real."""
     settings = get_settings()
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado", "orders": []}
 
-    creds = resolve_broker_credentials("binance", None)
+    creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "orders": []}
 
@@ -521,14 +525,17 @@ def get_binance_open_orders() -> dict:
 
 
 @router.get("/binance/all-orders")
-def get_binance_all_orders(limit: int = 50) -> dict:
+def get_binance_all_orders(
+    limit: int = 50,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Consulta el historial completo de órdenes desde Binance en tiempo real.
 
     Binance /api/v3/allOrders requires a symbol parameter, so we first get
     the user's balances to find which symbols they trade, then query orders
     for each. Also fetches open orders (which don't require symbol).
     """
-    creds = resolve_broker_credentials("binance", None)
+    creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "orders": [], "active": [], "filled": []}
 
@@ -640,9 +647,11 @@ def get_binance_all_orders(limit: int = 50) -> dict:
 
 
 @router.get("/binance/account")
-def get_binance_account() -> dict:
+def get_binance_account(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Consulta la info de la cuenta de Binance (permisos, comisiones, etc)."""
-    creds = resolve_broker_credentials("binance", None)
+    creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones."}
 
@@ -679,13 +688,16 @@ class ManualOrderRequest(BaseModel):
 
 
 @router.post("/binance/manual-order")
-def place_binance_manual_order(req: ManualOrderRequest) -> dict:
+def place_binance_manual_order(
+    req: ManualOrderRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Place a manual order on Binance (buy/sell, market/limit)."""
     settings = get_settings()
     if settings.BROKER_PROVIDER != "binance":
         return {"error": "Binance no configurado"}
 
-    creds = resolve_broker_credentials("binance", None)
+    creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones."}
 
@@ -784,7 +796,9 @@ def get_binance_price(symbol: str = Query(...)) -> dict:
 
 
 @router.get("/binance/positions")
-def get_binance_positions() -> dict:
+def get_binance_positions(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Consulta posiciones abiertas desde la DB con precios en vivo de Binance."""
     from app.database.session import SessionLocal
     from app.database.models.position import Position
@@ -792,13 +806,16 @@ def get_binance_positions() -> dict:
     from app.brokers.models import BrokerCredentials, normalize_symbol
     from decimal import Decimal as Dec
 
-    creds = resolve_broker_credentials("binance", None)
+    creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "positions": []}
 
     db = SessionLocal()
     try:
-        positions = db.query(Position).filter(Position.status == "open").all()
+        positions = db.query(Position).filter(
+            Position.status == "open",
+            Position.user_id == current_user.id,
+        ).all()
         if not positions:
             return {"positions": [], "count": 0}
 
@@ -840,6 +857,257 @@ def get_binance_positions() -> dict:
             })
         db.commit()
         return {"positions": result, "count": len(result)}
+    finally:
+        db.close()
+
+
+@router.get("/binance/resumen")
+def get_binance_resumen(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Resumen completo del portfolio: balance, posiciones abiertas, PnL y distribución."""
+    import httpx as _httpx
+
+    creds = resolve_broker_credentials("binance", current_user)
+    if not creds:
+        return {"error": "No tienes API keys de Binance configuradas.", "balance_usd": 0, "positions": [], "total_pnl": 0}
+
+    from app.brokers.adapters.binance_adapter import BinanceAdapter
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as PositionModel
+
+    adapter = BinanceAdapter(creds)
+    broker = adapter._broker
+
+    # Batch fetch prices
+    price_map: dict[str, float] = {}
+    try:
+        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+        for t in tickers:
+            price_map[t["symbol"]] = float(t["price"])
+    except Exception:
+        pass
+
+    # 1) Spot balances
+    spot_assets = []
+    balance_usd = 0.0
+    try:
+        account = broker._signed_request("GET", "/api/v3/account", {})
+        balances = account.get("balances", [])
+        stablecoins = {"USDT", "BUSD", "USDC", "UST", "TUSD", "FDUSD"}
+        for b in balances:
+            asset = b["asset"]
+            free = float(b["free"])
+            locked = float(b["locked"])
+            total = free + locked
+            if total <= 0:
+                continue
+            if asset in stablecoins:
+                usd = total
+            else:
+                usd = total * price_map.get(f"{asset}USDT", 0.0)
+            balance_usd += usd
+            spot_assets.append({"asset": asset, "free": free, "locked": locked, "total": total, "usd_value": round(usd, 2)})
+    except Exception:
+        pass
+
+    # 2) Open positions from DB with live prices
+    db = SessionLocal()
+    positions_list = []
+    total_pnl = 0.0
+    try:
+        positions = db.query(PositionModel).filter(
+            PositionModel.status == "open",
+            PositionModel.user_id == current_user.id,
+        ).all()
+        for p in positions:
+            broker_sym = p.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+            current = price_map.get(broker_sym, float(p.current_price or p.entry_price or 0))
+            entry = float(p.entry_price or 0)
+            qty = float(p.quantity or 0)
+            if p.side == "long":
+                pnl = (current - entry) * qty
+            else:
+                pnl = (entry - current) * qty
+            total_pnl += pnl
+            pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
+            positions_list.append({
+                "symbol": p.symbol,
+                "side": p.side,
+                "quantity": qty,
+                "entry_price": entry,
+                "current_price": current,
+                "usd_value": round(qty * current, 2),
+                "unrealized_pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "strategy_name": p.strategy_name,
+                "opened_at": p.opened_at.isoformat() if p.opened_at else None,
+            })
+            # Update DB with live price
+            p.current_price = Decimal(str(current))
+            p.unrealized_pnl = Decimal(str(pnl))
+        db.commit()
+    finally:
+        db.close()
+
+    # 3) Distribution
+    all_assets = {}
+    for a in spot_assets:
+        if a["usd_value"] > 0:
+            all_assets[a["asset"]] = all_assets.get(a["asset"], 0) + a["usd_value"]
+    for p in positions_list:
+        asset = p["symbol"].replace("USDT", "").replace("USD", "")
+        if p["usd_value"] > 0:
+            all_assets[asset] = all_assets.get(asset, 0) + p["usd_value"]
+
+    distribution = [
+        {"asset": k, "usd": v, "pct": round(v / (balance_usd + sum(p["usd_value"] for p in positions_list)) * 100, 1) if (balance_usd + sum(p["usd_value"] for p in positions_list)) > 0 else 0}
+        for k, v in sorted(all_assets.items(), key=lambda x: -x[1])
+    ]
+
+    return {
+        "balance_usd": round(balance_usd, 2),
+        "positions": positions_list,
+        "positions_count": len(positions_list),
+        "total_pnl": round(total_pnl, 2),
+        "total_value": round(balance_usd + sum(p["usd_value"] for p in positions_list), 2),
+        "spot_assets": spot_assets,
+        "distribution": distribution,
+    }
+
+
+@router.post("/binance/import-positions")
+def import_binance_positions(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Importa posiciones reales de Binance (spot + futures) a la DB local."""
+    creds = resolve_broker_credentials("binance", current_user)
+    if not creds:
+        return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones."}
+
+    from app.brokers.adapters.binance_adapter import BinanceAdapter
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as PositionModel
+
+    adapter = BinanceAdapter(creds)
+    broker = adapter._broker
+    db = SessionLocal()
+    imported = []
+    skipped = 0
+
+    try:
+        # 1) Spot holdings from /api/v3/account
+        try:
+            account = broker._signed_request("GET", "/api/v3/account", {})
+            balances = account.get("balances", [])
+        except Exception as exc:
+            return {"error": f"No se pudo conectar a Binance: {exc}"}
+
+        # Batch fetch prices
+        import httpx as _httpx
+        price_map: dict[str, float] = {}
+        try:
+            tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+            for t in tickers:
+                price_map[t["symbol"]] = float(t["price"])
+        except Exception:
+            pass
+
+        stablecoins = {"USDT", "BUSD", "USDC", "UST", "TUSD", "FDUSD"}
+
+        for b in balances:
+            asset = b["asset"]
+            free = float(b["free"])
+            locked = float(b["locked"])
+            total = free + locked
+            if total <= 0 or asset in stablecoins:
+                continue
+
+            symbol = f"{asset}USDT"
+            price = price_map.get(symbol, 0.0)
+            if price <= 0:
+                continue
+
+            # Check if already exists as open position
+            existing = db.query(PositionModel).filter(
+                PositionModel.symbol == symbol,
+                PositionModel.status == "open",
+                PositionModel.user_id == current_user.id,
+            ).first()
+            if existing:
+                existing.current_price = Decimal(str(price))
+                existing.unrealized_pnl = (Decimal(str(price)) - existing.entry_price) * existing.quantity
+                skipped += 1
+                continue
+
+            pos = PositionModel(
+                user_id=current_user.id,
+                symbol=symbol,
+                opened_at=datetime.now(tz=UTC),
+                side="long",
+                quantity=Decimal(str(total)),
+                entry_price=Decimal(str(price)),
+                current_price=Decimal(str(price)),
+                unrealized_pnl=Decimal("0"),
+                status="open",
+                strategy_name="imported_binance",
+                metadata_json={"source": "binance_spot_import", "asset": asset},
+            )
+            db.add(pos)
+            imported.append({"symbol": symbol, "quantity": total, "entry_price": price})
+
+        # 2) Futures positions from /fapi/v2/positionRisk
+        try:
+            fapi_resp = broker._signed_request("GET", "/fapi/v2/positionRisk", {})
+            for p in fapi_resp:
+                amt = float(p.get("positionAmt", 0))
+                if amt == 0:
+                    continue
+                symbol = p.get("symbol", "")
+                entry = float(p.get("entryPrice", 0))
+                mark = float(p.get("markPrice", 0))
+                side = "long" if amt > 0 else "short"
+                qty = abs(amt)
+
+                existing = db.query(PositionModel).filter(
+                    PositionModel.symbol == symbol,
+                    PositionModel.status == "open",
+                    PositionModel.user_id == current_user.id,
+                ).first()
+                if existing:
+                    existing.current_price = Decimal(str(mark))
+                    existing.unrealized_pnl = (Decimal(str(mark)) - existing.entry_price) * existing.quantity
+                    skipped += 1
+                    continue
+
+                pos = PositionModel(
+                    user_id=current_user.id,
+                    symbol=symbol,
+                    opened_at=datetime.now(tz=UTC),
+                    side=side,
+                    quantity=Decimal(str(qty)),
+                    entry_price=Decimal(str(entry)),
+                    current_price=Decimal(str(mark)),
+                    unrealized_pnl=Decimal(str((mark - entry) * qty if side == "long" else (entry - mark) * qty)),
+                    status="open",
+                    strategy_name="imported_binance",
+                    metadata_json={"source": "binance_futures_import"},
+                )
+                db.add(pos)
+                imported.append({"symbol": symbol, "quantity": qty, "entry_price": entry, "side": side})
+        except Exception:
+            pass  # Futures might not be enabled
+
+        db.commit()
+        return {
+            "imported": imported,
+            "imported_count": len(imported),
+            "skipped": skipped,
+            "message": f"Se importaron {len(imported)} posiciones. {skipped} ya existían.",
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"error": f"Error importando posiciones: {exc}"}
     finally:
         db.close()
 
@@ -1020,6 +1288,7 @@ def ai_agent_execute(
             existing = session.query(Position).filter(
                 Position.symbol == symbol,
                 Position.status == "open",
+                Position.user_id == current_user.id,
             ).first()
             if existing:
                 return {"status": "rejected", "action": "buy", "symbol": symbol, "reason": f"Ya hay posición abierta en {symbol}. Diversifica en otro símbolo."}
@@ -1053,7 +1322,10 @@ def ai_agent_execute(
                 allocated = usdt_balance if usdt_balance > 0 else float(equity)
 
             # Get open positions for max position check
-            open_positions = session.query(Position).filter(Position.status == "open").all()
+            open_positions = session.query(Position).filter(
+                Position.status == "open",
+                Position.user_id == current_user.id,
+            ).all()
 
             if is_auto_mode:
                 # AUTO mode: USDT balance already reflects spent capital, use directly
@@ -1108,7 +1380,7 @@ def ai_agent_execute(
                 suggested_stop_loss=stop_loss,
                 suggested_take_profit=take_profit,
             )
-            engine = ExecutionEngine(broker, risk_manager, session, settings)
+            engine = ExecutionEngine(broker, risk_manager, session, settings, user_id=current_user.id)
             order = engine.process_signal(signal, account=acct)
             session.commit()
 
@@ -1135,7 +1407,7 @@ def ai_agent_execute(
         elif action == "sell":
             # Buscar posición abierta
             from app.database.models.position import Position as PosModel
-            pos = session.query(PosModel).filter_by(symbol=symbol, status="open").first()
+            pos = session.query(PosModel).filter_by(symbol=symbol, status="open", user_id=current_user.id).first()
             if not pos:
                 return {"status": "no_position", "action": "sell", "symbol": symbol, "reason": f"No hay posición abierta en {symbol}"}
 
@@ -1149,7 +1421,7 @@ def ai_agent_execute(
                 explanation=f"[AI Agent] {req.reason}",
                 metadata_json={"source": "ai_agent"},
             )
-            engine = ExecutionEngine(broker, risk_manager, session, settings)
+            engine = ExecutionEngine(broker, risk_manager, session, settings, user_id=current_user.id)
             order = engine.process_signal(signal)
             session.commit()
 
@@ -1317,7 +1589,9 @@ def ai_agent_stats() -> dict:
 # ---------------------------------------------------------------------------
 
 @router.get("/intelligence/changes-since-last-login")
-def get_changes_since_last_login() -> dict:
+def get_changes_since_last_login(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
     """Returns changes since the user's last login.
 
     Combines Event Journal entries with portfolio changes to build
@@ -1327,7 +1601,7 @@ def get_changes_since_last_login() -> dict:
 
     session = SessionLocal()
     try:
-        return _get_changes(session, user_id=0)
+        return _get_changes(session, user_id=current_user.id)
     except Exception as exc:
         return {
             "lastLogin": datetime.now(UTC).isoformat(),
@@ -1346,7 +1620,9 @@ def get_changes_since_last_login() -> dict:
 
 
 @router.get("/intelligence/today-priorities")
-def get_today_priorities() -> dict:
+def get_today_priorities(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
     """Returns prioritized assets for the user to review today.
 
     Based on open positions and recent signals, ranked by confidence.
@@ -1355,7 +1631,7 @@ def get_today_priorities() -> dict:
 
     session = SessionLocal()
     try:
-        return _get_priorities(session, user_id=0)
+        return _get_priorities(session, user_id=current_user.id)
     except Exception as exc:
         return {"priorities": [], "error": str(exc)}
     finally:
@@ -1364,6 +1640,7 @@ def get_today_priorities() -> dict:
 
 @router.get("/intelligence/activity")
 def get_intelligence_activity(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
     limit: int = Query(20, ge=1, le=100),
 ) -> dict:
     """Returns the AI activity timeline (chronological agent decisions).
@@ -1374,7 +1651,7 @@ def get_intelligence_activity(
 
     session = SessionLocal()
     try:
-        return _get_activity(session, hours=24, limit=limit)
+        return _get_activity(session, hours=24, limit=limit, user_id=current_user.id)
     except Exception as exc:
         return {"entries": [], "error": str(exc)}
     finally:
@@ -1592,7 +1869,9 @@ class OnboardingData(BaseModel):
 
 
 @router.get("/intelligence/profile")
-def get_user_profile() -> dict:
+def get_user_profile(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
     """Get the current user's onboarding profile."""
     import json
     from app.database.models.user_profile import UserProfile
@@ -1600,7 +1879,7 @@ def get_user_profile() -> dict:
     session = SessionLocal()
     try:
         profile = session.execute(
-            select(UserProfile).where(UserProfile.user_id == 0)
+            select(UserProfile).where(UserProfile.user_id == current_user.id)
         ).scalar_one_or_none()
 
         if not profile:
@@ -1614,7 +1893,10 @@ def get_user_profile() -> dict:
 
 
 @router.post("/intelligence/profile")
-def save_user_profile(data: OnboardingData) -> dict:
+def save_user_profile(
+    data: OnboardingData,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
     """Save or update the user's onboarding profile."""
     import json
     from app.database.models.user_profile import UserProfile
@@ -1622,12 +1904,12 @@ def save_user_profile(data: OnboardingData) -> dict:
     session = SessionLocal()
     try:
         profile = session.execute(
-            select(UserProfile).where(UserProfile.user_id == 0)
+            select(UserProfile).where(UserProfile.user_id == current_user.id)
         ).scalar_one_or_none()
 
         if not profile:
             profile = UserProfile(
-                user_id=0,
+                user_id=current_user.id,
                 experience_level=data.experience_level,
                 risk_tolerance=data.risk_tolerance,
                 asset_interests=json.dumps(data.asset_interests),

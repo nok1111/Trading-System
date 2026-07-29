@@ -17,6 +17,14 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+# Use trading-client app (has all routers: brokers, broker_accounts, intelligence)
+_TRADING_CLIENT_DIR = str(Path(__file__).resolve().parent / "trading-client")
+if _TRADING_CLIENT_DIR not in sys.path:
+    sys.path.insert(0, _TRADING_CLIENT_DIR)
+
+# Change CWD to trading-client so .env and relative DB paths resolve correctly
+os.chdir(_TRADING_CLIENT_DIR)
+
 # Banner ASCII
 BANNER = r"""
   _               _      _____                     _
@@ -206,6 +214,7 @@ def run_server(host: str, port: int, reload: bool) -> int:
             reload=reload,
             log_level="info",
             access_log=True,
+            app_dir=os.path.join(os.path.dirname(__file__), "trading-client"),
         )
         return 0
 

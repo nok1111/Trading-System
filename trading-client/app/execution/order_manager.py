@@ -62,10 +62,12 @@ class OrderManager:
         broker: Broker,
         session: Session,
         settings: Settings,
+        user_id: int = 0,
     ) -> None:
         self.broker = broker
         self.session = session
         self.settings = settings
+        self.user_id = user_id
 
     def create_draft(
         self,
@@ -81,6 +83,7 @@ class OrderManager:
         client_order_id = uuid4().hex[:36]
 
         order = Order(
+            user_id=self.user_id,
             client_order_id=client_order_id,
             idempotency_key=idempotency_key,
             broker_order_id=None,

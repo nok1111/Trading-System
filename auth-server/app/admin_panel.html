@@ -204,6 +204,7 @@ tr:hover { background: var(--panel-hover); }
   <div class="tabs">
     <div class="tab active" onclick="switchTab('users')">Usuarios</div>
     <div class="tab" onclick="switchTab('ai-usage')">Cuotas IA</div>
+    <div class="tab" onclick="switchTab('services')">Servicios</div>
     <div class="tab" onclick="switchTab('server')">Servidor</div>
   </div>
 
@@ -240,6 +241,29 @@ tr:hover { background: var(--panel-hover); }
           </thead>
           <tbody id="aiUsageTable"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Services Tab -->
+    <div class="tab-content" id="tab-services">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Estado de servicios</span>
+          <button class="btn btn-ghost btn-sm" onclick="loadServicesStatus()">Actualizar</button>
+        </div>
+        <div id="servicesList"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Agentes de IA</span>
+        </div>
+        <div id="agentsList"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Paper Trading Scheduler</span>
+        </div>
+        <div id="paperTradingStatus"></div>
       </div>
     </div>
 
@@ -405,6 +429,7 @@ function switchTab(name) {
   document.getElementById(`tab-${name}`).classList.add('active');
   if (name === 'users') loadUsers();
   if (name === 'ai-usage') loadAiUsage();
+  if (name === 'services') loadServicesStatus();
   if (name === 'server') loadServerStatus();
 }
 
@@ -551,6 +576,84 @@ async function clearAllQuotas() {
   if (!confirm('¿Resetear las cuotas de IA de todos los usuarios?')) return;
   const resp = await apiCall('/api/admin/ai-usage/clear', 'POST');
   if (resp && resp.ok) { toast('Cuotas reseteadas', 'success'); loadAiUsage(); }
+}
+
+// ─── Services & AI Agents ───
+async function loadServicesStatus() {
+  const resp = await apiCall('/api/admin/services/status');
+  if (!resp) return;
+  const data = await resp.json();
+
+  // Services
+  const servicesHtml = data.services.map(s => {
+    const color = s.status === 'online' ? 'var(--success)' : s.status === 'error' ? 'var(--warning)' : 'var(--danger)';
+    const label = s.status === 'online' ? 'En línea' : s.status === 'error' ? 'Error' : 'Sin conexión';
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;font-size:14px">${s.name}</div>
+          <div style="font-size:12px;color:var(--text-dim)">${s.url || 'localhost'} ${s.detail ? '· ' + s.detail : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block"></span>
+          <span style="font-size:13px;font-weight:600;color:${color}">${label}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('servicesList').innerHTML = servicesHtml;
+
+  // AI Agents
+  const agents = data.agents || [];
+  if (!agents.length) {
+    document.getElementById('agentsList').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px">No se pudo obtener el estado de los agentes. Verifica que el Trading Client esté en línea.</div>';
+  } else {
+    document.getElementById('agentsList').innerHTML = `
+      <table>
+        <thead>
+          <tr><th>Agente</th><th>Rol</th><th>Estado</th><th>Provider</th><th>Modelo</th><th>Intervalo</th><th>Ciclos</th><th>Auto-trade</th><th>Intelligence</th><th>Grant</th></tr>
+        </thead>
+        <tbody>
+          ${agents.map(a => {
+            const stColor = a.status === 'running' ? 'var(--success)' : a.status === 'error' ? 'var(--danger)' : 'var(--text-dim)';
+            const grantColor = a.grant_authorized ? 'var(--success)' : 'var(--danger)';
+            return `
+              <tr>
+                <td><strong>${a.agentName || a.agent_id}</strong></td>
+                <td>${a.role || '—'}</td>
+                <td><span style="color:${stColor};font-weight:600">${a.status || 'unknown'}</span></td>
+                <td>${a.provider || '—'}</td>
+                <td style="font-size:12px">${a.model || '—'}</td>
+                <td>${a.interval || '—'}</td>
+                <td>${a.cycles || 0}</td>
+                <td>${a.auto_trade ? '<span style="color:var(--success)">Sí</span>' : '<span style="color:var(--text-dim)">No</span>'}</td>
+                <td>${a.intelligence_mode ? '<span style="color:var(--success)">ON</span>' : '<span style="color:var(--text-dim)">OFF</span>'}</td>
+                <td><span style="color:${grantColor};font-weight:600">${a.grant_authorized ? 'OK' : 'No'}</span></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // Paper Trading
+  const pt = data.paper_trading;
+  if (!pt) {
+    document.getElementById('paperTradingStatus').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px">No disponible</div>';
+  } else {
+    const running = pt.running || pt.status === 'running';
+    const ptColor = running ? 'var(--success)' : 'var(--text-dim)';
+    document.getElementById('paperTradingStatus').innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Estado</div><div class="stat-value" style="color:${ptColor}">${running ? 'Running' : 'Stopped'}</div></div>
+        <div class="stat-card"><div class="stat-label">Símbolos</div><div class="stat-value" style="font-size:14px">${(pt.symbols || []).join(', ') || '—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Intervalo</div><div class="stat-value" style="font-size:14px">${pt.interval || '—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Última ejecución</div><div class="stat-value" style="font-size:12px">${pt.last_run || 'Nunca'}</div></div>
+        <div class="stat-card"><div class="stat-label">Próxima ejecución</div><div class="stat-value" style="font-size:12px">${pt.next_run || '—'}</div></div>
+      </div>
+    `;
+  }
 }
 
 // ─── Server ───

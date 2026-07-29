@@ -40,7 +40,7 @@ if _static_path.exists():
 # ---------------------------------------------------------------------------
 
 # Paths that don't require license validation
-_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price"}
+_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/ai-agent/status", "/api/paper-trading/status"}
 
 
 @app.middleware("http")
@@ -50,7 +50,7 @@ async def license_check(request: Request, call_next):
     Skips public paths (health, dashboard HTML, docs).
     Attaches license info to request.state for downstream use.
     """
-    if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images") or request.url.path.startswith("/api/binance/") or request.url.path.startswith("/api/klines/") or request.url.path.startswith("/api/signals") or request.url.path.startswith("/api/intelligence/"):
+    if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images") or request.url.path.startswith("/api/binance/price") or request.url.path.startswith("/api/klines/") or request.url.path.startswith("/api/signals"):
         return await call_next(request)
 
     # Allow CORS preflight requests without auth

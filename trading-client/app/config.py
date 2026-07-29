@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     )
 
     APP_ENV: Literal["development", "testing", "staging", "production"] = "development"
-    DATABASE_URL: str = "sqlite:///./data/trading.db"
+    DATABASE_URL: str = "sqlite:///./trading.db"
     # Auth Server connection
     AUTH_SERVER_URL: str = "http://76.13.180.80:8000"
     # Broker

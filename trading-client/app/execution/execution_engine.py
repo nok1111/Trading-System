@@ -38,6 +38,7 @@ class ExecutionEngine:
         settings: Settings,
         risk_engine: RiskEngine | None = None,
         order_manager: OrderManager | None = None,
+        user_id: int = 0,
     ) -> None:
         self.broker = broker
         self.risk_manager = risk_manager
@@ -45,6 +46,7 @@ class ExecutionEngine:
         self.settings = settings
         self.risk_engine = risk_engine
         self.order_manager = order_manager
+        self.user_id = user_id
 
     def process_signal(self, signal_create: SignalCreate, account: AccountSnapshot | None = None) -> Order | None:
         """Persiste la señal, evalúa riesgo y, si aplica, envía orden al broker.
@@ -130,7 +132,10 @@ class ExecutionEngine:
         return signal
 
     def _get_open_positions(self) -> list[Position]:
-        return self.session.query(Position).where(Position.status == "open").all()
+        return self.session.query(Position).where(
+            Position.status == "open",
+            Position.user_id == self.user_id,
+        ).all()
 
     def _get_live_price(self, symbol: str) -> Decimal | None:
         """Get real-time price from WebSocket if available."""
@@ -172,6 +177,7 @@ class ExecutionEngine:
 
         # Fallback: legacy path without OrderManager
         order = Order(
+            user_id=self.user_id,
             client_order_id=self._generate_client_order_id(),
             idempotency_key=uuid4().hex[:36],
             broker_order_id=None,
@@ -228,6 +234,7 @@ class ExecutionEngine:
 
         # Fallback: legacy path without OrderManager
         order = Order(
+            user_id=self.user_id,
             client_order_id=self._generate_client_order_id(),
             idempotency_key=uuid4().hex[:36],
             broker_order_id=None,
@@ -261,6 +268,7 @@ class ExecutionEngine:
         signal_db: Signal,
     ) -> None:
         trade = Trade(
+            user_id=self.user_id,
             timestamp=datetime.now(tz=UTC),
             symbol=order.symbol,
             side="BUY",
@@ -278,6 +286,7 @@ class ExecutionEngine:
         self.session.flush()
 
         position = Position(
+            user_id=self.user_id,
             symbol=order.symbol,
             opened_at=datetime.now(tz=UTC),
             closed_at=None,
@@ -317,6 +326,7 @@ class ExecutionEngine:
         self.session.flush()
 
         trade = Trade(
+            user_id=self.user_id,
             timestamp=datetime.now(tz=UTC),
             symbol=order.symbol,
             side="SELL",

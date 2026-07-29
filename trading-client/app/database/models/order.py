@@ -31,6 +31,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
     client_order_id: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, index=True
     )

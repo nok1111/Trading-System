@@ -16,7 +16,7 @@ export function log(level: LogLevel, message: string, data?: any) {
 
   // Send to backend for file logging
   try {
-    fetch("http://76.13.180.80:8080/api/log", {
+    fetch("http://localhost:8080/api/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ level, message, data: data ? String(data) : undefined, timestamp }),

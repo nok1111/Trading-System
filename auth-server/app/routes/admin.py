@@ -10,17 +10,20 @@ import subprocess
 from datetime import UTC, datetime
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database.models.ai_usage import AIUsageLog
 from app.database.models.user import SubscriptionPlan, User
 from app.database.session import SessionLocal, get_db
 from app.services.auth import get_current_user, hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+settings = get_settings()
 
 
 def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
@@ -365,3 +368,91 @@ def server_logs(
         return {"logs": result.stdout.strip().split("\n") if result.stdout else []}
     except Exception as exc:
         return {"logs": [], "error": str(exc)}
+
+
+# ─── Services & AI Agents Status ───
+
+
+@router.get("/services/status")
+def services_status(
+    admin: Annotated[User, Depends(require_admin)],
+) -> dict:
+    """Get status of all services: Auth Server, Trading Client, AI Server, and AI agents."""
+    services = []
+
+    # 1) Auth Server (self)
+    services.append({
+        "name": "Auth Server",
+        "url": "",
+        "status": "online",
+        "detail": f"PID {os.getpid()}",
+    })
+
+    # 2) Trading Client
+    tc_url = settings.TRADING_CLIENT_URL
+    tc_status = {"name": "Trading Client", "url": tc_url, "status": "offline", "detail": ""}
+    try:
+        resp = httpx.get(f"{tc_url}/health", timeout=5)
+        if resp.status_code == 200:
+            tc_status["status"] = "online"
+            tc_status["detail"] = "Health check OK"
+        else:
+            tc_status["status"] = "error"
+            tc_status["detail"] = f"HTTP {resp.status_code}"
+    except Exception as exc:
+        tc_status["detail"] = str(exc)[:100]
+    services.append(tc_status)
+
+    # 3) AI Server
+    ai_url = settings.AI_SERVER_URL
+    ai_status = {"name": "AI Server", "url": ai_url, "status": "offline", "detail": ""}
+    try:
+        resp = httpx.get(f"{ai_url}/health", timeout=5)
+        if resp.status_code == 200:
+            ai_status["status"] = "online"
+            ai_status["detail"] = "Health check OK"
+        else:
+            ai_status["status"] = "error"
+            ai_status["detail"] = f"HTTP {resp.status_code}"
+    except Exception as exc:
+        ai_status["detail"] = str(exc)[:100]
+    services.append(ai_status)
+
+    # 4) AI Agent from Trading Client
+    agents = []
+    try:
+        resp = httpx.get(f"{tc_url}/api/ai-agent/status", timeout=8)
+        if resp.status_code == 200:
+            data = resp.json()
+            # Trading Client returns a single agent status dict, not an array
+            agents = [{
+                "agentName": "AI Trading Agent",
+                "role": "Autonomous Trader",
+                "status": "running" if data.get("is_running") else "idle",
+                "provider": data.get("provider"),
+                "model": data.get("model"),
+                "interval": f"{data.get('interval_seconds', '?')}s",
+                "last_run": None,
+                "cycles": data.get("cycles", 0),
+                "auto_trade": data.get("auto_trade"),
+                "intelligence_mode": data.get("intelligence_mode"),
+                "grant_authorized": data.get("grant_authorized"),
+            }]
+    except Exception:
+        pass
+
+    # 5) Paper trading scheduler status
+    paper_trading = None
+    try:
+        resp = httpx.get(f"{tc_url}/api/paper-trading/status", timeout=5)
+        if resp.status_code == 200:
+            paper_trading = resp.json()
+    except Exception:
+        pass
+
+    return {
+        "services": services,
+        "agents": agents,
+        "paper_trading": paper_trading,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }

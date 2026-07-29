@@ -29,6 +29,7 @@ from app.database.models import (
     Trade,
 )
 from app.database.session import SessionLocal
+from app.services.auth import LocalUser, get_current_user
 
 router = APIRouter(prefix="/api", tags=["trading"])
 
@@ -125,11 +126,12 @@ def delete_signal(signal_id: int, db: DbSession) -> dict:
 @router.get("/orders", response_model=list[OrderOut])
 def list_orders(
     db: DbSession,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
     skip: PaginateSkip = 0,
     limit: PaginateLimit = 50,
     symbol: SymbolQuery = None,
 ) -> list[Order]:
-    query = db.query(Order)
+    query = db.query(Order).filter(Order.user_id == current_user.id)
     if symbol:
         query = query.filter(Order.symbol == symbol.upper())
     return query.order_by(Order.id.desc()).offset(skip).limit(limit).all()
@@ -138,11 +140,12 @@ def list_orders(
 @router.get("/positions", response_model=list[PositionOut])
 def list_positions(
     db: DbSession,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
     skip: PaginateSkip = 0,
     limit: PaginateLimit = 50,
     status: StatusQuery = None,
 ) -> list[Position]:
-    query = db.query(Position)
+    query = db.query(Position).filter(Position.user_id == current_user.id)
     if status:
         query = query.filter(Position.status == status.lower())
     # Sort: open positions first, then by id desc
@@ -150,6 +153,100 @@ def list_positions(
         case((Position.status == "open", 0), else_=1),
         Position.id.desc(),
     ).offset(skip).limit(limit).all()
+
+    # Auto-import from Binance if user has no local positions but has broker keys
+    if not positions:
+        from app.api.helpers import resolve_broker_credentials
+        creds = resolve_broker_credentials("binance", current_user)
+        if creds:
+            try:
+                from app.brokers.adapters.binance_adapter import BinanceAdapter
+                from app.database.models.position import Position as PositionModel
+
+                adapter = BinanceAdapter(creds)
+                broker = adapter._broker
+                imported = []
+
+                # Spot holdings
+                try:
+                    account = broker._signed_request("GET", "/api/v3/account", {})
+                    balances = account.get("balances", [])
+                    import httpx as _httpx
+                    price_map: dict[str, float] = {}
+                    try:
+                        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+                        for t in tickers:
+                            price_map[t["symbol"]] = float(t["price"])
+                    except Exception:
+                        pass
+
+                    stablecoins = {"USDT", "BUSD", "USDC", "UST", "TUSD", "FDUSD"}
+                    for b in balances:
+                        asset = b["asset"]
+                        total = float(b["free"]) + float(b["locked"])
+                        if total <= 0 or asset in stablecoins:
+                            continue
+                        symbol = f"{asset}USDT"
+                        price = price_map.get(symbol, 0.0)
+                        if price <= 0:
+                            continue
+                        pos = PositionModel(
+                            user_id=current_user.id,
+                            symbol=symbol,
+                            opened_at=datetime.now(tz=UTC),
+                            side="long",
+                            quantity=Decimal(str(total)),
+                            entry_price=Decimal(str(price)),
+                            current_price=Decimal(str(price)),
+                            unrealized_pnl=Decimal("0"),
+                            status="open",
+                            strategy_name="imported_binance",
+                            metadata_json={"source": "binance_spot_import", "asset": asset},
+                        )
+                        db.add(pos)
+                        imported.append(symbol)
+                except Exception:
+                    pass
+
+                # Futures positions
+                try:
+                    fapi_resp = broker._signed_request("GET", "/fapi/v2/positionRisk", {})
+                    for p in fapi_resp:
+                        amt = float(p.get("positionAmt", 0))
+                        if amt == 0:
+                            continue
+                        symbol = p.get("symbol", "")
+                        entry = float(p.get("entryPrice", 0))
+                        mark = float(p.get("markPrice", 0))
+                        side = "long" if amt > 0 else "short"
+                        qty = abs(amt)
+                        pos = PositionModel(
+                            user_id=current_user.id,
+                            symbol=symbol,
+                            opened_at=datetime.now(tz=UTC),
+                            side=side,
+                            quantity=Decimal(str(qty)),
+                            entry_price=Decimal(str(entry)),
+                            current_price=Decimal(str(mark)),
+                            unrealized_pnl=Decimal(str((mark - entry) * qty if side == "long" else (entry - mark) * qty)),
+                            status="open",
+                            strategy_name="imported_binance",
+                            metadata_json={"source": "binance_futures_import"},
+                        )
+                        db.add(pos)
+                        imported.append(symbol)
+                except Exception:
+                    pass
+
+                if imported:
+                    db.commit()
+                    # Re-query with the new positions
+                    positions = query.order_by(
+                        case((Position.status == "open", 0), else_=1),
+                        Position.id.desc(),
+                    ).offset(skip).limit(limit).all()
+            except Exception:
+                db.rollback()
 
     # Update current_price and unrealized_pnl for open positions
     open_positions = [p for p in positions if p.status == "open"]
@@ -160,15 +257,8 @@ def list_positions(
         from app.brokers.models import BrokerCredentials, normalize_symbol
         from app.config import get_settings
 
-        settings = get_settings()
-        creds = None
-        if settings.BROKER_API_KEY and settings.BROKER_API_SECRET:
-            creds = BrokerCredentials(
-                broker_id="binance",
-                api_key=settings.BROKER_API_KEY,
-                api_secret=settings.BROKER_API_SECRET,
-                testnet=settings.BINANCE_TESTNET,
-            )
+        from app.api.helpers import resolve_broker_credentials
+        creds = resolve_broker_credentials("binance", current_user)
 
         updated = False
         for pos in open_positions:
@@ -196,11 +286,12 @@ def list_positions(
 @router.get("/trades", response_model=list[TradeOut])
 def list_trades(
     db: DbSession,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
     skip: PaginateSkip = 0,
     limit: PaginateLimit = 50,
     symbol: SymbolQuery = None,
 ) -> list[Trade]:
-    query = db.query(Trade)
+    query = db.query(Trade).filter(Trade.user_id == current_user.id)
     if symbol:
         query = query.filter(Trade.symbol == symbol.upper())
     return query.order_by(Trade.id.desc()).offset(skip).limit(limit).all()

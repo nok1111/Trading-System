@@ -1,4 +1,4 @@
-const API_BASE = "http://76.13.180.80:8080";
+const API_BASE = "http://localhost:8080";
 
 // In-memory cache for GET requests with TTL
 const _cache = new Map<string, { data: any; expires: number }>();
@@ -62,6 +62,8 @@ try { authToken = localStorage.getItem("jwt"); } catch {}
 
 export function setAuthToken(token: string | null) {
   authToken = token;
+  // Clear all cached API responses when user changes (login/logout)
+  _cache.clear();
   try {
     if (token) {
       localStorage.setItem("jwt", token);

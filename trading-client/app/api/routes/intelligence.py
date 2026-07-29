@@ -305,7 +305,7 @@ def get_daily_report() -> dict:
             from app.database.models.position import Position
             db = SessionLocal()
             try:
-                positions = db.query(Position).filter(Position.status == "open").all()
+                positions = db.query(Position).filter(Position.status == "open", Position.user_id == 0).all()
                 if positions:
                     total_pnl = sum(float(p.unrealized_pnl or 0) for p in positions)
                     portfolio_summary = f"{len(positions)} open positions, PnL: ${total_pnl:.2f}"
@@ -657,7 +657,7 @@ def get_risk_status() -> dict:
         from app.database.models.position import Position
         db = SessionLocal()
         try:
-            positions = db.query(Position).filter(Position.status == "open").all()
+            positions = db.query(Position).filter(Position.status == "open", Position.user_id == 0).all()
             total_exposure = sum(
                 abs(float(p.quantity or 0)) * float(p.current_price or p.entry_price or 0)
                 for p in positions
@@ -715,4 +715,62 @@ def get_risk_status() -> dict:
         }
 
 
+@router.get("/signals")
+def get_active_signals(limit: int = 10) -> list[dict]:
+    """Get active signals for the dashboard 'Señales activas' card.
 
+    Reads from the local Signal table (status='active') and converts
+    them to the IntelligenceSignal format expected by the frontend.
+    """
+    cached = _cached(f"signals_{limit}")
+    if cached:
+        return cached
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.signal import Signal as SignalModel
+
+        db = SessionLocal()
+        try:
+            signals = db.query(SignalModel).filter(
+                SignalModel.status == "active"
+            ).order_by(SignalModel.timestamp.desc()).limit(limit).all()
+
+            result = []
+            for s in signals:
+                asset = s.symbol.upper().replace("USDT", "").replace("USDC", "")
+                decision = s.signal_type if s.signal_type in ("BUY", "SELL") else "HOLD"
+                confidence = int(float(s.confidence) * 100) if s.confidence else 50
+                entry_price = float(s.entry_price) if s.entry_price else 0
+                sl = float(s.suggested_stop_loss) if s.suggested_stop_loss else None
+                tp = float(s.suggested_take_profit) if s.suggested_take_profit else None
+
+                targets = []
+                if tp:
+                    targets.append({"price": tp, "probability": confidence})
+                invalidation = {"type": "stop_loss", "value": sl} if sl else {"type": "none", "value": 0}
+
+                result.append({
+                    "id": f"sig-{s.id}",
+                    "asset": asset,
+                    "decision": decision,
+                    "confidence": confidence,
+                    "riskLevel": "medium",
+                    "entryZone": {"min": entry_price * 0.99, "max": entry_price * 1.01},
+                    "targets": targets,
+                    "invalidation": invalidation,
+                    "agentVotes": [],
+                    "mainReasons": [s.explanation] if s.explanation else [],
+                    "mainRisks": [],
+                    "validFrom": s.timestamp.isoformat() if s.timestamp else "",
+                    "expiresAt": None,
+                    "requiresConfirmation": False,
+                    "status": "ACTIVE",
+                    "timestamp": s.timestamp.isoformat() if s.timestamp else "",
+                })
+            _set_cache(f"signals_{limit}", result, 60)
+            return result
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Signals fetch failed: %s", exc)
+        return []

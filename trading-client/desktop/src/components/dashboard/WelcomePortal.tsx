@@ -57,10 +57,12 @@ export function WelcomePortal({
   data,
   profile,
   loading,
+  username,
 }: {
   data: SinceLastVisitData | null;
   profile: UserProfileData | null;
   loading: boolean;
+  username?: string;
 }) {
   const [showAllChanges, setShowAllChanges] = useState(false);
 
@@ -93,7 +95,7 @@ export function WelcomePortal({
   }
 
   const greeting = getGreeting();
-  const username = "Nokturno";
+  const displayName = username || "Trader";
   const hasPortfolio = data.portfolio && data.portfolio.positionsCount > 0;
   const hasBuyRecs = data.buyRecommendations && data.buyRecommendations.length > 0;
   const hasMovers = data.movers && data.movers.length > 0;
@@ -112,7 +114,7 @@ export function WelcomePortal({
           </div>
           <div className="flex-1">
             <h2 className="text-[17px] font-extrabold text-[var(--color-text)] mb-1.5">
-              {greeting}, {username} 👋
+              {greeting}, {displayName} 👋
             </h2>
             <p className="text-[13px] text-[var(--color-text-muted)] leading-relaxed">
               {getExperienceLabel(profile?.experience_level)}.{" "}

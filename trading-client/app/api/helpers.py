@@ -9,15 +9,21 @@ from app.services.crypto import decrypt
 
 
 def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
-    """Resolve Binance API keys from broker_accounts table only.
+    """Resolve Binance API keys from broker_accounts table for the current user.
 
     No .env fallback, no test accounts. The user connects their broker
     through the Connections page and those keys are used.
     """
+    user_id = None
+    if current_user:
+        user_id = getattr(current_user, "id", None)
     try:
         session = SessionLocal()
         from app.database.models.broker_account import BrokerAccount as BA
-        row = session.query(BA).filter_by(broker_id="binance").first()
+        query = session.query(BA).filter_by(broker_id="binance")
+        if user_id is not None:
+            query = query.filter_by(user_id=user_id)
+        row = query.first()
         if row and row.api_key_enc:
             key = decrypt(row.api_key_enc)
             secret = decrypt(row.api_secret_enc)
@@ -34,16 +40,22 @@ def resolve_broker_credentials(
     broker_id: str = "binance",
     current_user=None,
 ) -> BrokerCredentials | None:
-    """Resolve broker credentials from broker_accounts table only.
+    """Resolve broker credentials from broker_accounts table for the current user.
 
     Broker-agnostic: works with any broker_id (binance, coinbase, okx, etc.).
     No .env fallback, no test accounts. The user connects their broker
     through the Connections page and those keys are used.
     """
+    user_id = None
+    if current_user:
+        user_id = getattr(current_user, "id", None)
     try:
         session = SessionLocal()
         from app.database.models.broker_account import BrokerAccount as BA
-        row = session.query(BA).filter_by(broker_id=broker_id).first()
+        query = session.query(BA).filter_by(broker_id=broker_id)
+        if user_id is not None:
+            query = query.filter_by(user_id=user_id)
+        row = query.first()
         session.close()
         if row and row.api_key_enc:
             return BrokerCredentials(

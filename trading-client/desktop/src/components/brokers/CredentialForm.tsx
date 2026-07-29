@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Eye, EyeOff, Key, ShieldCheck, Lock } from "lucide-react";
+import { Eye, EyeOff, Key, ShieldCheck, Lock, Clock } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Input, Select } from "../ui/Input";
 import type {
@@ -188,6 +188,15 @@ export function CredentialForm({
           Conectar
         </Button>
       </div>
+
+      {isValidating && (
+        <div className="rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-3 flex items-start gap-2">
+          <Clock size={14} className="text-[var(--color-text-muted)] mt-0.5 shrink-0 animate-spin" style={{ animationDuration: "2s" }} />
+          <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+            Estamos verificando tus credenciales con {broker.displayName}. Esto puede tomar unos segundos mientras validamos los permisos y la conexión. Gracias por tu paciencia.
+          </p>
+        </div>
+      )}
     </form>
   );
 }

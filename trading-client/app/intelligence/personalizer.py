@@ -84,7 +84,7 @@ def _get_greeting() -> str:
 def _get_user_assets(session: Session, user_id: int) -> list[str]:
     """Get asset symbols from user's open positions (e.g. ['BTC', 'ETH', 'SOL'])."""
     positions = session.execute(
-        select(Position).where(Position.status == "open")
+        select(Position).where(Position.status == "open", Position.user_id == user_id)
     ).scalars().all()
     assets = []
     for p in positions:
@@ -127,11 +127,11 @@ def _format_change(event: IntelligenceEvent) -> dict[str, Any]:
     }
 
 
-def _get_portfolio_summary(session: Session) -> dict[str, Any]:
+def _get_portfolio_summary(session: Session, user_id: int = 0) -> dict[str, Any]:
     """Get portfolio summary: total PnL, positions count, best/worst performers."""
     positions = list(
         session.execute(
-            select(Position).where(Position.status == "open")
+            select(Position).where(Position.status == "open", Position.user_id == user_id)
         ).scalars().all()
     )
     if not positions:
@@ -193,12 +193,12 @@ def _get_top_movers(session: Session) -> list[dict[str, Any]]:
     return movers[:5]
 
 
-def _get_user_profile_dict(session: Session) -> dict | None:
+def _get_user_profile_dict(session: Session, user_id: int = 0) -> dict | None:
     """Fetch user profile for personalization."""
     try:
         from app.database.models.user_profile import UserProfile
         profile = session.execute(
-            select(UserProfile).where(UserProfile.user_id == 0)
+            select(UserProfile).where(UserProfile.user_id == user_id)
         ).scalar_one_or_none()
         if profile:
             return profile.to_dict()
@@ -395,7 +395,7 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
     # 2. Portfolio changes (deterministic)
     positions = list(
         session.execute(
-            select(Position).where(Position.status == "open")
+            select(Position).where(Position.status == "open", Position.user_id == user_id)
         ).scalars().all()
     )
     portfolio_changes: list[dict[str, Any]] = []
@@ -424,13 +424,13 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
         to_review.append({"asset": asset, "reason": "Posición abierta"})
 
     # 5. Portfolio summary
-    portfolio = _get_portfolio_summary(session)
+    portfolio = _get_portfolio_summary(session, user_id=user_id)
 
     # 6. Top movers (buy/sell opportunities)
     movers = _get_top_movers(session)
 
     # 7. Buy recommendations with broker info (profile-aware)
-    profile = _get_user_profile_dict(session)
+    profile = _get_user_profile_dict(session, user_id=user_id)
     buy_recs = _get_buy_recommendations(session, profile)
 
     # 8. High impact news
@@ -460,7 +460,7 @@ def get_today_priorities(session: Session, user_id: int) -> dict[str, Any]:
     """Build the 'Today Priorities' payload for a user."""
     positions = list(
         session.execute(
-            select(Position).where(Position.status == "open")
+            select(Position).where(Position.status == "open", Position.user_id == user_id)
         ).scalars().all()
     )
 
@@ -525,9 +525,9 @@ def get_today_priorities(session: Session, user_id: int) -> dict[str, Any]:
     return {"priorities": priorities}
 
 
-def get_activity(session: Session, *, hours: int = 24, limit: int = 20) -> dict[str, Any]:
+def get_activity(session: Session, *, hours: int = 24, limit: int = 20, user_id: int = 0) -> dict[str, Any]:
     """Build the 'AI Activity' timeline payload."""
-    profile = _get_user_profile_dict(session)
+    profile = _get_user_profile_dict(session, user_id=user_id)
     p_label = _profile_label(profile)
 
     journal = EventJournal(session)
