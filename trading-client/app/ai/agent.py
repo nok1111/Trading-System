@@ -220,6 +220,49 @@ class AITradingAgent:
             except Exception:
                 self._ai_provider = LocalAIProvider(provider_config)
 
+    def _rebuild_provider(self) -> None:
+        """Reconstruct the AI provider from current agent settings.
+
+        Called after the /start endpoint updates provider, keys, and model
+        so the agent uses the user's selected configuration, not the .env defaults.
+        """
+        provider_config = AIProviderConfig(
+            provider=self.provider,
+            groq_api_key=self.groq_api_key,
+            groq_model=self.groq_model,
+            gemini_api_key=self.gemini_api_key,
+            gemini_model=self.gemini_model,
+            ollama_url=self.ollama_url,
+            ollama_model=self.ollama_model,
+            openai_api_key=self.openai_api_key,
+            openai_base_url=self.openai_base_url,
+            openai_model=self.openai_model,
+        )
+        try:
+            from app.config import get_settings
+            settings = get_settings()
+
+            if settings.USE_REMOTE_AI and settings.REMOTE_AI_URL:
+                provider_config = AIProviderConfig(
+                    provider=self.provider,
+                    groq_api_key=self.groq_api_key,
+                    groq_model=self.groq_model,
+                    gemini_api_key=self.gemini_api_key,
+                    gemini_model=self.gemini_model,
+                    ollama_url=self.ollama_url,
+                    ollama_model=self.ollama_model,
+                    openai_api_key=self.openai_api_key,
+                    openai_base_url=self.openai_base_url,
+                    openai_model=self.openai_model,
+                    remote_ai_url=settings.REMOTE_AI_URL,
+                    remote_ai_token=settings.REMOTE_AI_TOKEN,
+                )
+                self._ai_provider = RemoteAIProvider(provider_config)
+            else:
+                self._ai_provider = LocalAIProvider(provider_config)
+        except Exception:
+            self._ai_provider = LocalAIProvider(provider_config)
+
     @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()

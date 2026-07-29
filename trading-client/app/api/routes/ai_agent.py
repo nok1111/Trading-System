@@ -209,6 +209,9 @@ def ai_agent_start(
         settings = get_settings()
         agent._auth_server_url = settings.AUTH_SERVER_URL
 
+    # Rebuild the AI provider with the user's selected config (provider, key, model)
+    agent._rebuild_provider()
+
     agent.start()
     # Create initial snapshot so overview tab shows data
     try:
