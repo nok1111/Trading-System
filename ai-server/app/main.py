@@ -7,7 +7,10 @@ Never receives broker API keys or sensitive user data.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +20,15 @@ from app.config import get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start the intelligence scheduler automatically
+    from app.services.scheduler import get_scheduler
+    sched = get_scheduler()
+    if sched.start():
+        logger.info("Intelligence scheduler started automatically")
+    else:
+        logger.info("Intelligence scheduler not started (disabled or already running)")
     yield
+    sched.stop()
 
 
 settings = get_settings()

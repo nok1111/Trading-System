@@ -241,7 +241,7 @@ Ejemplos:
   python run_server.py --reload           Auto-reload (desarrollo)
         """,
     )
-    parser.add_argument("--host", default="127.0.0.1", help="Host de escucha (def: 127.0.0.1)")
+    parser.add_argument("--host", default="0.0.0.0", help="Host de escucha (def: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8080, help="Puerto de escucha (def: 8080)")
     parser.add_argument("--reload", action="store_true", help="Auto-reload en desarrollo")
     args = parser.parse_args()

@@ -90,8 +90,8 @@ function inferTimeHorizon(signal: Signal, profile: UserProfile | null): TimeHori
   if (strat.includes("long") || explanation.includes("largo plazo") || explanation.includes("long term")) return "long_term";
 
   if (profile) {
-    if (profile.risk_tolerance === "low") return "swing";
-    if (profile.risk_tolerance === "high") return "short_term";
+    if (profile.risk_tolerance === "conservative") return "swing";
+    if (profile.risk_tolerance === "aggressive") return "short_term";
   }
   return "short_term";
 }
@@ -100,6 +100,10 @@ function generateAiComment(signal: Signal, profile: UserProfile | null, horizon:
   const parts: string[] = [];
   const conf = parseFloat(signal.confidence);
   const decision = signal.signal_type;
+
+  const profileLabel = profile
+    ? { conservative: "conservador", moderate: "moderado", aggressive: "agresivo" }[profile.risk_tolerance] || profile.risk_tolerance
+    : null;
 
   if (decision === "BUY") {
     parts.push("Oportunidad de compra detectada");
@@ -116,14 +120,41 @@ function generateAiComment(signal: Signal, profile: UserProfile | null, horizon:
   const expl = signal.explanation || "";
   const cleanExpl = expl.replace(/^\[AI Agent\]\s*/i, "");
 
-  if (profile) {
-    if (profile.risk_tolerance === "low" && conf < 0.7) {
-      parts.push("⚠️ Considera tu perfil conservador — esta señal tiene riesgo moderado");
-    } else if (profile.risk_tolerance === "high" && conf >= 0.8) {
-      parts.push("✅ Alineado con tu perfil agresivo");
+  if (profile && profileLabel) {
+    // Risk tolerance references
+    if (profile.risk_tolerance === "conservative" && conf < 0.7) {
+      parts.push(`⚠️ Tu perfil ${profileLabel} requiere mayor convicción — esta señal queda por debajo del umbral`);
+    } else if (profile.risk_tolerance === "conservative" && conf >= 0.7) {
+      parts.push(`✅ Convicción suficiente para tu perfil ${profileLabel}`);
+    } else if (profile.risk_tolerance === "aggressive" && conf >= 0.8) {
+      parts.push(`✅ Alineado con tu perfil ${profileLabel} — oportunidad de alto potencial`);
+    } else if (profile.risk_tolerance === "moderate" && conf >= 0.6) {
+      parts.push(`✅ Adecuado para tu perfil ${profileLabel}`);
     }
+
+    // Strategy references
     if (profile.preferred_strategies.includes("dca") && horizon === "long_term") {
-      parts.push("💡 Ideal para DCA");
+      parts.push("💡 Ideal para tu estrategia DCA");
+    }
+    if (profile.preferred_strategies.includes("swing") && horizon === "swing") {
+      parts.push("🌊 Encaja con tu estrategia de swing trading");
+    }
+    if (profile.preferred_strategies.includes("scalping") && horizon === "scalp") {
+      parts.push("🎯 Apropiado para tu estilo de scalping");
+    }
+
+    // Goal references
+    if (profile.trading_goal === "preservation" && decision === "BUY" && conf < 0.8) {
+      parts.push("🛡️ Tu objetivo es preservación — considera esperar mayor confirmación");
+    } else if (profile.trading_goal === "speculation" && decision === "BUY" && conf >= 0.7) {
+      parts.push("🎲 Coincide con tu objetivo especulativo");
+    }
+
+    // Experience reference
+    if (profile.experience_level === "beginner" && decision === "BUY") {
+      parts.push("📚 Como principiante, revisa el SL/TP antes de confirmar");
+    } else if (profile.experience_level === "advanced" && decision === "BUY") {
+      parts.push("🔬 Datos técnicos validados para tu nivel avanzado");
     }
   }
 
@@ -183,7 +214,7 @@ export function AISuggestionsPanel() {
         timeHorizon: horizon,
         timeHorizonLabel: HORIZON_LABELS[horizon],
         aiComment: generateAiComment(s, profile, horizon),
-        riskMatch: profile ? (profile.risk_tolerance === "low" ? conf >= 0.7 : true) : true,
+        riskMatch: profile ? (profile.risk_tolerance === "conservative" ? conf >= 0.7 : true) : true,
         potentialReturn,
       };
     })

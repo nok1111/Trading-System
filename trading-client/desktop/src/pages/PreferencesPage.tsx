@@ -278,7 +278,7 @@ export function PreferencesPage() {
           </label>
           <Input
             type="text"
-            defaultValue={localStorage.getItem("aiServerUrl") || "http://localhost:8000"}
+            defaultValue={localStorage.getItem("aiServerUrl") || "http://76.13.180.80:8001"}
             onBlur={(e) => localStorage.setItem("aiServerUrl", e.target.value)}
             className="w-full"
           />

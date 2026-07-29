@@ -36,6 +36,23 @@ function getExperienceLabel(level: string | null | undefined): string {
   return "Esto es lo que vi mientras no estabas";
 }
 
+function getProfileContext(profile: UserProfileData | null): string {
+  if (!profile || !profile.risk_tolerance) return "";
+  const parts: string[] = [];
+  const riskMap: Record<string, string> = { conservative: "conservador", moderate: "moderado", aggressive: "agresivo" };
+  const riskLabel = riskMap[profile.risk_tolerance] || profile.risk_tolerance;
+  parts.push(`perfil ${riskLabel}`);
+  if (profile.preferred_strategies && profile.preferred_strategies.length > 0) {
+    parts.push(`estrategia ${profile.preferred_strategies.join("/")}`);
+  }
+  if (profile.trading_goal) {
+    const goalMap: Record<string, string> = { growth: "crecimiento", income: "ingresos", preservation: "preservación", speculation: "especulación" };
+    const goalLabel = goalMap[profile.trading_goal] || profile.trading_goal;
+    parts.push(`objetivo ${goalLabel}`);
+  }
+  return parts.length > 0 ? `Operando con tu ${parts.join(", ")}` : "";
+}
+
 export function WelcomePortal({
   data,
   profile,
@@ -99,6 +116,9 @@ export function WelcomePortal({
             </h2>
             <p className="text-[13px] text-[var(--color-text-muted)] leading-relaxed">
               {getExperienceLabel(profile?.experience_level)}.{" "}
+              {getProfileContext(profile) ? (
+                <span className="text-[var(--color-accent)] font-semibold">{getProfileContext(profile)}.</span>
+              ) : null}{" "}
               {hasPortfolio ? (
                 <>
                   Tu portfolio{" "}
@@ -152,7 +172,7 @@ export function WelcomePortal({
           </div>
           <div className="space-y-2">
             {data.buyRecommendations!.map((rec, i) => (
-              <BuySuggestion key={i} rec={rec} index={i} />
+              <BuySuggestion key={i} rec={rec} index={i} profile={profile} />
             ))}
           </div>
         </div>
@@ -277,9 +297,11 @@ export function WelcomePortal({
   );
 }
 
-function BuySuggestion({ rec, index }: { rec: BuyRecommendation; index: number }) {
+function BuySuggestion({ rec, index, profile }: { rec: BuyRecommendation; index: number; profile: UserProfileData | null }) {
   const [expanded, setExpanded] = useState(false);
   const connector = index === 0 ? "Primero" : index === 1 ? "Luego" : index === 2 ? "Y también" : "Además";
+  const riskMap: Record<string, string> = { conservative: "conservador", moderate: "moderado", aggressive: "agresivo" };
+  const riskLabel = profile?.risk_tolerance ? (riskMap[profile.risk_tolerance] || "") : "";
   return (
     <div className="rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-success)]/30 transition-colors overflow-hidden">
       <div
@@ -302,6 +324,7 @@ function BuySuggestion({ rec, index }: { rec: BuyRecommendation; index: number }
           </div>
           <p className="text-[12px] text-[var(--color-text)] mt-1 leading-relaxed line-clamp-2">
             {rec.reason || "Señal de compra detectada por análisis técnico."}
+            {riskLabel && ` Adecuado para tu perfil ${riskLabel}.`}
           </p>
           {rec.price !== null && (
             <p className="text-[10px] text-[var(--color-text-muted)] mt-1">

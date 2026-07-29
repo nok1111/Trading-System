@@ -8,6 +8,7 @@ from app.database.models.model_version import ModelVersion
 from app.database.models.intelligence_analysis import IntelligenceAnalysis
 from app.database.models.intelligence_event import IntelligenceEvent
 from app.database.models.intelligence_news import IntelligenceNews
+from app.database.models.notification import Notification
 from app.database.models.order import Order
 from app.database.models.order_reconciliation import OrderReconciliation
 from app.database.models.position import Position
@@ -29,6 +30,7 @@ __all__ = [
     "IntelligenceAnalysis",
     "IntelligenceEvent",
     "IntelligenceNews",
+    "Notification",
     "Order",
     "OrderReconciliation",
     "Position",

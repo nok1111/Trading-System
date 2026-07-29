@@ -874,3 +874,70 @@ def ai_agent_stats() -> dict:
         return {"error": str(exc)}
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Notification Endpoints (bell icon system)
+# ---------------------------------------------------------------------------
+
+@router.get("/notifications")
+def get_notifications(
+    unread_only: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    """Fetch user notifications, newest first."""
+    from app.services.notification_service import get_notifications as _get
+
+    session = SessionLocal()
+    try:
+        items = _get(session, unread_only=unread_only, limit=limit, offset=offset)
+        return {"notifications": items, "count": len(items)}
+    except Exception as exc:
+        return {"notifications": [], "count": 0, "error": str(exc)}
+    finally:
+        session.close()
+
+
+@router.get("/notifications/unread-count")
+def get_unread_count() -> dict:
+    """Get unread notification count for the bell badge."""
+    from app.services.notification_service import get_unread_count as _count
+
+    session = SessionLocal()
+    try:
+        return {"count": _count(session)}
+    except Exception as exc:
+        return {"count": 0, "error": str(exc)}
+    finally:
+        session.close()
+
+
+@router.post("/notifications/{notif_id}/read")
+def mark_notification_read(notif_id: int) -> dict:
+    """Mark a single notification as read."""
+    from app.services.notification_service import mark_read as _mark_read
+
+    session = SessionLocal()
+    try:
+        ok = _mark_read(session, notif_id)
+        return {"ok": ok}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        session.close()
+
+
+@router.post("/notifications/read-all")
+def mark_all_notifications_read() -> dict:
+    """Mark all unread notifications as read."""
+    from app.services.notification_service import mark_all_read as _mark_all
+
+    session = SessionLocal()
+    try:
+        count = _mark_all(session)
+        return {"ok": True, "updated": count}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        session.close()

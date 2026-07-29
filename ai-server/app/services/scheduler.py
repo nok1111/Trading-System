@@ -207,6 +207,9 @@ class EventScheduler:
             agent_results[agent_id] = result.result
             self._last_run[agent_id] = time.time()
 
+            # Small delay between agents to avoid rate limiting
+            time.sleep(2)
+
             # Persistir alerta si crash_detector tiene riesgo elevado
             if (
                 session is not None
@@ -415,10 +418,14 @@ class EventScheduler:
 
         from app.services.consensus import _call_llm, _parse_json
 
+        # Include schema in user message so LLM knows required fields
+        schema_hint = json.dumps(agent.output_schema, default=str)
+        user_msg = json.dumps(agent_input, default=str) + f"\n\nYour output must match this JSON schema (return ONLY valid JSON):\n{schema_hint}"
+
         content, tokens = _call_llm(
             model_config,
             agent.system_prompt,
-            json.dumps(agent_input, default=str),
+            user_msg,
             agent_config=agent,
         )
 

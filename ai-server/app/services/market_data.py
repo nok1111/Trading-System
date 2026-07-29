@@ -603,5 +603,6 @@ def get_market_data_engine() -> MarketDataEngine:
     global _engine_instance
     with _engine_lock:
         if _engine_instance is None:
-            _engine_instance = MarketDataEngine()
+            from app.services.binance_data_provider import BinanceDataProvider
+            _engine_instance = MarketDataEngine(data_provider=BinanceDataProvider())
         return _engine_instance

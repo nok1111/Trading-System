@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     HMAC_TIMESTAMP_WINDOW_SECONDS: int = 300  # 5 min
 
     # Auth Server URL for JWT validation
-    AUTH_SERVER_URL: str = "http://localhost:8000"
+    AUTH_SERVER_URL: str = "http://76.13.180.80:8000"
 
     # LLM Providers (same as trading-client)
     AI_PROVIDER: str = "groq"

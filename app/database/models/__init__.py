@@ -4,6 +4,7 @@ from app.database.models.account_snapshot import AccountSnapshot
 from app.database.models.backtest_run import BacktestRun
 from app.database.models.market_bar import MarketBar
 from app.database.models.model_version import ModelVersion
+from app.database.models.notification import Notification
 from app.database.models.order import Order
 from app.database.models.position import Position
 from app.database.models.prediction_record import PredictionRecord
@@ -19,6 +20,7 @@ __all__ = [
     "BacktestRun",
     "MarketBar",
     "ModelVersion",
+    "Notification",
     "Order",
     "Position",
     "PredictionRecord",

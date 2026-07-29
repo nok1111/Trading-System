@@ -46,6 +46,9 @@ def _call_llm(
         model = model_config.model
         api_key = None
 
+    # Use agent's max_tokens if available, otherwise model_config's
+    max_tokens = agent_config.max_tokens if agent_config else model_config.max_tokens
+
     if provider == "groq":
         key = api_key or s.GROQ_API_KEY
         if not key:
@@ -62,10 +65,10 @@ def _call_llm(
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message},
+                        {"role": "user", "content": user_message + "\n\nReturn ONLY valid JSON."},
                     ],
                     "temperature": model_config.temperature,
-                    "max_tokens": model_config.max_tokens,
+                    "max_tokens": max_tokens,
                     "response_format": {"type": "json_object"},
                 },
                 timeout=s.AGENT_TIMEOUT_SECONDS,
@@ -92,7 +95,7 @@ def _call_llm(
                 json={
                     "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_message}"}]}],
                     "generationConfig": {
-                        "maxOutputTokens": model_config.max_tokens,
+                        "maxOutputTokens": max_tokens,
                         "temperature": model_config.temperature,
                         "responseMimeType": "application/json",
                     },

@@ -155,28 +155,39 @@ export async function stopScheduler(): Promise<void> {
   await api("/api/intelligence/scheduler/stop", { method: "POST" });
 }
 
-export async function getPendingNotifications(
-  userHash: string
+export async function getNotifications(
+  unreadOnly: boolean = false,
+  limit: number = 50
 ): Promise<PendingNotification[]> {
-  if (!isFeatureEnabled("pending")) return [];
   try {
-    return await api<PendingNotification[]>(
-      `/api/intelligence/pending?user_hash=${userHash}`
+    const resp = await api<{ notifications: PendingNotification[]; count: number }>(
+      `/api/notifications?unread_only=${unreadOnly}&limit=${limit}`
     );
+    return resp.notifications || [];
   } catch {
     return [];
   }
 }
 
-export async function markNotificationRead(
-  id: number,
-  userHash: string
-): Promise<void> {
-  if (!isFeatureEnabled("pending")) return;
-  await api(`/api/intelligence/pending/${id}/read`, {
-    method: "POST",
-    body: JSON.stringify({ user_hash: userHash }),
-  });
+export async function getUnreadNotificationCount(): Promise<number> {
+  try {
+    const resp = await api<{ count: number }>("/api/notifications/unread-count");
+    return resp.count || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  try {
+    await api(`/api/notifications/${id}/read`, { method: "POST" });
+  } catch {}
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  try {
+    await api("/api/notifications/read-all", { method: "POST" });
+  } catch {}
 }
 
 export async function portfolioMatch(

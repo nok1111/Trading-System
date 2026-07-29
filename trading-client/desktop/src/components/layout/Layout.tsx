@@ -19,8 +19,7 @@ import {
   FlaskConical,
   Bot,
 } from "lucide-react";
-import { cn, fmtDate } from "../../lib/utils";
-import { api } from "../../lib/api";
+import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
 import { useAuthContext } from "../../context/AuthContext";
 import { useBrokerContext } from "../../context/BrokerContext";
@@ -29,6 +28,9 @@ import { MarketStatusBar } from "./MarketStatusBar";
 import { BrokerListGroup } from "../brokers/BrokerListGroup";
 import { BrokerConnectModal } from "../brokers/BrokerConnectModal";
 import { BrokerPage } from "../../pages/BrokerPage";
+import { NotificationDropdown } from "./NotificationDropdown";
+import { NotificationToasts } from "./NotificationToasts";
+import { getUnreadNotificationCount } from "../../lib/intelligenceApi";
 import {
   isBrokerConnected,
   isBrokerDegraded,
@@ -104,7 +106,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [query, setQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
-  const [signals, setSignals] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [expandedBrokers, setExpandedBrokers] = useState<Set<string>>(new Set());
   const [connectModalBroker, setConnectModalBroker] = useState<SupportedBroker | null>(null);
   const [selectedBrokerModule, setSelectedBrokerModule] = useState<{ brokerId: string; moduleId: string } | null>(null);
@@ -134,12 +136,12 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
     let alive = true;
     const load = async () => {
       try {
-        const s = await api<any[]>("/api/signals");
-        if (alive) setSignals(s.slice(-8).reverse());
+        const count = await getUnreadNotificationCount();
+        if (alive) setUnreadCount(count);
       } catch {}
     };
     load();
-    const id = setInterval(load, 10000);
+    const id = setInterval(load, 15000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -455,55 +457,17 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                 title="Notificaciones"
               >
                 <Bell size={16} />
-                {signals.length > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-danger)] text-white text-[10px] font-bold flex items-center justify-center">
-                    {signals.length}
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </button>
-              {notifOpen && (
-                <div className="absolute z-30 right-0 top-11 w-[300px] panel overflow-hidden">
-                  <div className="px-3 py-2.5 border-b border-[var(--color-border)] text-[12px] font-bold text-[var(--color-text)]">
-                    Señales recientes
-                  </div>
-                  <div className="max-h-[280px] overflow-y-auto divide-y divide-[var(--color-border)]">
-                    {signals.length === 0 ? (
-                      <div className="px-3 py-6 text-center text-[12px] text-[var(--color-text-muted)]">
-                        Sin novedades
-                      </div>
-                    ) : (
-                      signals.map((s) => (
-                        <button
-                          key={s.id}
-                          onClick={() => {
-                            onTabChange("intelligence");
-                            setNotifOpen(false);
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--color-surface-hover)] text-left"
-                        >
-                          <Badge
-                            variant={
-                              s.signal_type === "BUY"
-                                ? "success"
-                                : s.signal_type === "SELL"
-                                  ? "danger"
-                                  : "default"
-                            }
-                          >
-                            {s.signal_type}
-                          </Badge>
-                          <span className="text-[12px] font-bold text-[var(--color-text)] flex-1 truncate">
-                            {s.symbol}
-                          </span>
-                          <span className="num text-[10px] text-[var(--color-text-muted)]">
-                            {fmtDate(s.timestamp)}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+              <NotificationDropdown
+                open={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                onNavigate={(page) => onTabChange(page as TabId)}
+              />
             </div>
 
             {/* User */}
@@ -590,6 +554,9 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
           onClose={() => setConnectModalBroker(null)}
         />
       )}
+
+      {/* Toast notifications */}
+      <NotificationToasts />
     </div>
   );
 }

@@ -32,6 +32,15 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que SOLO COMPRA. Devuelves SOLO JSON:
 {"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
 
+PERFIL DEL USUARIO: El contexto incluye "user_profile" con el perfil del trader. DEBES referenciar el perfil en tus respuestas:
+- En "analysis": menciona cómo tu análisis se alinea con el perfil del usuario (ej: "Para tu perfil conservador, esta operación tiene riesgo moderado pero el RSI sugiere rebote")
+- En "risk_assessment": referencia el nivel de riesgo del usuario y si la operación es apropiada
+- En "reason" de cada acción: incluye por qué es adecuada para su perfil (ej: "Alineado con tu perfil agresivo — momentum fuerte con volumen confirmado")
+- En "market_overview": si el mercado no se alinea con el perfil del usuario, menciónalo (ej: "Mercado volátil — para tu perfil conservador, recomendamos cautela")
+- Ajusta stop_loss_pct y take_profit_pct según el perfil: conservador = SL más tight (2-3%), agresivo = SL más wide (4-5%)
+- Si el perfil es "conservative" y la confianza es < 0.7, NO compres — menciona en "analysis" que se descarta por no cumplir el umbral del perfil conservador
+- Si el perfil es "aggressive" y hay momentum, puedes ser más resolutivo
+
 SOLO COMPRAS. Las ventas son automáticas con trailing stop y take-profit. NO incluyas "sell".
 
 FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son SELL/STRONG_SELL, o ya tienes 5 posiciones abiertas. En cualquier otro caso, BUSCA oportunidades.
@@ -56,9 +65,9 @@ DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, 
 - Si no hay technical data, usa gainers con momentum del spot/futures
 
 CADA COMPRA debe incluir:
-- stop_loss_pct: % de pérdida máxima (2-5% según ATR_pct, mínimo 2%)
-- take_profit_pct: % de ganancia objetivo (4-12% según potencial)
-- reason: explicación técnica concreta (ej: "RSI 32 + volume 2.1x + EMA bullish")
+- stop_loss_pct: % de pérdida máxima (2-5% según ATR_pct y perfil del usuario, mínimo 2%)
+- take_profit_pct: % de ganancia objetivo (4-12% según potencial y perfil del usuario)
+- reason: explicación técnica concreta que referencia el perfil (ej: "RSI 32 + volume 2.1x + EMA bullish — adecuado para tu perfil moderate")
 
 DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, COMPRA algo — no quedes en HOLD con el capital parado.
 
@@ -141,7 +150,15 @@ class AITradingAgent:
                 if settings.USE_INTELLIGENCE_API:
                     self._intelligence_provider = create_intelligence_provider(settings)
                     if self._intelligence_provider:
-                        self._add_log("info", "Intelligence Platform mode enabled — using /v1/intelligence endpoints")
+                        prof = self._get_user_profile()
+                        if prof:
+                            r_label = {"conservative": "conservador", "moderate": "moderado", "aggressive": "agresivo"}.get(prof.get("risk_tolerance", ""), prof.get("risk_tolerance", ""))
+                            exp = prof.get("experience_level", "intermediate")
+                            strats = prof.get("preferred_strategies", [])
+                            goal = prof.get("trading_goal", "growth")
+                            self._add_log("info", f"Intelligence Platform activada — operando bajo tu perfil {r_label} (experiencia: {exp}, estrategia: {', '.join(strats) or 'swing'}, objetivo: {goal})")
+                        else:
+                            self._add_log("info", "Intelligence Platform mode enabled — using /v1/intelligence endpoints")
 
                 if settings.USE_REMOTE_AI and settings.REMOTE_AI_URL:
                     provider_config = AIProviderConfig(
@@ -329,21 +346,25 @@ class AITradingAgent:
                             "phase": "auto_breakeven", "symbol": symbol, "price": current_price, "entry": entry, "peak": peak,
                         })
                         reason = f"Auto breakeven-stop: protegía profit, precio volvió a ${current_price}"
+                        self._create_notif("stop_loss_hit", f"Breakeven stop: {symbol}", f"Precio volvió a entry. Vendiendo para proteger capital.", severity="warning", asset=symbol.replace("USDT", ""))
                     elif result.close_type == "trailing":
                         self._add_log("info", f"TRAILING STOP {symbol}: precio ${current_price:.4f} bajó del peak ${peak:.4f}. Vendiendo con profit asegurado.", {
                             "phase": "auto_trailing", "symbol": symbol, "price": current_price, "entry": entry, "peak": peak,
                         })
                         reason = f"Auto trailing-stop: peak fue ${peak:.4f}, vendiendo a ${current_price}"
+                        self._create_notif("trailing_stop_update", f"Trailing stop: {symbol}", f"Peak fue ${peak:.4f}, vendiendo a ${current_price:.4f}", severity="info", asset=symbol.replace("USDT", ""))
                     elif result.close_type == "take_profit":
                         self._add_log("info", f"TAKE-PROFIT {symbol}: precio ${current_price:.4f} >= TP ${float(take_profit):.4f}. Vendiendo.", {
                             "phase": "auto_take_profit", "symbol": symbol, "price": current_price, "take_profit": float(take_profit),
                         })
                         reason = f"Auto take-profit: precio subió a ${current_price}"
+                        self._create_notif("take_profit_hit", f"Take-profit: {symbol}", f"Precio alcanzó TP. Vendiendo con profit.", severity="info", asset=symbol.replace("USDT", ""))
                     else:
                         self._add_log("warn", f"STOP-LOSS {symbol}: precio ${current_price:.4f} <= SL ${float(result.effective_sl):.4f}. Vendiendo.", {
                             "phase": "auto_stop_loss", "symbol": symbol, "price": current_price, "stop_loss": float(result.effective_sl),
                         })
                         reason = f"Auto stop-loss: precio bajó a ${current_price}"
+                        self._create_notif("stop_loss_hit", f"Stop-loss: {symbol}", f"Precio bajó a ${current_price:.4f} (SL: ${float(result.effective_sl):.4f})", severity="critical", asset=symbol.replace("USDT", ""))
 
                     sell_result = self._api_post("/api/ai-agent/execute", {
                         "action_type": "sell",
@@ -508,7 +529,15 @@ class AITradingAgent:
         provider = self._intelligence_provider
         assert provider is not None
 
-        self._add_log("info", "Consultando Intelligence Platform...", {"cycle": self._cycle, "phase": "intelligence_fetch"})
+        # Load user profile for profile-aware messaging
+        profile = self._get_user_profile()
+        risk_tol = profile.get("risk_tolerance") if profile else "moderate"
+        experience = profile.get("experience_level") if profile else "intermediate"
+        strategies = profile.get("preferred_strategies", []) if profile else []
+        goal = profile.get("trading_goal") if profile else "growth"
+        profile_label = {"conservative": "conservador", "moderate": "moderado", "aggressive": "agresivo"}.get(risk_tol, risk_tol)
+
+        self._add_log("info", f"Consultando Intelligence Platform... (perfil: {profile_label}, experiencia: {experience}, estrategia: {', '.join(strategies) or 'swing'}, objetivo: {goal})", {"cycle": self._cycle, "phase": "intelligence_fetch"})
 
         # 1. Get active alerts (always fetch, even if no signals)
         alerts = provider.get_alerts(limit=5)
@@ -516,6 +545,8 @@ class AITradingAgent:
             self._add_log("warn", f"Alerta {alert.asset}: {alert.message} (severity={alert.severity})", {
                 "cycle": self._cycle, "phase": "alert", "alert_type": alert.alert_type,
             })
+            sev = "critical" if alert.severity in ("critical", "high") else "warning" if alert.severity == "medium" else "info"
+            self._create_notif("news_high_impact", f"Alerta: {alert.asset}", alert.message, severity=sev, asset=alert.asset)
 
         # 2. Get global signals
         signals = provider.get_signals(limit=10)
@@ -527,7 +558,7 @@ class AITradingAgent:
         # which runs every 5 minutes regardless of agent state
 
         if not signals:
-            self._add_log("info", "No hay señales activas del Intelligence Platform", {"cycle": self._cycle, "phase": "no_signals"})
+            self._add_log("info", f"No hay señales activas — manteniendo posiciones según tu perfil {profile_label}", {"cycle": self._cycle, "phase": "no_signals"})
             self._hold_streak += 1
             self._adjust_interval()
             return
@@ -552,7 +583,7 @@ class AITradingAgent:
             if recommendation is None:
                 continue
 
-            self._add_log("info", f"Signal {signal.asset}: market={recommendation.market_decision} → personal={recommendation.personal_recommendation} ({recommendation.reason})", {
+            self._add_log("info", f"Signal {signal.asset}: market={recommendation.market_decision} → personal={recommendation.personal_recommendation} ({recommendation.reason}) — basado en tu perfil {profile_label}", {
                 "cycle": self._cycle, "phase": "portfolio_match",
                 "asset": signal.asset, "recommendation": recommendation.personal_recommendation,
                 "confidence": recommendation.confidence,
@@ -565,7 +596,7 @@ class AITradingAgent:
 
         # 5. Execute actions
         if not actions:
-            self._add_log("info", "Sin acciones personales tras portfolio match", {"cycle": self._cycle, "phase": "no_actions"})
+            self._add_log("info", f"Sin acciones personales tras portfolio match — tu perfil {profile_label} filtra señales de mayor riesgo", {"cycle": self._cycle, "phase": "no_actions"})
             self._hold_streak += 1
             self._adjust_interval()
             return
@@ -720,10 +751,38 @@ class AITradingAgent:
         except Exception as exc:
             logger.warning("[AI Agent] News fetch failed: %s", exc)
 
+    def _get_user_profile(self) -> dict | None:
+        """Fetch the user's onboarding profile from local DB."""
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.user_profile import UserProfile
+            session = SessionLocal()
+            try:
+                profile = session.query(UserProfile).filter(UserProfile.user_id == 0).first()
+                if profile:
+                    return profile.to_dict()
+                return None
+            finally:
+                session.close()
+        except Exception:
+            return None
+
+    def _risk_tolerance_to_profile(self, risk_tolerance: str | None) -> str:
+        """Map onboarding risk_tolerance to ai-server risk_profile."""
+        if risk_tolerance == "conservative":
+            return "passive"
+        elif risk_tolerance == "aggressive":
+            return "aggressive"
+        return "intermediate"
+
     def _build_portfolio_for_match(self, positions: list | None) -> dict:
         """Build portfolio dict for the Portfolio Matcher from open positions."""
         if not isinstance(positions, list):
             positions = []
+
+        # Fetch user profile to get real risk tolerance
+        profile = self._get_user_profile()
+        risk_profile = self._risk_tolerance_to_profile(profile.get("risk_tolerance") if profile else None)
 
         total_value = 0.0
         position_list = []
@@ -760,13 +819,23 @@ class AITradingAgent:
                 total_portfolio = equity
                 cash_pct = (cash / equity) * 100
 
-        return {
+        result = {
             "broker": "binance",
-            "risk_profile": "intermediate",
+            "risk_profile": risk_profile,
             "positions": position_list,
             "total_portfolio_value": total_portfolio,
             "cash_pct": cash_pct,
         }
+        # Include profile data for the ai-server to use
+        if profile:
+            result["user_profile"] = {
+                "experience_level": profile.get("experience_level"),
+                "risk_tolerance": profile.get("risk_tolerance"),
+                "preferred_strategies": profile.get("preferred_strategies", []),
+                "trading_goal": profile.get("trading_goal"),
+                "capital_range": profile.get("capital_range"),
+            }
+        return result
 
     def _get_user_hash(self) -> str:
         """Get a hash identifying the current user for personalization."""
@@ -785,13 +854,23 @@ class AITradingAgent:
         if not symbol.endswith("USDT"):
             symbol = symbol + "USDT"
 
+        # Get risk parameters from user profile and risk config
+        profile = self._get_user_profile()
+        risk_tol = profile.get("risk_tolerance") if profile else "moderate"
+        if risk_tol == "conservative":
+            sl_pct, tp_pct = 2.0, 5.0
+        elif risk_tol == "aggressive":
+            sl_pct, tp_pct = 5.0, 15.0
+        else:
+            sl_pct, tp_pct = 3.0, 8.0
+
         if rec_type == "BUY":
             return {
                 "type": "buy",
                 "symbol": symbol,
                 "confidence": rec.confidence,
-                "stop_loss_pct": 3,
-                "take_profit_pct": 8,
+                "stop_loss_pct": sl_pct,
+                "take_profit_pct": tp_pct,
                 "reason": rec.reason,
             }
         elif rec_type in ("TAKE_PARTIAL_PROFIT", "SELL_FULL"):
@@ -864,6 +943,17 @@ class AITradingAgent:
         """Recopila datos del sistema para enviar al LLM (comprimido para ahorrar tokens)."""
         try:
             ctx: dict[str, Any] = {}
+
+            # User profile (so the LLM knows who it's trading for)
+            profile = self._get_user_profile()
+            if profile:
+                ctx["user_profile"] = {
+                    "experience": profile.get("experience_level"),
+                    "risk_tolerance": profile.get("risk_tolerance"),
+                    "strategies": profile.get("preferred_strategies", []),
+                    "goal": profile.get("trading_goal"),
+                    "capital_range": profile.get("capital_range"),
+                }
 
             # Account (minimal fields)
             snapshots = self._api_get("/api/snapshots?limit=1")
@@ -1060,10 +1150,13 @@ class AITradingAgent:
             if isinstance(result, dict) and result.get("status") == "executed":
                 self._add_log("info", f"Compra {symbol} ejecutada: {result.get('quantity')} @ ${result.get('price')}")
                 self._notify_telegram("buy", symbol, result.get("quantity", 0), result.get("price", 0), reason)
+                self._create_notif("trade_executed", f"Compra ejecutada: {symbol}", f"Qty: {result.get('quantity')} @ ${result.get('price')} — {reason}", severity="info", asset=symbol.replace("USDT", ""))
             elif isinstance(result, dict) and result.get("status") == "rejected":
                 self._add_log("warn", f"Compra {symbol} rechazada: {result.get('reason', 'risk manager')}")
+                self._create_notif("risk_warning", f"Compra rechazada: {symbol}", result.get("reason", "Risk manager"), severity="warning", asset=symbol.replace("USDT", ""))
             elif isinstance(result, dict) and result.get("status") == "error":
                 self._add_log("error", f"Error comprando {symbol}: {result.get('reason')}")
+                self._create_notif("system_event", f"Error en compra: {symbol}", result.get("reason", "Error desconocido"), severity="critical", asset=symbol.replace("USDT", ""))
             else:
                 self._add_log("warn", f"Respuesta inesperada: {result}")
 
@@ -1091,6 +1184,20 @@ class AITradingAgent:
                     notify_trade(user.telegram_chat_id, action, symbol, float(quantity), float(price), reason)
             finally:
                 db.close()
+        except Exception:
+            pass
+
+    def _create_notif(self, type: str, title: str, message: str, severity: str = "info", asset: str | None = None) -> None:
+        """Create a user notification in the DB."""
+        try:
+            from app.database.session import SessionLocal
+            from app.services.notification_service import create_notification
+
+            session = SessionLocal()
+            try:
+                create_notification(session, type=type, title=title, message=message, severity=severity, asset=asset)
+            finally:
+                session.close()
         except Exception:
             pass
 

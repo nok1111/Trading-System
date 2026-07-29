@@ -193,7 +193,29 @@ def _get_top_movers(session: Session) -> list[dict[str, Any]]:
     return movers[:5]
 
 
-def _build_buy_reason(a: IntelligenceAnalysis) -> str:
+def _get_user_profile_dict(session: Session) -> dict | None:
+    """Fetch user profile for personalization."""
+    try:
+        from app.database.models.user_profile import UserProfile
+        profile = session.execute(
+            select(UserProfile).where(UserProfile.user_id == 0)
+        ).scalar_one_or_none()
+        if profile:
+            return profile.to_dict()
+    except Exception:
+        pass
+    return None
+
+
+def _profile_label(profile: dict | None) -> str:
+    """Get a Spanish label for the user's risk profile."""
+    if not profile:
+        return ""
+    risk = profile.get("risk_tolerance", "")
+    return {"conservative": "conservador", "moderate": "moderado", "aggressive": "agresivo"}.get(risk, risk)
+
+
+def _build_buy_reason(a: IntelligenceAnalysis, profile: dict | None = None) -> str:
     """Build a conversational, partner-like reason for why this asset is a buy."""
     reasons = a.reasons if isinstance(a.reasons, dict) else {}
     metrics = a.metrics if isinstance(a.metrics, dict) else {}
@@ -264,6 +286,17 @@ def _build_buy_reason(a: IntelligenceAnalysis) -> str:
     if closing_bits:
         sentences.append(", ".join(closing_bits))
 
+    # --- Profile-aware closing ---
+    p_label = _profile_label(profile)
+    if p_label:
+        conf = float(a.confidence) if a.confidence else 0
+        if profile.get("risk_tolerance") == "conservative" and conf < 0.7:
+            sentences.append(f"Para tu perfil {p_label}, esta señal está por debajo del umbral de convicción que te recomiendo")
+        elif profile.get("risk_tolerance") == "aggressive" and conf >= 0.7:
+            sentences.append(f"Adecuado para tu perfil {p_label} — oportunidad de alto potencial")
+        else:
+            sentences.append(f"Adecuado para tu perfil {p_label}")
+
     if not sentences:
         return "Señal de compra detectada por el análisis técnico automatizado."
 
@@ -277,7 +310,7 @@ def _build_buy_reason(a: IntelligenceAnalysis) -> str:
     return text
 
 
-def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
+def _get_buy_recommendations(session: Session, profile: dict | None = None) -> list[dict[str, Any]]:
     """Get buy recommendations with broker info for quick action."""
     # Get assets with BUY decision from analysis
     analyses = list(
@@ -315,7 +348,7 @@ def _get_buy_recommendations(session: Session) -> list[dict[str, Any]]:
             "confidence": float(a.confidence) * 100 if a.confidence else 50,
             "riskLevel": a.risk_level,
             "brokers": broker_names,
-            "reason": _build_buy_reason(a),
+            "reason": _build_buy_reason(a, profile),
         })
 
     return recommendations[:3]
@@ -396,8 +429,9 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
     # 6. Top movers (buy/sell opportunities)
     movers = _get_top_movers(session)
 
-    # 7. Buy recommendations with broker info
-    buy_recs = _get_buy_recommendations(session)
+    # 7. Buy recommendations with broker info (profile-aware)
+    profile = _get_user_profile_dict(session)
+    buy_recs = _get_buy_recommendations(session, profile)
 
     # 8. High impact news
     hours_since = max(1, int((datetime.utcnow() - last_login_naive).total_seconds() / 3600))
@@ -418,6 +452,7 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
         "movers": movers,
         "buyRecommendations": buy_recs,
         "highImpactNews": high_impact_news,
+        "user_profile": profile,
     }
 
 
@@ -492,6 +527,9 @@ def get_today_priorities(session: Session, user_id: int) -> dict[str, Any]:
 
 def get_activity(session: Session, *, hours: int = 24, limit: int = 20) -> dict[str, Any]:
     """Build the 'AI Activity' timeline payload."""
+    profile = _get_user_profile_dict(session)
+    p_label = _profile_label(profile)
+
     journal = EventJournal(session)
     events = journal.get_recent(hours=hours, limit=limit)
 
@@ -505,7 +543,7 @@ def get_activity(session: Session, *, hours: int = 24, limit: int = 20) -> dict[
                 "action": e.title,
                 "detail": e.detail or "",
             })
-        return {"entries": entries}
+        return {"entries": entries, "profile_label": p_label}
 
     # Fallback: use AI agent logs if journal is empty
     try:
@@ -523,6 +561,6 @@ def get_activity(session: Session, *, hours: int = 24, limit: int = 20) -> dict[
                 "action": log.get("message", ""),
                 "detail": log.get("message", ""),
             })
-        return {"entries": entries}
+        return {"entries": entries, "profile_label": p_label}
     except Exception:
-        return {"entries": []}
+        return {"entries": [], "profile_label": p_label}

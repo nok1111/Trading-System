@@ -64,6 +64,13 @@ class PortfolioMatcher:
         market_decision = signal.get("decision", "NO_ACTION")
         confidence = signal.get("confidence", 0.0)
 
+        # Adjust max allocation based on risk profile
+        max_alloc = portfolio.max_allocation_pct
+        if portfolio.risk_profile == "aggressive":
+            max_alloc = min(max_alloc * 1.5, 60.0)
+        elif portfolio.risk_profile == "passive":
+            max_alloc = min(max_alloc * 0.6, 25.0)
+
         # Buscar posición del usuario en este asset
         position = next(
             (p for p in portfolio.positions if p.get("symbol", "").upper() == asset.upper()),
@@ -71,7 +78,6 @@ class PortfolioMatcher:
         )
 
         current_allocation = position.get("allocation_pct", 0.0) if position else 0.0
-        max_alloc = portfolio.max_allocation_pct
 
         # Lógica determinista de personalización
         if market_decision in ("BUY", "BUY_ON_PULLBACK"):
@@ -127,6 +133,11 @@ class PortfolioMatcher:
         if portfolio.risk_profile == "passive" and recommendation in ("BUY", "BUY_PARTIAL"):
             recommendation = "BUY_PARTIAL" if recommendation == "BUY" else "WAIT"
             reason += " (perfil pasivo: reducir tamaño)"
+        elif portfolio.risk_profile == "aggressive" and recommendation == "WAIT":
+            recommendation = "BUY_PARTIAL"
+            reason += " (perfil agresivo: aprovechar oportunidad)"
+        elif portfolio.risk_profile == "aggressive" and recommendation == "TAKE_PARTIAL_PROFIT":
+            reason += " (perfil agresivo: mantener exposición)"
 
         # Calcular sugerencia de reducción si aplica
         suggested_action: dict[str, Any] = {}

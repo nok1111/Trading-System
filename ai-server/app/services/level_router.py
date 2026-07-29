@@ -27,27 +27,42 @@ class ModelConfig:
 def get_model_for_plan(plan: str) -> ModelConfig:
     """Selecciona el modelo LLM según el plan del usuario."""
     settings = get_settings()
+    provider = settings.AI_PROVIDER
+
+    # Pick model name based on provider
+    if provider == "gemini":
+        model_economic = settings.GEMINI_MODEL
+        model_medium = settings.GEMINI_MODEL
+        model_advanced = settings.GEMINI_MODEL
+    elif provider == "groq":
+        model_economic = settings.GROQ_MODEL_ECONOMIC
+        model_medium = settings.GROQ_MODEL_MEDIUM
+        model_advanced = settings.GROQ_MODEL_ADVANCED
+    else:
+        model_economic = settings.GROQ_MODEL_ECONOMIC
+        model_medium = settings.GROQ_MODEL_MEDIUM
+        model_advanced = settings.GROQ_MODEL_ADVANCED
 
     if plan == "premium":
         return ModelConfig(
-            provider=settings.AI_PROVIDER,
-            model=settings.GROQ_MODEL_ADVANCED,
+            provider=provider,
+            model=model_advanced,
             max_tokens=2000,
             temperature=0.4,
             level="advanced",
         )
     elif plan == "pro":
         return ModelConfig(
-            provider=settings.AI_PROVIDER,
-            model=settings.GROQ_MODEL_MEDIUM,
+            provider=provider,
+            model=model_medium,
             max_tokens=1500,
             temperature=0.3,
             level="medium",
         )
     else:
         return ModelConfig(
-            provider=settings.AI_PROVIDER,
-            model=settings.GROQ_MODEL_ECONOMIC,
+            provider=provider,
+            model=model_economic,
             max_tokens=1000,
             temperature=0.3,
             level="economic",

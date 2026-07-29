@@ -88,12 +88,19 @@ export function AIActivityTimeline({ data, loading }: { data: AIActivityData | n
     );
   }
 
+  const profileLabel = (data as any).profile_label || "";
+
   return (
     <div className="panel p-5">
       <div className="flex items-center gap-2 mb-4">
         <Activity size={16} className="text-[var(--color-primary)]" />
         <h3 className="text-[14px] font-bold text-[var(--color-text)]">Lo que mis agentes han estado haciendo</h3>
         <span className="text-[10px] text-[var(--color-text-muted)]">— en tiempo real</span>
+        {profileLabel && (
+          <span className="text-[10px] font-bold text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2 py-0.5 rounded-full ml-auto">
+            perfil {profileLabel}
+          </span>
+        )}
       </div>
 
       <div className="relative">
@@ -106,6 +113,7 @@ export function AIActivityTimeline({ data, loading }: { data: AIActivityData | n
         <Bot size={12} className="text-[var(--color-text-muted)]" />
         <span className="text-[10px] text-[var(--color-text-muted)]">
           {data.entries.length} cosas que pasaron mientras no estabas
+          {profileLabel && ` — operando bajo tu perfil ${profileLabel}`}
         </span>
       </div>
     </div>

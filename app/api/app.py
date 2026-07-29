@@ -57,6 +57,15 @@ app.include_router(ai_agent.router)
 @app.on_event("startup")
 def _startup_price_stream() -> None:
     settings = get_settings()
+    # Auto-create any new tables (idempotent — only creates missing tables)
+    try:
+        from app.database.base import Base
+        import app.database.models  # noqa: F401 — ensure all models are registered
+        from app.database.session import engine
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to auto-create DB tables: %s", exc)
     try:
         init_price_stream(settings.symbols_list, testnet=settings.BINANCE_TESTNET)
     except Exception as exc:

@@ -199,6 +199,10 @@ export interface PendingNotification {
   message: string;
   timestamp: string;
   read: boolean;
+  severity: "info" | "warning" | "critical";
+  asset: string | null;
+  action_url: string | null;
+  metadata: Record<string, unknown>;
 }
 
 export interface ChangeItem {
