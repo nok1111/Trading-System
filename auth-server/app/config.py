@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Service URLs for monitoring (used by admin panel)
     TRADING_CLIENT_URL: str = "http://localhost:8080"
-    AI_SERVER_URL: str = "http://localhost:8081"
+    AI_SERVER_URL: str = "http://localhost:8001"
 
     @property
     def cors_origins_list(self) -> list[str]:
