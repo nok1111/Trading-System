@@ -63,8 +63,6 @@ export function AIAgentPage() {
   const [aiMode, setAiMode] = useState<"conservative" | "balanced" | "aggressive">("balanced");
   const [showConfig, setShowConfig] = useState(false);
   const [plan, setPlan] = useState<any>(null);
-  const [brokers, setBrokers] = useState<any[]>([]);
-  const [selectedBroker, setSelectedBroker] = useState<string>("paper");
 
   const loadStatus = useCallback(async () => {
     try {
@@ -94,20 +92,11 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
-  const loadBrokers = useCallback(async () => {
-    try {
-      const r = await api<any>("/api/ai-agent/brokers");
-      setBrokers(r.brokers || []);
-      setSelectedBroker(r.current || "paper");
-    } catch {}
-  }, []);
-
   useEffect(() => {
     loadStatus();
     loadLog();
     loadStats();
     loadPlan();
-    loadBrokers();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
@@ -116,7 +105,7 @@ export function AIAgentPage() {
       clearInterval(id2);
       clearInterval(id3);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers]);
+  }, [loadStatus, loadLog, loadStats, loadPlan]);
 
   const start = async () => {
     try {
@@ -196,16 +185,6 @@ export function AIAgentPage() {
     }
   };
 
-  const selectBroker = async (brokerId: string) => {
-    try {
-      await api(`/api/ai-agent/broker?broker_id=${brokerId}`, { method: "PATCH" });
-      setSelectedBroker(brokerId);
-      toast(`Broker cambiado a ${brokerId}`);
-    } catch (e: any) {
-      toast(e.message, false);
-    }
-  };
-
   const isRunning = status?.is_running ?? false;
   const decisions = log.filter((e) => e.phase === "decision");
   const activityLog = log.slice(0, 60);
@@ -267,9 +246,9 @@ export function AIAgentPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="success" onClick={start} disabled={!canStart} className="h-9">▶ Start</Button>
+            <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9">▶ Start</Button>
             <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9">⏹ Stop</Button>
-            <Button variant="default" onClick={() => setShowConfig(!showConfig)} className="h-9">⚙ Config</Button>
+            <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9">⚙ Config</Button>
           </div>
         </div>
 
@@ -325,7 +304,7 @@ export function AIAgentPage() {
           ] as const).map((m) => (
             <button
               key={m.value}
-              onClick={() => setAiMode(m.value)}
+              onClick={() => !isRunning && setAiMode(m.value)}
               className={cn(
                 "px-3 h-9 rounded-[8px] text-[12px] font-bold transition-all border",
                 aiMode === m.value
@@ -339,7 +318,7 @@ export function AIAgentPage() {
           ))}
           <div className="flex items-center gap-2 ml-auto">
             <label className="flex items-center gap-2 text-[12px] font-bold cursor-pointer">
-              <input type="checkbox" checked={autoTrade} onChange={toggleAutoTrade} className="w-4 h-4 accent-[var(--color-accent)]" />
+              <input type="checkbox" checked={autoTrade} onChange={toggleAutoTrade} disabled={isRunning} className="w-4 h-4 accent-[var(--color-accent)]" />
               <span className="text-[var(--color-accent)]">Auto-trade</span>
             </label>
             <span className={cn(
@@ -353,91 +332,27 @@ export function AIAgentPage() {
           </div>
         </div>
 
-        {/* Broker selector */}
-        <div className="mt-3">
-          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
-            🏦 Broker — ¿Dónde debe ejecutar la IA?
-          </label>
-          <div className="flex gap-2 flex-wrap">
-            {brokers.map((b) => {
-              const isSelected = selectedBroker === b.id;
-              const isDisabled = b.id !== "paper" && !b.implemented;
-              const brokerColors: Record<string, string> = {
-                paper: "var(--color-info)",
-                binance: "#F0B90B",
-                bybit: "#F7A600",
-                coinbase: "#0052FF",
-                kraken: "#5841D8",
-                okx: "#000000",
-              };
-              const color = brokerColors[b.id] || "var(--color-accent)";
-              return (
-                <button
-                  key={b.id}
-                  onClick={() => !isDisabled && selectBroker(b.id)}
-                  disabled={isDisabled}
-                  className={cn(
-                    "px-3 h-9 rounded-[8px] text-[12px] font-bold transition-all border flex items-center gap-2",
-                    isSelected
-                      ? "text-white"
-                      : isDisabled
-                        ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] opacity-50 cursor-not-allowed"
-                        : !b.connected && b.id !== "paper"
-                          ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-                          : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
-                  )}
-                  style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
-                  title={
-                    isDisabled
-                      ? "No implementado todavía"
-                      : !b.connected && b.id !== "paper"
-                        ? "Conecta tu cuenta en Connections primero"
-                        : b.name
-                  }
-                >
-                  {b.id === "paper" && "📄"}
-                  {b.id === "binance" && "🟡"}
-                  {b.id === "bybit" && "🟠"}
-                  {b.id === "coinbase" && "🔵"}
-                  {b.id === "kraken" && "🟣"}
-                  {b.id === "okx" && "⚫"}
-                  {b.name}
-                  {b.connected && b.id !== "paper" && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-                  )}
-                  {!b.connected && b.implemented && b.id !== "paper" && (
-                    <span className="text-[8px] opacity-60">no conectado</span>
-                  )}
-                  {!b.implemented && b.id !== "paper" && (
-                    <span className="text-[8px] opacity-60">próximamente</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Config panel (collapsible) */}
         {showConfig && (
           <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Provider</label>
-                <Select value={provider} onChange={(e) => { setProvider(e.target.value); const ms = MODELS[e.target.value]; if (ms) setModel(ms[0].value); }} className="w-full">
+                <Select value={provider} onChange={(e) => { setProvider(e.target.value); const ms = MODELS[e.target.value]; if (ms) setModel(ms[0].value); }} disabled={isRunning} className="w-full">
                   {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </Select>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Model</label>
-                <Select value={model} onChange={(e) => setModel(e.target.value)} className="w-full">
+                <Select value={model} onChange={(e) => setModel(e.target.value)} disabled={isRunning} className="w-full">
                   {(MODELS[provider] || []).map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </Select>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Interval (sec)</label>
                 <div className="flex gap-1">
-                  <Input type="number" value={interval} onChange={(e) => setIntervalVal(parseInt(e.target.value) || 30)} min={10} className="w-20" />
-                  <Button variant="primary" size="sm" onClick={setIntervalApi}>Set</Button>
+                  <Input type="number" value={interval} onChange={(e) => setIntervalVal(parseInt(e.target.value) || 30)} min={10} disabled={isRunning} className="w-20" />
+                  <Button variant="primary" size="sm" onClick={setIntervalApi} disabled={isRunning}>Set</Button>
                 </div>
               </div>
             </div>
@@ -448,7 +363,7 @@ export function AIAgentPage() {
                     Groq API Key {isFree && <span className="text-[var(--color-warning)]">*required</span>}
                     {hasGroqKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
                   </label>
-                  <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Using saved key" : isFree ? "Paste your free Groq key" : "Server key available"} className="w-full" />
+                  <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Using saved key" : isFree ? "Paste your free Groq key" : "Server key available"} disabled={isRunning} className="w-full" />
                   <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis → console.groq.com/keys</a>
                 </div>
               )}
@@ -458,7 +373,7 @@ export function AIAgentPage() {
                     Gemini API Key {isFree && <span className="text-[var(--color-warning)]">*required</span>}
                     {hasGeminiKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
                   </label>
-                  <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Using saved key" : isFree ? "Paste your free Gemini key" : "Server key available"} className="w-full" />
+                  <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Using saved key" : isFree ? "Paste your free Gemini key" : "Server key available"} disabled={isRunning} className="w-full" />
                   <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis → aistudio.google.com/apikey</a>
                 </div>
               )}
@@ -467,7 +382,7 @@ export function AIAgentPage() {
                   <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
                     Premium API Key {hasPremiumKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
                   </label>
-                  <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Using saved key" : "Enter your API key"} className="w-full" />
+                  <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Using saved key" : "Enter your API key"} disabled={isRunning} className="w-full" />
                   {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → platform.openai.com/api-keys</a>}
                   {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → platform.deepseek.com/api_keys</a>}
                   {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → console.mistral.ai/api-keys</a>}
@@ -476,16 +391,16 @@ export function AIAgentPage() {
             </div>
             <div className="flex gap-3 items-center flex-wrap">
               <div className="flex gap-2">
-                <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] cursor-pointer text-[12px] font-bold">
-                  <input type="radio" name="tradeMode" checked={tradeMode === "paper"} onChange={() => setTradeMode("paper")} className="accent-[var(--color-success)]" />
+                <label className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] font-bold", isRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                  <input type="radio" name="tradeMode" checked={tradeMode === "paper"} onChange={() => setTradeMode("paper")} disabled={isRunning} className="accent-[var(--color-success)]" />
                   <span className="text-[var(--color-success)]">Paper</span>
                 </label>
-                <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] cursor-pointer text-[12px] font-bold">
-                  <input type="radio" name="tradeMode" checked={tradeMode === "live"} onChange={() => setTradeMode("live")} className="accent-[var(--color-danger)]" />
+                <label className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] font-bold", isRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
+                  <input type="radio" name="tradeMode" checked={tradeMode === "live"} onChange={() => setTradeMode("live")} disabled={isRunning} className="accent-[var(--color-danger)]" />
                   <span className="text-[var(--color-danger)]">Live</span>
                 </label>
               </div>
-              <Button variant="default" size="sm" onClick={testKey}>Test API Key</Button>
+              <Button variant="default" size="sm" onClick={testKey} disabled={isRunning}>Test API Key</Button>
               {testResult && <span className="text-[12px] font-bold">{testResult}</span>}
             </div>
             {tradeMode === "live" && (
