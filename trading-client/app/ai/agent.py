@@ -895,6 +895,11 @@ class AITradingAgent:
             trading_mode = settings.TRADING_MODE
             broker_name = settings.BROKER_PROVIDER
 
+            self._add_log("info", f"Guardando {len(actions)} recomendaciones en DB...", {
+                "cycle": self._cycle, "phase": "saving_recommendations",
+                "actions": [{"type": a.get("type"), "symbol": a.get("symbol"), "confidence": a.get("confidence")} for a in actions],
+            })
+
             session = SessionLocal()
             try:
                 # Build a lookup of signal data by asset
@@ -903,15 +908,23 @@ class AITradingAgent:
                     asset_key = sig.asset.upper().replace("USDT", "").replace("USDC", "")
                     signal_map[asset_key] = sig
 
+                saved_count = 0
                 for action in actions:
                     symbol = action.get("symbol", "").upper()
                     asset = symbol.replace("USDT", "").replace("USDC", "")
                     sig = signal_map.get(asset)
 
+                    # Normalize confidence: LLM may send 90 (percent) or 0.9 (decimal)
+                    raw_conf = action.get("confidence", 0)
+                    conf_val = float(raw_conf)
+                    # If confidence > 1, treat as percentage and convert to decimal
+                    if conf_val > 1:
+                        conf_val = conf_val / 100.0
+
                     rec = AIRecommendation(
                         asset=asset,
                         action_type=action.get("type", "HOLD").upper(),
-                        confidence=float(action.get("confidence", 0)),
+                        confidence=conf_val,
                         reason=action.get("reason", ""),
                         stop_loss_pct=action.get("stop_loss_pct"),
                         take_profit_pct=action.get("take_profit_pct"),
@@ -928,15 +941,17 @@ class AITradingAgent:
                         },
                     )
                     session.add(rec)
+                    saved_count += 1
 
                 session.commit()
-                self._add_log("info", f"{len(actions)} recomendaciones guardadas en Reportes", {
+                self._add_log("info", f"{saved_count} recomendaciones guardadas en Reportes", {
                     "cycle": self._cycle, "phase": "recommendations_saved",
                 })
             finally:
                 session.close()
         except Exception as exc:
             logger.warning("[AI Agent] Failed to save recommendations: %s", exc)
+            self._add_log("error", f"Error guardando recomendaciones en DB: {exc}", {"phase": "save_recommendations_error"})
 
     def _fetch_news(self) -> None:
         """Fetch and store important crypto news (runs every few cycles)."""
