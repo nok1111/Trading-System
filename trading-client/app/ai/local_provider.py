@@ -29,6 +29,7 @@ class LocalAIProvider(AIProvider):
         self._config = config
         self._provider = config.provider
         self._log: list[str] = []
+        self._last_http_error: str | None = None
 
     def get_name(self) -> str:
         return f"local:{self._provider}"
@@ -87,6 +88,8 @@ class LocalAIProvider(AIProvider):
             error_msg = f"Ni {self._provider}, fallback ni Ollama disponibles."
             if self._log:
                 error_msg += " Logs: " + "; ".join(self._log[-3:])
+            if self._last_http_error:
+                error_msg += f" Último error HTTP: {self._last_http_error}"
             return AIResponse(
                 decision=None,
                 provider_name=self.get_name(),
@@ -104,6 +107,9 @@ class LocalAIProvider(AIProvider):
 
     def get_logs(self) -> list[str]:
         return list(self._log)
+
+    def get_last_http_error(self) -> str | None:
+        return self._last_http_error
 
     def _get_model_name(self) -> str:
         if self._provider == "groq":
@@ -140,9 +146,13 @@ class LocalAIProvider(AIProvider):
             content = resp.json()["choices"][0]["message"]["content"]
             return self._parse_response(content)
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Groq API error {exc.response.status_code}: {exc.response.text[:200]}")
+            status = exc.response.status_code
+            detail = exc.response.text[:300] if exc.response.text else ""
+            self._last_http_error = f"HTTP {status}: {detail}"
+            logger.error(f"Groq API error {status}: {detail}")
             return None
         except Exception as exc:
+            self._last_http_error = str(exc)
             logger.error(f"Error consultando Groq: {exc}")
             return None
 
@@ -169,9 +179,13 @@ class LocalAIProvider(AIProvider):
             content = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
             return self._parse_response(content)
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Gemini API error {exc.response.status_code}: {exc.response.text[:200]}")
+            status = exc.response.status_code
+            detail = exc.response.text[:300] if exc.response.text else ""
+            self._last_http_error = f"HTTP {status}: {detail}"
+            logger.error(f"Gemini API error {status}: {detail}")
             return None
         except Exception as exc:
+            self._last_http_error = str(exc)
             logger.error(f"Error consultando Gemini: {exc}")
             return None
 
@@ -201,9 +215,13 @@ class LocalAIProvider(AIProvider):
             content = resp.json()["choices"][0]["message"]["content"]
             return self._parse_response(content)
         except httpx.HTTPStatusError as exc:
-            logger.error(f"{self._provider} API error {exc.response.status_code}: {exc.response.text[:200]}")
+            status = exc.response.status_code
+            detail = exc.response.text[:300] if exc.response.text else ""
+            self._last_http_error = f"HTTP {status}: {detail}"
+            logger.error(f"{self._provider} API error {status}: {detail}")
             return None
         except Exception as exc:
+            self._last_http_error = str(exc)
             logger.error(f"Error consultando {self._provider}: {exc}")
             return None
 

@@ -554,6 +554,7 @@ class AITradingAgent:
         decision = self._ask_llm(context)
         if not decision:
             self._add_log("warn", "El LLM no respondió", {"cycle": self._cycle, "phase": "error"})
+            self._handle_llm_failure()
             return
 
         # Log the full decision with all fields
@@ -682,7 +683,10 @@ class AITradingAgent:
 
         decision = self._ask_llm(combined_context)
         if not decision:
-            # LLM failed — fall back to signal-based execution
+            # LLM failed — check if it's a critical error (quota/auth) before falling back
+            if self._handle_llm_failure():
+                return
+            # Non-critical error — fall back to signal-based execution
             self._add_log("warn", "LLM no respondió, usando señales remotas directamente", {"cycle": self._cycle, "phase": "llm_fallback"})
             if not signals:
                 self._add_log("info", f"No hay señales activas ni LLM — manteniendo posiciones según tu perfil {profile_label}", {"cycle": self._cycle, "phase": "no_signals"})
@@ -1299,6 +1303,32 @@ class AITradingAgent:
         if "UP" in s and s.endswith("UPUSDT") and not s.startswith("UP"):
             return False
         return True
+
+    def _handle_llm_failure(self) -> bool:
+        """Check if the LLM failure is critical (quota/auth) and stop the agent.
+
+        Returns True if the agent was stopped (critical error), False if it can continue.
+        """
+        if not isinstance(self._ai_provider, LocalAIProvider):
+            return False
+        http_err = self._ai_provider.get_last_http_error()
+        if not http_err:
+            return False
+        err_lower = http_err.lower()
+        is_quota = "429" in err_lower or "rate limit" in err_lower or "quota" in err_lower
+        is_auth = "401" in err_lower or "403" in err_lower or "invalid" in err_lower or "unauthorized" in err_lower
+        if is_quota or is_auth:
+            reason = "Cuota agotada (rate limit 429)" if is_quota else "API Key inválida o no autorizada (401/403)"
+            self._add_log("error", f"🛑 Agente detenido — {reason}. Detalle: {http_err}", {"phase": "llm_critical_error"})
+            self._create_notif(
+                "system_event",
+                "AI Agent detenido",
+                f"{reason}. Revisa tu API key del proveedor {self.provider} en Config.",
+                severity="critical",
+            )
+            self._stop_event.set()
+            return True
+        return False
 
     def _ask_llm(self, context: dict) -> dict | None:
         """Envía el contexto al proveedor de IA y recibe la decisión validada."""
