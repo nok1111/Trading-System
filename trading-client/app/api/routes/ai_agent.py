@@ -1200,17 +1200,14 @@ def set_ai_agent_broker(
     if broker_id != "paper" and not is_implemented(broker_id):
         return {"status": "error", "reason": f"Broker '{broker_id}' no implementado"}
 
-    # If selecting a real broker, check user has connected it
+    # Warn if not connected (but still allow setting it)
+    connected = False
     if broker_id != "paper" and current_user:
-        from app.services.broker_account_service import list_accounts
-        from app.database.session import SessionLocal
-
         db = SessionLocal()
         try:
+            from app.services.broker_account_service import list_accounts
             accounts = list_accounts(db, current_user.id)
             connected = any(a.get("broker_id") == broker_id for a in accounts)
-            if not connected:
-                return {"status": "error", "reason": f"No tienes {broker_id} conectado. Ve a Conexiones."}
         finally:
             db.close()
 

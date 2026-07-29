@@ -361,7 +361,7 @@ export function AIAgentPage() {
           <div className="flex gap-2 flex-wrap">
             {brokers.map((b) => {
               const isSelected = selectedBroker === b.id;
-              const isDisabled = !b.connected || !b.implemented;
+              const isDisabled = b.id !== "paper" && !b.implemented;
               const brokerColors: Record<string, string> = {
                 paper: "var(--color-info)",
                 binance: "#F0B90B",
@@ -382,10 +382,18 @@ export function AIAgentPage() {
                       ? "text-white"
                       : isDisabled
                         ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] opacity-50 cursor-not-allowed"
-                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                        : !b.connected && b.id !== "paper"
+                          ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                          : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
                   )}
                   style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
-                  title={isDisabled ? "No conectado o no implementado" : b.name}
+                  title={
+                    isDisabled
+                      ? "No implementado todavía"
+                      : !b.connected && b.id !== "paper"
+                        ? "Conecta tu cuenta en Connections primero"
+                        : b.name
+                  }
                 >
                   {b.id === "paper" && "📄"}
                   {b.id === "binance" && "🟡"}
@@ -396,6 +404,9 @@ export function AIAgentPage() {
                   {b.name}
                   {b.connected && b.id !== "paper" && (
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+                  )}
+                  {!b.connected && b.implemented && b.id !== "paper" && (
+                    <span className="text-[8px] opacity-60">no conectado</span>
                   )}
                   {!b.implemented && b.id !== "paper" && (
                     <span className="text-[8px] opacity-60">próximamente</span>
