@@ -581,6 +581,9 @@ class AITradingAgent:
         self._hold_streak = 0
         self._current_interval = self._base_interval
 
+        # Save recommendations to Reports tab (always, so users can review what the AI proposed)
+        self._save_recommendations(actions, [])
+
         if not self.auto_trade:
             self._add_log("info", f"Auto-trade deshabilitado. {len(actions)} acciones propuestas pero no ejecutadas", {"cycle": self._cycle, "phase": "proposed"})
             return
@@ -711,9 +714,11 @@ class AITradingAgent:
         self._hold_streak = 0
         self._current_interval = self._base_interval
 
+        # Save recommendations to Reports tab (always, so users can review what the AI proposed)
+        self._save_recommendations(actions, signals)
+
         if not self.auto_trade:
             self._add_log("info", f"Auto-trade deshabilitado. {len(actions)} acciones propuestas", {"cycle": self._cycle, "phase": "proposed"})
-            self._save_recommendations(actions, signals)
             return
 
         for action in actions:
