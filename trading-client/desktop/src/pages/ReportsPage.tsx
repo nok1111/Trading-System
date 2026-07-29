@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { getReports } from "../lib/intelligenceApi";
+import { api } from "../lib/api";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { cn } from "../lib/utils";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
@@ -21,21 +22,46 @@ export function ReportsPage() {
   const [asset, setAsset] = useState("BTC");
   const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await getReports(asset);
+      setReports(r as ReportItem[]);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [asset]);
 
   useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const r = await getReports(asset);
-        if (!alive) return;
-        setReports(r as ReportItem[]);
-      } catch { /* ignore */ }
-      if (alive) setLoading(false);
-    };
     load();
-    return () => { alive = false; };
-  }, [asset]);
+  }, [load]);
+
+  const handleAccept = async (e: React.MouseEvent, recId: number) => {
+    e.stopPropagation();
+    const id = `rec-${recId}`;
+    setActionLoading(id);
+    try {
+      await api(`/api/intelligence/reports/${recId}/accept`, { method: "POST" });
+      await load();
+    } catch (err) {
+      console.error("Accept failed:", err);
+    }
+    setActionLoading(null);
+  };
+
+  const handleDecline = async (e: React.MouseEvent, recId: number) => {
+    e.stopPropagation();
+    const id = `rec-${recId}`;
+    setActionLoading(id);
+    try {
+      await api(`/api/intelligence/reports/${recId}/decline`, { method: "POST" });
+      await load();
+    } catch (err) {
+      console.error("Decline failed:", err);
+    }
+    setActionLoading(null);
+  };
 
   const filtered = useMemo(() => {
     return typeFilter === "all" ? reports : reports.filter((r) => r.type === typeFilter);
@@ -167,6 +193,38 @@ export function ReportsPage() {
                       <div>
                         <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Razón</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.outlook}</p>
+                      </div>
+                    )}
+
+                    {/* Accept / Decline buttons for pending recommendations */}
+                    {r.id?.startsWith("rec-") && r.status === "pending" && (
+                      <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
+                        <button
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                          disabled={actionLoading === r.id}
+                          onClick={(e) => handleAccept(e, parseInt(r.id.replace("rec-", "")))}
+                        >
+                          {actionLoading === r.id ? "Procesando..." : "✓ Aceptar y ejecutar"}
+                        </button>
+                        <button
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
+                          disabled={actionLoading === r.id}
+                          onClick={(e) => handleDecline(e, parseInt(r.id.replace("rec-", "")))}
+                        >
+                          ✕ Declinar
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Status message for executed/dismissed */}
+                    {r.id?.startsWith("rec-") && r.status === "executed" && (
+                      <div className="text-[10px] text-[var(--color-success)] font-bold pt-1">
+                        ✓ Recomendación aceptada y ejecutada como paper trade
+                      </div>
+                    )}
+                    {r.id?.startsWith("rec-") && r.status === "dismissed" && (
+                      <div className="text-[10px] text-[var(--color-text-muted)] pt-1">
+                        ✕ Recomendación declinada
                       </div>
                     )}
                   </div>

@@ -984,3 +984,294 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
 
     _set_cache(f"reports_{asset}_{limit}", result, 60)
     return result
+
+
+@router.post("/reports/{rec_id}/accept")
+def accept_recommendation(rec_id: int) -> dict:
+    """Accept an AI recommendation and execute a simulated buy (paper mode).
+
+    Creates a Position and Trade in the DB with strategy_name='AI-Recommendation'.
+    Uses real live price from Binance for the entry.
+    """
+    from app.database.session import SessionLocal
+    from app.database.models.ai_recommendation import AIRecommendation
+    from app.database.models.position import Position
+    from app.database.models.trade import Trade
+    from decimal import Decimal as Dec
+    import httpx as _httpx
+
+    db = SessionLocal()
+    try:
+        rec = db.query(AIRecommendation).filter(AIRecommendation.id == rec_id).first()
+        if not rec:
+            return {"status": "error", "reason": "Recomendación no encontrada"}
+        if rec.status != "pending":
+            return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
+
+        symbol = rec.asset.upper() + "USDT"
+
+        # Fetch live price from Binance
+        try:
+            resp = _httpx.get(
+                f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return {"status": "error", "reason": f"No se pudo obtener precio de {symbol}"}
+            live_price = Dec(str(resp.json()["price"]))
+        except Exception as exc:
+            return {"status": "error", "reason": f"Error obteniendo precio: {exc}"}
+
+        # Calculate SL/TP prices
+        sl_pct = rec.stop_loss_pct or 3.0
+        tp_pct = rec.take_profit_pct or 6.0
+        stop_loss = live_price * (Dec(1) - Dec(str(sl_pct)) / Dec(100))
+        take_profit = live_price * (Dec(1) + Dec(str(tp_pct)) / Dec(100))
+
+        # Position size: use a fixed paper budget per trade ($1000 or 10% of default cash)
+        paper_budget = Dec("1000")
+
+        # Check if already has an open position in this symbol (paper)
+        existing = db.query(Position).filter(
+            Position.symbol == symbol,
+            Position.status == "open",
+            Position.strategy_name == "AI-Recommendation",
+        ).first()
+        if existing:
+            return {"status": "rejected", "reason": f"Ya hay posición paper abierta en {symbol}"}
+
+        quantity = paper_budget / live_price
+
+        # Create Position
+        pos = Position(
+            user_id=0,
+            symbol=symbol,
+            opened_at=datetime.now(tz=UTC),
+            side="long",
+            quantity=quantity,
+            entry_price=live_price,
+            current_price=live_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            unrealized_pnl=Dec("0"),
+            status="open",
+            strategy_name="AI-Recommendation",
+            metadata_json={
+                "source": "ai_recommendation",
+                "recommendation_id": rec.id,
+                "reason": rec.reason,
+                "confidence": float(rec.confidence),
+                "trading_mode": "paper",
+            },
+        )
+        db.add(pos)
+        db.flush()
+
+        # Create Trade
+        trade = Trade(
+            user_id=0,
+            timestamp=datetime.now(tz=UTC),
+            symbol=symbol,
+            side="BUY",
+            quantity=quantity,
+            price=live_price,
+            commission=Dec("0"),
+            slippage=Dec("0"),
+            realized_pnl=Dec("0"),
+            strategy_name="AI-Recommendation",
+            position_id=pos.id,
+            metadata_json={
+                "source": "ai_recommendation",
+                "recommendation_id": rec.id,
+                "trading_mode": "paper",
+            },
+        )
+        db.add(trade)
+
+        # Update recommendation status
+        rec.status = "executed"
+
+        db.commit()
+
+        return {
+            "status": "executed",
+            "symbol": symbol,
+            "side": "BUY",
+            "quantity": str(quantity),
+            "price": str(live_price),
+            "stop_loss": str(stop_loss),
+            "take_profit": str(take_profit),
+            "position_id": pos.id,
+            "trading_mode": "paper",
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/reports/{rec_id}/decline")
+def decline_recommendation(rec_id: int) -> dict:
+    """Decline an AI recommendation — marks it as dismissed."""
+    from app.database.session import SessionLocal
+    from app.database.models.ai_recommendation import AIRecommendation
+
+    db = SessionLocal()
+    try:
+        rec = db.query(AIRecommendation).filter(AIRecommendation.id == rec_id).first()
+        if not rec:
+            return {"status": "error", "reason": "Recomendación no encontrada"}
+        if rec.status != "pending":
+            return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
+
+        rec.status = "dismissed"
+        db.commit()
+
+        return {"status": "dismissed", "id": rec_id}
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()
+
+
+@router.get("/paper-positions")
+def get_paper_positions() -> list[dict]:
+    """Get paper positions created from accepted AI recommendations.
+
+    These are simulated positions that compete with real prices in real-time.
+    """
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from decimal import Decimal as Dec
+    import httpx as _httpx
+
+    # Fetch live prices
+    price_map: dict[str, float] = {}
+    try:
+        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+        for t in tickers:
+            price_map[t["symbol"]] = float(t["price"])
+    except Exception:
+        pass
+
+    db = SessionLocal()
+    try:
+        positions = db.query(Position).filter(
+            Position.strategy_name == "AI-Recommendation",
+            Position.status == "open",
+        ).order_by(Position.opened_at.desc()).all()
+
+        result = []
+        for p in positions:
+            current_price = price_map.get(p.symbol, float(p.current_price or p.entry_price or 0))
+            entry = float(p.entry_price or 0)
+            qty = float(p.quantity or 0)
+            pnl = (current_price - entry) * qty
+            pnl_pct = ((current_price - entry) / entry * 100) if entry > 0 else 0
+
+            # Update DB with live price
+            p.current_price = Dec(str(current_price))
+            p.unrealized_pnl = Dec(str(pnl))
+
+            result.append({
+                "id": p.id,
+                "symbol": p.symbol,
+                "side": p.side,
+                "quantity": qty,
+                "entry_price": entry,
+                "current_price": current_price,
+                "stop_loss": float(p.stop_loss) if p.stop_loss else None,
+                "take_profit": float(p.take_profit) if p.take_profit else None,
+                "unrealized_pnl": round(pnl, 4),
+                "pnl_pct": round(pnl_pct, 2),
+                "status": p.status,
+                "strategy_name": p.strategy_name,
+                "opened_at": p.opened_at.isoformat() if p.opened_at else None,
+                "metadata_json": p.metadata_json,
+                "invested": round(qty * entry, 2),
+                "usd_value": round(qty * current_price, 2),
+            })
+        db.commit()
+        return result
+    except Exception as exc:
+        logger.warning("Paper positions fetch failed: %s", exc)
+        return []
+    finally:
+        db.close()
+
+
+@router.post("/paper-positions/{position_id}/sell")
+def sell_paper_position(position_id: int) -> dict:
+    """Close a paper position at current market price."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from app.database.models.trade import Trade
+    from decimal import Decimal as Dec
+    import httpx as _httpx
+
+    db = SessionLocal()
+    try:
+        pos = db.query(Position).filter(
+            Position.id == position_id,
+            Position.strategy_name == "AI-Recommendation",
+            Position.status == "open",
+        ).first()
+        if not pos:
+            return {"status": "error", "reason": "Posición paper no encontrada"}
+
+        # Fetch live price
+        try:
+            resp = _httpx.get(
+                f"https://api.binance.com/api/v3/ticker/price?symbol={pos.symbol}",
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return {"status": "error", "reason": "No se pudo obtener precio"}
+            sell_price = Dec(str(resp.json()["price"]))
+        except Exception as exc:
+            return {"status": "error", "reason": f"Error obteniendo precio: {exc}"}
+
+        entry = pos.entry_price
+        qty = pos.quantity
+        realized_pnl = (sell_price - entry) * qty
+
+        # Close position
+        pos.status = "closed"
+        pos.closed_at = datetime.now(tz=UTC)
+        pos.current_price = sell_price
+        pos.realized_pnl = realized_pnl
+
+        # Create sell trade
+        trade = Trade(
+            user_id=0,
+            timestamp=datetime.now(tz=UTC),
+            symbol=pos.symbol,
+            side="SELL",
+            quantity=qty,
+            price=sell_price,
+            commission=Dec("0"),
+            slippage=Dec("0"),
+            realized_pnl=realized_pnl,
+            strategy_name="AI-Recommendation",
+            position_id=pos.id,
+            metadata_json={"source": "ai_recommendation", "trading_mode": "paper"},
+        )
+        db.add(trade)
+        db.commit()
+
+        return {
+            "status": "executed",
+            "symbol": pos.symbol,
+            "side": "SELL",
+            "quantity": str(qty),
+            "price": str(sell_price),
+            "realized_pnl": str(realized_pnl),
+            "position_id": pos.id,
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()

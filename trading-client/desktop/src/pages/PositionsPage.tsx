@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { Select } from "../components/ui/Input";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { fmt, fmtDate } from "../lib/utils";
+import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PositionChart } from "../components/PositionChart";
 
@@ -19,6 +20,8 @@ export function PositionsPage() {
   const [paperAction, setPaperAction] = useState("");
   const [depositAmount, setDepositAmount] = useState("1000");
   const [paperInterval, setPaperInterval] = useState("30");
+  const [activeTab, setActiveTab] = useState<"positions" | "paper">("positions");
+  const [paperPositions, setPaperPositions] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -70,6 +73,30 @@ export function PositionsPage() {
     return () => clearInterval(id);
   }, [loadPaperStatus]);
 
+  const loadPaperPositions = useCallback(async () => {
+    try {
+      const pp = await api<any[]>("/api/intelligence/paper-positions");
+      setPaperPositions(pp);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "paper") {
+      loadPaperPositions();
+      const id = setInterval(loadPaperPositions, 5000);
+      return () => clearInterval(id);
+    }
+  }, [activeTab, loadPaperPositions]);
+
+  const handlePaperSell = async (positionId: number) => {
+    try {
+      await api(`/api/intelligence/paper-positions/${positionId}/sell`, { method: "POST" });
+      await loadPaperPositions();
+    } catch (e) {
+      console.error("Paper sell failed:", e);
+    }
+  };
+
   const handlePaperStart = async () => {
     setPaperAction("starting");
     try {
@@ -118,8 +145,205 @@ export function PositionsPage() {
   const totalPnl = closed.reduce((a, p) => a + (p.pnl || 0), 0);
   const winCount = closed.filter((p) => (p.pnl || 0) > 0).length;
 
+  const paperTotalPnl = paperPositions.reduce((a, p) => a + (p.unrealized_pnl || 0), 0);
+  const paperTotalValue = paperPositions.reduce((a, p) => a + (p.usd_value || 0), 0);
+
   return (
     <div className="p-5 space-y-4">
+      {/* Tab selector */}
+      <div className="flex gap-2 border-b border-[var(--color-border)] pb-2">
+        <button
+          className={cn(
+            "px-3 h-8 rounded-[6px] text-[12px] font-bold transition-colors",
+            activeTab === "positions"
+              ? "bg-[var(--color-primary)] text-white"
+              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+          )}
+          onClick={() => setActiveTab("positions")}
+        >
+          Posiciones
+        </button>
+        <button
+          className={cn(
+            "px-3 h-8 rounded-[6px] text-[12px] font-bold transition-colors flex items-center gap-1.5",
+            activeTab === "paper"
+              ? "bg-[var(--color-info)] text-white"
+              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+          )}
+          onClick={() => setActiveTab("paper")}
+        >
+          Paper Positions
+          {paperPositions.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] bg-[var(--color-info)]/20 text-[var(--color-info)]">
+              {paperPositions.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Paper Positions Tab */}
+      {activeTab === "paper" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card>
+              <CardLabel>Paper Posiciones Activas</CardLabel>
+              <CardValue className="text-[var(--color-info)]">
+                {paperPositions.length}
+              </CardValue>
+            </Card>
+            <Card>
+              <CardLabel>Valor Total</CardLabel>
+              <CardValue>${fmt(paperTotalValue)}</CardValue>
+            </Card>
+            <Card>
+              <CardLabel>PnL No Realizado</CardLabel>
+              <CardValue
+                className={
+                  paperTotalPnl >= 0
+                    ? "text-[var(--color-success)]"
+                    : "text-[var(--color-danger)]"
+                }
+              >
+                {paperTotalPnl >= 0 ? "+" : ""}${fmt(Math.abs(paperTotalPnl))}
+              </CardValue>
+            </Card>
+          </div>
+
+          {paperPositions.length === 0 ? (
+            <div className="text-center py-12 text-[12px] text-[var(--color-text-muted)]">
+              No hay paper positions activas.
+              <br />
+              Acepta recomendaciones desde la pestaña Reportes para crear posiciones simuladas.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {paperPositions.map((p) => {
+                const entry = Number(p.entry_price || 0);
+                const current = Number(p.current_price || 0);
+                const sl = Number(p.stop_loss || 0);
+                const tp = Number(p.take_profit || 0);
+                const pnl = Number(p.unrealized_pnl || 0);
+                const pnlPct = Number(p.pnl_pct || 0);
+                const isProfit = pnl >= 0;
+                const qty = Number(p.quantity || 0);
+                const invested = Number(p.invested || 0);
+                const meta = p.metadata_json || {};
+                return (
+                  <Card key={p.id}>
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon symbol={p.symbol} size={32} />
+                        <div>
+                          <span className="font-bold text-lg">{p.symbol}</span>
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-info)] text-white">PAPER</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-[var(--color-text-muted)]">
+                          {fmtDate(p.opened_at)}
+                        </div>
+                        <div
+                          className={`text-lg font-bold ${
+                            isProfit
+                              ? "text-[var(--color-success)]"
+                              : "text-[var(--color-danger)]"
+                          }`}
+                        >
+                          {isProfit ? "+" : ""}${fmt(Math.abs(pnl))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Entry</div>
+                        <div className="num font-bold">${fmt(entry)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Actual</div>
+                        <div className={`num font-bold ${isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>
+                          ${fmt(current)}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Cant.</div>
+                        <div className="num font-bold">{qty.toFixed(6)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-danger)] uppercase">Stop Loss</div>
+                        <div className="num font-bold text-[var(--color-danger)]">${fmt(sl)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-success)] uppercase">Take Profit</div>
+                        <div className="num font-bold text-[var(--color-success)]">${fmt(tp)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Inversión</div>
+                        <div className="num font-bold">${fmt(invested)}</div>
+                      </div>
+                    </div>
+
+                    {/* PnL progress bar */}
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-xs text-[var(--color-text-muted)]">PnL {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%</span>
+                        <span className={`text-sm font-bold ${isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}`}>
+                          {isProfit ? "+" : ""}${fmt(Math.abs(pnl))}
+                        </span>
+                      </div>
+                      <div className="relative h-2 rounded-full bg-[var(--color-surface-3)] overflow-hidden">
+                        {isProfit && tp > 0 ? (
+                          <div
+                            className="absolute left-1/2 h-full bg-[var(--color-success)] rounded-full"
+                            style={{ width: `${Math.min(Math.abs(pnlPct) / Math.abs(((tp - entry) / entry) * 100) * 50, 50)}%` }}
+                          />
+                        ) : !isProfit && sl > 0 ? (
+                          <div
+                            className="absolute right-1/2 h-full bg-[var(--color-danger)] rounded-full"
+                            style={{ width: `${Math.min(Math.abs(pnlPct) / Math.abs(((entry - sl) / entry) * 100) * 50, 50)}%` }}
+                          />
+                        ) : null}
+                        <div className="absolute top-0 left-1/2 w-px h-full bg-[var(--color-border)]" />
+                      </div>
+                      <div className="flex justify-between text-[9px] text-[var(--color-text-muted)] mt-1">
+                        <span>SL ${fmt(sl)}</span>
+                        <span>Entry ${fmt(entry)}</span>
+                        <span>TP ${fmt(tp)}</span>
+                      </div>
+                    </div>
+
+                    {/* Reason */}
+                    {meta.reason && (
+                      <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Razón IA</span>
+                        <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{meta.reason}</p>
+                      </div>
+                    )}
+
+                    {/* Sell button */}
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handlePaperSell(p.id)}
+                      >
+                        Vender (Paper)
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Positions Tab */}
+      {activeTab === "positions" && (
+        <>
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
         <Card>
@@ -527,6 +751,8 @@ export function PositionsPage() {
             Sin posiciones. El AI Agent abrirá posiciones automáticamente.
           </p>
         </Card>
+      )}
+    </>
       )}
     </div>
   );
