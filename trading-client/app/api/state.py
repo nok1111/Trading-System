@@ -1,5 +1,6 @@
 """Shared mutable state across API routers."""
 
+import os
 import threading
 import time
 
@@ -15,6 +16,7 @@ ai_shared_broker = None
 ai_shared_broker_keys: tuple | None = None
 ai_allocated_capital: float = float(get_settings().AI_ALLOCATED_CAPITAL) if get_settings().AI_ALLOCATED_CAPITAL else 0.0
 ai_jwt_token: str | None = None  # JWT token for Auth Server grant requests
+ai_selected_broker: str = os.environ.get("AI_SELECTED_BROKER", "paper")  # Broker where AI Agent executes trades
 
 # ML training
 ml_status: dict = {

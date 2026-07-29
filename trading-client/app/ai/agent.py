@@ -41,16 +41,24 @@ PERFIL DEL USUARIO: El contexto incluye "user_profile" con el perfil del trader.
 - Si el perfil es "conservative" y la confianza es < 0.7, NO compres — menciona en "analysis" que se descarta por no cumplir el umbral del perfil conservador
 - Si el perfil es "aggressive" y hay momentum, puedes ser más resolutivo
 
+SEÑALES REMOTAS: El contexto puede incluir "remote_signals" con señales de la Intelligence Platform (AI Server). USA estas señales COMO INPUT ADICIONAL:
+- Si una señal remota dice "BUY" o "STRONG_BUY" y tu análisis técnico local lo confirma → COMPRA con confianza alta
+- Si una señal remota dice "BUY" pero tu análisis técnico local dice "SELL" → NO compres, menciona la discrepancia en "analysis"
+- Si no hay señales remotas (remote_signals=[]) pero tu análisis técnico local encuentra oportunidad → COMPRA basado en tu criterio
+- Las señales remotas tienen "reasons" — úsalas para enriquecer tu "reason" en las acciones
+- Si hay "remote_alerts" en el contexto, considéralas en tu "risk_assessment"
+
 SOLO COMPRAS. Las ventas son automáticas con trailing stop y take-profit. NO incluyas "sell".
 
 FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son SELL/STRONG_SELL, o ya tienes 5 posiciones abiertas. En cualquier otro caso, BUSCA oportunidades.
 
 PRIORIDAD DE COMPRA (compra el mejor candidato del ciclo):
 1. Technical signal BUY o STRONG_BUY → compra INMEDIATAMENTE
-2. RSI < 40 + trend bullish → compra (rebote inminente)
-3. Gainer con volume_relative > 1.2 + cambio > 2% → compra (momentum)
-4. Precio cerca de soporte (Bollinger lower band) → compra
-5. Si hay cash > $1000 y 0 posiciones → compra el MEJOR candidato disponible
+2. Remote signal BUY/STRONG_BUY confirmado por technical → compra INMEDIATAMENTE (alta confianza)
+3. RSI < 40 + trend bullish → compra (rebote inminente)
+4. Gainer con volume_relative > 1.2 + cambio > 2% → compra (momentum)
+5. Precio cerca de soporte (Bollinger lower band) → compra
+6. Si hay cash > $1000 y 0 posiciones → compra el MEJOR candidato disponible
 
 confidence 0-1. Cash>$5000=suficiente. SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical.
 
@@ -517,14 +525,15 @@ class AITradingAgent:
         self._add_log("info", f"--- Ciclo {self._cycle} completado ---", {"cycle": self._cycle, "phase": "end"})
 
     def _tick_intelligence(self) -> None:
-        """Intelligence Platform mode: consume signals from ai-server instead of calling LLM.
+        """Intelligence Platform mode: combine remote signals + local technical analysis + LLM.
 
         Flow:
         1. Get active signals from /v1/intelligence/signals
         2. Get active alerts from /v1/intelligence/alerts
-        3. For each signal, portfolio-match with user's positions
-        4. Execute actions based on personal recommendations
-        5. Log alerts as warnings
+        3. Gather local technical context (movers, RSI, MACD, etc.)
+        4. Send combined data (signals + local context) to LLM for decision
+        5. Execute actions from LLM decision (which may differ from raw signals)
+        6. Log alerts as warnings
         """
         provider = self._intelligence_provider
         assert provider is not None
@@ -554,49 +563,73 @@ class AITradingAgent:
         # 2.5. Record events to journal for multi-user dashboard
         self._record_events_to_journal(signals, alerts)
 
-        # News fetching is now handled by the independent intelligence scheduler
-        # which runs every 5 minutes regardless of agent state
+        # 3. Gather local technical context (movers, RSI, MACD, positions, etc.)
+        local_context = self._gather_context()
 
-        if not signals:
-            self._add_log("info", f"No hay señales activas — manteniendo posiciones según tu perfil {profile_label}", {"cycle": self._cycle, "phase": "no_signals"})
-            self._hold_streak += 1
-            self._adjust_interval()
-            return
+        # 4. Build combined context for LLM: remote signals + local technical data
+        combined_context: dict[str, Any] = dict(local_context)  # Start with local context (acc, positions, spot, futures, technical, etc.)
 
-        # 3. Gather user portfolio for personalization
-        positions = self._api_get("/api/positions?status=open&limit=20")
-        portfolio_data = self._build_portfolio_for_match(positions)
+        # Add remote signals to context so LLM can use them
+        if signals:
+            combined_context["remote_signals"] = [
+                {
+                    "asset": s.asset,
+                    "decision": s.decision,
+                    "confidence": s.confidence,
+                    "entry_zone": getattr(s, "entry_zone", None),
+                    "targets": getattr(s, "targets", None),
+                    "invalidation": getattr(s, "invalidation", None),
+                    "reasons": getattr(s, "reasons", None) or getattr(s, "main_reasons", None),
+                }
+                for s in signals
+            ]
+        else:
+            combined_context["remote_signals"] = []
 
-        # 4. Match each signal to user portfolio
-        actions: list[dict] = []
-        for signal in signals:
-            signal_dict = {
-                "asset": signal.asset,
-                "decision": signal.decision,
-                "confidence": signal.confidence,
-            }
-            recommendation = provider.portfolio_match(
-                user_id_hash=self._get_user_hash(),
-                signal=signal_dict,
-                portfolio=portfolio_data,
-            )
-            if recommendation is None:
-                continue
+        # Add alerts to context
+        if alerts:
+            combined_context["remote_alerts"] = [
+                {"asset": a.asset, "type": a.alert_type, "severity": a.severity, "message": a.message}
+                for a in alerts
+            ]
 
-            self._add_log("info", f"Signal {signal.asset}: market={recommendation.market_decision} → personal={recommendation.personal_recommendation} ({recommendation.reason}) — basado en tu perfil {profile_label}", {
-                "cycle": self._cycle, "phase": "portfolio_match",
-                "asset": signal.asset, "recommendation": recommendation.personal_recommendation,
-                "confidence": recommendation.confidence,
+        # 5. Send combined context to LLM for analysis and decision
+        # The LLM receives BOTH remote signals AND local technical data
+        # It can confirm, override, or find new opportunities the remote signals missed
+        self._add_log("info", f"Enviando contexto combinado al LLM ({len(signals)} señales remotas + datos técnicos locales)...", {
+            "cycle": self._cycle, "phase": "llm_analysis",
+            "remote_signals_count": len(signals),
+            "has_technical": "technical" in combined_context,
+            "has_buy_candidates": "buy_candidates" in combined_context,
+        })
+
+        decision = self._ask_llm(combined_context)
+        if not decision:
+            # LLM failed — fall back to signal-based execution
+            self._add_log("warn", "LLM no respondió, usando señales remotas directamente", {"cycle": self._cycle, "phase": "llm_fallback"})
+            if not signals:
+                self._add_log("info", f"No hay señales activas ni LLM — manteniendo posiciones según tu perfil {profile_label}", {"cycle": self._cycle, "phase": "no_signals"})
+                self._hold_streak += 1
+                self._adjust_interval()
+                return
+            # Use legacy signal-based flow as fallback
+            actions = self._signals_to_actions(signals, provider, profile_label)
+        else:
+            # LLM responded — use its decision (combines remote + local)
+            self._add_log("info", "Análisis LLM completado (señales remotas + técnico local)", {
+                "cycle": self._cycle,
+                "phase": "decision",
+                "market_overview": decision.get("market_overview", ""),
+                "analysis": decision.get("analysis", ""),
+                "risk_assessment": decision.get("risk_assessment", ""),
+                "actions_count": len(decision.get("actions", [])),
+                "actions": decision.get("actions", []),
             })
+            actions = decision.get("actions", [])
 
-            # Convert recommendation to action
-            action = self._recommendation_to_action(recommendation)
-            if action:
-                actions.append(action)
-
-        # 5. Execute actions
+        # 6. Execute actions
         if not actions:
-            self._add_log("info", f"Sin acciones personales tras portfolio match — tu perfil {profile_label} filtra señales de mayor riesgo", {"cycle": self._cycle, "phase": "no_actions"})
+            self._add_log("info", f"Sin acciones tras análisis combinado — tu perfil {profile_label} filtra oportunidades de mayor riesgo", {"cycle": self._cycle, "phase": "no_actions"})
             self._hold_streak += 1
             self._adjust_interval()
             return
@@ -612,7 +645,35 @@ class AITradingAgent:
         for action in actions:
             self._execute_action(action)
 
-        self._add_log("info", f"--- Ciclo {self._cycle} completado (intelligence mode) ---", {"cycle": self._cycle, "phase": "end"})
+        self._add_log("info", f"--- Ciclo {self._cycle} completado (intelligence + LLM mode) ---", {"cycle": self._cycle, "phase": "end"})
+
+    def _signals_to_actions(self, signals: list, provider: Any, profile_label: str) -> list[dict]:
+        """Fallback: convert remote signals to actions without LLM (used when LLM fails)."""
+        actions: list[dict] = []
+        positions = self._api_get("/api/positions?status=open&limit=20")
+        portfolio_data = self._build_portfolio_for_match(positions)
+        for signal in signals:
+            signal_dict = {
+                "asset": signal.asset,
+                "decision": signal.decision,
+                "confidence": signal.confidence,
+            }
+            recommendation = provider.portfolio_match(
+                user_id_hash=self._get_user_hash(),
+                signal=signal_dict,
+                portfolio=portfolio_data,
+            )
+            if recommendation is None:
+                continue
+            self._add_log("info", f"Signal {signal.asset}: market={recommendation.market_decision} → personal={recommendation.personal_recommendation} ({recommendation.reason}) — basado en tu perfil {profile_label}", {
+                "cycle": self._cycle, "phase": "portfolio_match",
+                "asset": signal.asset, "recommendation": recommendation.personal_recommendation,
+                "confidence": recommendation.confidence,
+            })
+            action = self._recommendation_to_action(recommendation)
+            if action:
+                actions.append(action)
+        return actions
 
     def _record_events_to_journal(
         self,

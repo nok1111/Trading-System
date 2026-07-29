@@ -1120,6 +1120,124 @@ def ai_agent_set_auto_trade(enabled: bool = Query(True)) -> dict:
     return agent.get_status()
 
 
+@router.get("/ai-agent/brokers")
+def get_ai_agent_brokers(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Lista los brokers disponibles para el AI Agent, incluyendo los conectados por el usuario."""
+    from app.brokers.registry import list_brokers, is_implemented, get_capabilities as _get_caps
+    from app.services.broker_account_service import list_accounts
+
+    # Get all supported brokers
+    all_brokers = list_brokers()
+
+    # Get user's connected broker accounts
+    connected_brokers: set[str] = set()
+    if current_user:
+        db = SessionLocal()
+        try:
+            accounts = list_accounts(db, current_user.id)
+            for acc in accounts:
+                connected_brokers.add(acc.get("broker_id", ""))
+        finally:
+            db.close()
+
+    brokers_list = []
+    for b in all_brokers:
+        broker_id = b.broker_id
+        try:
+            caps = _get_caps(broker_id)
+            cap_spot = caps.spot
+            cap_futures = caps.futures
+        except Exception:
+            cap_spot = True
+            cap_futures = False
+        brokers_list.append({
+            "id": broker_id,
+            "name": b.display_name,
+            "implemented": is_implemented(broker_id),
+            "connected": broker_id in connected_brokers,
+            "logo": b.logo_url,
+            "capabilities": {
+                "spot": cap_spot,
+                "futures": cap_futures,
+            },
+        })
+
+    # Always include "paper" as an option
+    brokers_list.insert(0, {
+        "id": "paper",
+        "name": "Paper Trading (Simulado)",
+        "implemented": True,
+        "connected": True,
+        "logo": None,
+        "capabilities": {"spot": True, "futures": False},
+    })
+
+    # Current selected broker
+    current_broker = getattr(state, "ai_selected_broker", "paper")
+
+    return {
+        "brokers": brokers_list,
+        "current": current_broker,
+    }
+
+
+@router.patch("/ai-agent/broker")
+def set_ai_agent_broker(
+    broker_id: str = Query(...),
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Set the broker where the AI Agent executes trades."""
+    from app.brokers.registry import is_implemented
+
+    broker_id = broker_id.lower().strip()
+
+    # Validate broker
+    if broker_id != "paper" and not is_implemented(broker_id):
+        return {"status": "error", "reason": f"Broker '{broker_id}' no implementado"}
+
+    # If selecting a real broker, check user has connected it
+    if broker_id != "paper" and current_user:
+        from app.services.broker_account_service import list_accounts
+        from app.database.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            accounts = list_accounts(db, current_user.id)
+            connected = any(a.get("broker_id") == broker_id for a in accounts)
+            if not connected:
+                return {"status": "error", "reason": f"No tienes {broker_id} conectado. Ve a Conexiones."}
+        finally:
+            db.close()
+
+    state.ai_selected_broker = broker_id
+
+    # Update .env for persistence
+    from pathlib import Path
+    env_path = Path(".env")
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.startswith("AI_SELECTED_BROKER="):
+                new_lines.append(f"AI_SELECTED_BROKER={broker_id}")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"AI_SELECTED_BROKER={broker_id}")
+        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        os.environ["AI_SELECTED_BROKER"] = broker_id
+
+    return {
+        "status": "ok",
+        "broker": broker_id,
+        "message": f"AI Agent usará {broker_id} para ejecutar trades",
+    }
+
+
 @router.get("/trading-mode")
 def get_trading_mode(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
