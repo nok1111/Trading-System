@@ -11,6 +11,8 @@ interface ReportItem extends IntelligenceReport {
   action_type?: string;
   confidence?: number;
   status?: string;
+  trading_mode?: string | null;
+  broker_name?: string | null;
 }
 
 export function ReportsPage() {
@@ -54,6 +56,19 @@ export function ReportsPage() {
     if (status === "executed") return <span className="text-[9px] text-[var(--color-success)] font-bold">Ejecutada</span>;
     if (status === "dismissed") return <span className="text-[9px] text-[var(--color-text-muted)] line-through">Descartada</span>;
     return null;
+  };
+
+  const modeBadge = (mode?: string | null, broker?: string | null) => {
+    if (!mode) return null;
+    if (mode === "paper") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-info)] text-white">PAPER MONEY</span>;
+    if (mode === "live") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-success)] text-white">{(broker || "LIVE").toUpperCase()}</span>;
+    return null;
+  };
+
+  const cardBorder = (mode?: string | null) => {
+    if (mode === "paper") return "border-l-[3px] border-l-[var(--color-info)]";
+    if (mode === "live") return "border-l-[3px] border-l-[var(--color-success)]";
+    return "";
   };
 
   return (
@@ -102,7 +117,10 @@ export function ReportsPage() {
             return (
               <div
                 key={r.id}
-                className="rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] p-3 cursor-pointer hover:border-[var(--color-border-strong)] transition-colors"
+                className={cn(
+                  "rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] p-3 cursor-pointer hover:border-[var(--color-border-strong)] transition-colors",
+                  cardBorder(r.trading_mode)
+                )}
                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
               >
                 <div className="flex items-center justify-between">
@@ -117,6 +135,7 @@ export function ReportsPage() {
                         {Math.round(r.confidence * 100)}% confianza
                       </span>
                     )}
+                    {modeBadge(r.trading_mode, r.broker_name)}
                   </div>
                   <div className="flex items-center gap-2">
                     {statusBadge(r.status)}

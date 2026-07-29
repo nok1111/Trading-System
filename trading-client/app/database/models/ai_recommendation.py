@@ -26,6 +26,8 @@ class AIRecommendation(Base):
     market_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
     personal_recommendation: Mapped[str | None] = mapped_column(String(30), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")  # pending, executed, dismissed
+    trading_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="paper")  # paper, live
+    broker_name: Mapped[str | None] = mapped_column(String(30), nullable=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=func.now(), server_default=func.now())
 

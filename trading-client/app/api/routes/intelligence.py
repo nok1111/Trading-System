@@ -855,16 +855,18 @@ def get_active_signals(limit: int = 10) -> list[dict]:
 
 @router.get("/reports/{asset}")
 def get_reports(asset: str, limit: int = 20) -> list[dict]:
-    """Get AI agent recommendations for an asset.
+    """Get AI agent recommendations and executed trades for an asset.
 
-    Returns recommendations saved by the AI Agent when auto_trade=false.
-    Also includes the daily report as the first item.
+    Returns:
+    - AI recommendations saved when auto_trade=false (status=pending)
+    - Executed trades from the Trade table (paper and live)
     """
     cached = _cached(f"reports_{asset}_{limit}")
     if cached:
         return cached
 
     result: list[dict] = []
+    asset_upper = asset.upper().strip()
 
     # 1. AI Agent recommendations from DB
     try:
@@ -873,7 +875,6 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
 
         db = SessionLocal()
         try:
-            asset_upper = asset.upper().strip()
             recs = db.query(AIRecommendation).filter(
                 AIRecommendation.asset == asset_upper
             ).order_by(AIRecommendation.timestamp.desc()).limit(limit).all()
@@ -895,6 +896,8 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
                     "action_type": r.action_type,
                     "confidence": float(r.confidence),
                     "status": r.status,
+                    "trading_mode": r.trading_mode,
+                    "broker_name": r.broker_name,
                     "timestamp": r.timestamp.isoformat() if r.timestamp else "",
                 })
         finally:
@@ -902,7 +905,62 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
     except Exception as exc:
         logger.warning("Reports fetch failed: %s", exc)
 
-    # 2. If no recommendations, include the daily report as fallback
+    # 2. Executed trades from Trade table
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.trade import Trade
+        from app.database.models.order import Order
+        from app.config import get_settings
+
+        settings = get_settings()
+        symbol = asset_upper + "USDT"
+
+        db = SessionLocal()
+        try:
+            trades = db.query(Trade).filter(
+                Trade.symbol == symbol
+            ).order_by(Trade.timestamp.desc()).limit(limit).all()
+
+            for t in trades:
+                # Determine trading mode from linked order's broker_order_id
+                trading_mode = "paper"
+                broker_name = None
+                if t.order_id:
+                    order = db.query(Order).filter(Order.id == t.order_id).first()
+                    if order and order.broker_order_id:
+                        if not order.broker_order_id.startswith("MOCK-"):
+                            trading_mode = "live"
+                            broker_name = settings.BROKER_PROVIDER
+
+                side_label = "Compra ejecutada" if t.side.upper() == "BUY" else "Venta ejecutada"
+                result.append({
+                    "id": f"trade-{t.id}",
+                    "date": t.timestamp.strftime("%Y-%m-%d %H:%M") if t.timestamp else "",
+                    "type": "daily",
+                    "asset": asset_upper,
+                    "summary": f"{side_label} — {float(t.quantity):.6f} @ ${float(t.price):,.2f}" + (f" (PnL: ${float(t.realized_pnl):,.2f})" if float(t.realized_pnl) != 0 else ""),
+                    "sections": {
+                        "marketOverview": f"Cantidad: {float(t.quantity):.6f}",
+                        "keyEvents": f"Precio: ${float(t.price):,.2f}",
+                        "performance": f"Comisión: ${float(t.commission):,.2f}" + (f" | PnL realizado: ${float(t.realized_pnl):,.2f}" if float(t.realized_pnl) != 0 else ""),
+                        "outlook": t.strategy_name or "",
+                    },
+                    "action_type": t.side.upper(),
+                    "confidence": None,
+                    "status": "executed",
+                    "trading_mode": trading_mode,
+                    "broker_name": broker_name,
+                    "timestamp": t.timestamp.isoformat() if t.timestamp else "",
+                })
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Trades fetch for reports failed: %s", exc)
+
+    # 3. Sort by timestamp descending
+    result.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    # 4. If still empty, include the daily report as fallback
     if not result:
         try:
             daily = get_daily_report()
@@ -910,7 +968,7 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
                 "id": f"daily-{asset}",
                 "date": daily.get("date", ""),
                 "type": "daily",
-                "asset": asset.upper(),
+                "asset": asset_upper,
                 "summary": daily.get("summary", "Sin datos"),
                 "sections": daily.get("sections", {
                     "marketOverview": "",
@@ -918,6 +976,8 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
                     "performance": "",
                     "outlook": "",
                 }),
+                "trading_mode": None,
+                "broker_name": None,
             })
         except Exception:
             pass

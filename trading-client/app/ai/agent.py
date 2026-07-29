@@ -745,6 +745,11 @@ class AITradingAgent:
         try:
             from app.database.session import SessionLocal
             from app.database.models.ai_recommendation import AIRecommendation
+            from app.config import get_settings
+
+            settings = get_settings()
+            trading_mode = settings.TRADING_MODE
+            broker_name = settings.BROKER_PROVIDER
 
             session = SessionLocal()
             try:
@@ -769,6 +774,8 @@ class AITradingAgent:
                         market_decision=sig.decision if sig else None,
                         personal_recommendation=action.get("type", "").upper(),
                         status="pending",
+                        trading_mode=trading_mode,
+                        broker_name=broker_name if trading_mode == "live" else None,
                         metadata_json={
                             "cycle": self._cycle,
                             "signal_id": sig.id if sig else None,
