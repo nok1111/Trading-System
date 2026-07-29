@@ -21,7 +21,7 @@ from app.config import get_settings
 from app.database.session import SessionLocal
 from app.database.models.user_settings import UserSettings
 from app.services.auth import LocalUser, get_current_user
-from app.services.crypto import decrypt
+from app.services.crypto import decrypt, encrypt
 from app.services.rate_limit import get_plan_limits, has_feature
 
 PREMIUM_PROVIDERS = {"openai", "deepseek", "mistral", "together", "perplexity", "grok"}
@@ -57,6 +57,31 @@ def _load_user_keys(user_id: int) -> dict:
         if s.ai_premium_model:
             keys["premium_model"] = s.ai_premium_model
         return keys
+    finally:
+        db.close()
+
+
+def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str | None = None, premium_key: str | None = None, premium_provider: str | None = None, premium_base_url: str | None = None, premium_model: str | None = None) -> None:
+    """Persist AI provider keys to DB (encrypted) so they survive agent restarts."""
+    db = SessionLocal()
+    try:
+        s = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if not s:
+            s = UserSettings(user_id=user_id)
+            db.add(s)
+        if groq_key is not None:
+            s.ai_groq_key_enc = encrypt(groq_key) if groq_key else None
+        if gemini_key is not None:
+            s.ai_gemini_key_enc = encrypt(gemini_key) if gemini_key else None
+        if premium_key is not None:
+            s.ai_premium_key_enc = encrypt(premium_key) if premium_key else None
+        if premium_provider is not None:
+            s.ai_premium_provider = premium_provider or None
+        if premium_base_url is not None:
+            s.ai_premium_base_url = premium_base_url or None
+        if premium_model is not None:
+            s.ai_premium_model = premium_model or None
+        db.commit()
     finally:
         db.close()
 
@@ -185,6 +210,22 @@ def ai_agent_start(
             agent.openai_model = req.model
         elif user_keys.get("premium_model"):
             agent.openai_model = user_keys["premium_model"]
+
+    # Persist keys to DB so they survive restarts (only save non-empty values from request)
+    if current_user:
+        save_kwargs: dict = {}
+        if req.groq_api_key is not None:
+            save_kwargs["groq_key"] = req.groq_api_key or None
+        if req.gemini_api_key is not None:
+            save_kwargs["gemini_key"] = req.gemini_api_key or None
+        if req.premium_api_key is not None:
+            save_kwargs["premium_key"] = req.premium_api_key or None
+        if provider in PREMIUM_BASE_URLS:
+            save_kwargs["premium_provider"] = provider
+            save_kwargs["premium_base_url"] = agent.openai_base_url
+            save_kwargs["premium_model"] = agent.openai_model
+        if save_kwargs:
+            _save_user_keys(current_user.id, **save_kwargs)
 
     # Enforce plan-based interval minimum
     if current_user:
