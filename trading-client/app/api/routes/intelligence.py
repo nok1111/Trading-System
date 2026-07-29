@@ -715,16 +715,93 @@ def get_risk_status() -> dict:
         }
 
 
+def _fetch_remote_signals(settings: Any, limit: int) -> list[dict]:
+    """Fetch active signals from the AI Server and convert to frontend format.
+
+    No token cost — the AI Server just reads from its database.
+    """
+    import httpx
+
+    url = f"{settings.REMOTE_AI_URL.rstrip('/')}/v1/intelligence/signals"
+    headers: dict[str, str] = {}
+    if settings.REMOTE_AI_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.REMOTE_AI_TOKEN}"
+
+    resp = httpx.get(url, headers=headers, params={"limit": limit}, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    raw_signals = data.get("signals", [])
+
+    result = []
+    for s in raw_signals:
+        asset = s.get("asset", "").upper().replace("USDT", "").replace("USDC", "")
+        decision = s.get("decision", s.get("signal_type", "HOLD"))
+        if decision not in ("BUY", "SELL", "HOLD"):
+            decision = "HOLD"
+        confidence = int(float(s.get("confidence", 0)) * 100)
+        consensus = s.get("consensus_data", {})
+        entry = consensus.get("entryZone", {})
+        targets_raw = consensus.get("targets", [])
+        invalidation = consensus.get("invalidation", {})
+
+        targets = []
+        for t in targets_raw:
+            if isinstance(t, dict) and t.get("price"):
+                targets.append({"price": float(t["price"]), "probability": int(float(t.get("probability", 0.5)) * 100)})
+            elif isinstance(t, (int, float)):
+                targets.append({"price": float(t), "probability": confidence})
+
+        entry_min = float(entry.get("min", 0)) if isinstance(entry, dict) else 0
+        entry_max = float(entry.get("max", 0)) if isinstance(entry, dict) else 0
+
+        result.append({
+            "id": f"ai-sig-{s.get('id', '')}",
+            "asset": asset,
+            "decision": decision,
+            "confidence": confidence,
+            "riskLevel": consensus.get("riskLevel", "medium"),
+            "entryZone": {"min": entry_min, "max": entry_max},
+            "targets": targets,
+            "invalidation": {"type": invalidation.get("type", "none"), "value": float(invalidation.get("value", 0))} if isinstance(invalidation, dict) else {"type": "none", "value": 0},
+            "agentVotes": [],
+            "mainReasons": s.get("main_reasons", consensus.get("mainReasons", [])),
+            "mainRisks": s.get("main_risks", consensus.get("mainRisks", [])),
+            "validFrom": s.get("timestamp", ""),
+            "expiresAt": s.get("expires_at"),
+            "requiresConfirmation": False,
+            "status": "ACTIVE",
+            "timestamp": s.get("timestamp", ""),
+        })
+
+    return result
+
+
 @router.get("/signals")
 def get_active_signals(limit: int = 10) -> list[dict]:
     """Get active signals for the dashboard 'Señales activas' card.
 
-    Reads from the local Signal table (status='active') and converts
-    them to the IntelligenceSignal format expected by the frontend.
+    When USE_INTELLIGENCE_API=True, fetches global signals from the AI Server
+    (no extra token cost — just a DB read on the AI Server side).
+    Otherwise, reads from the local Signal table (status='active').
     """
     cached = _cached(f"signals_{limit}")
     if cached:
         return cached
+
+    # ── Intelligence Platform mode: fetch from AI Server ──
+    try:
+        from app.config import get_settings
+        settings = get_settings()
+        if settings.USE_INTELLIGENCE_API and settings.REMOTE_AI_URL:
+            remote_signals = _fetch_remote_signals(settings, limit)
+            if remote_signals:
+                _set_cache(f"signals_{limit}", remote_signals, 60)
+                return remote_signals
+            # If remote returns empty, fall through to local DB
+    except Exception as exc:
+        logger.warning("Remote signals fetch failed, falling back to local: %s", exc)
+
+    # ── Local mode: read from local Signal table ──
     try:
         from app.database.session import SessionLocal
         from app.database.models.signal import Signal as SignalModel
