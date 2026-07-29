@@ -261,7 +261,7 @@ tr:hover { background: var(--panel-hover); }
       </div>
       <div class="panel">
         <div class="panel-header">
-          <span class="panel-title">Paper Trading Scheduler</span>
+          <span class="panel-title">Scheduler 24/7 (Consensus)</span>
         </div>
         <div id="paperTradingStatus"></div>
       </div>
@@ -606,29 +606,22 @@ async function loadServicesStatus() {
   // AI Agents
   const agents = data.agents || [];
   if (!agents.length) {
-    document.getElementById('agentsList').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px">No se pudo obtener el estado de los agentes. Verifica que el Trading Client esté en línea.</div>';
+    document.getElementById('agentsList').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px">No se pudo obtener el estado de los agentes. Verifica que el AI Server esté en línea.</div>';
   } else {
     document.getElementById('agentsList').innerHTML = `
       <table>
         <thead>
-          <tr><th>Agente</th><th>Rol</th><th>Estado</th><th>Provider</th><th>Modelo</th><th>Intervalo</th><th>Ciclos</th><th>Auto-trade</th><th>Intelligence</th><th>Grant</th></tr>
+          <tr><th>ID</th><th>Nombre</th><th>Rol</th><th>Intervalo</th><th>Opcional</th></tr>
         </thead>
         <tbody>
           ${agents.map(a => {
-            const stColor = a.status === 'running' ? 'var(--success)' : a.status === 'error' ? 'var(--danger)' : 'var(--text-dim)';
-            const grantColor = a.grant_authorized ? 'var(--success)' : 'var(--danger)';
             return `
               <tr>
-                <td><strong>${a.agentName || a.agent_id}</strong></td>
-                <td>${a.role || '—'}</td>
-                <td><span style="color:${stColor};font-weight:600">${a.status || 'unknown'}</span></td>
-                <td>${a.provider || '—'}</td>
-                <td style="font-size:12px">${a.model || '—'}</td>
-                <td>${a.interval || '—'}</td>
-                <td>${a.cycles || 0}</td>
-                <td>${a.auto_trade ? '<span style="color:var(--success)">Sí</span>' : '<span style="color:var(--text-dim)">No</span>'}</td>
-                <td>${a.intelligence_mode ? '<span style="color:var(--success)">ON</span>' : '<span style="color:var(--text-dim)">OFF</span>'}</td>
-                <td><span style="color:${grantColor};font-weight:600">${a.grant_authorized ? 'OK' : 'No'}</span></td>
+                <td style="font-family:monospace;font-size:12px">${a.id}</td>
+                <td><strong>${a.name}</strong></td>
+                <td>${a.role}</td>
+                <td>${a.interval_minutes ? a.interval_minutes + ' min' : '—'}</td>
+                <td>${a.is_optional ? '<span style="color:var(--text-dim)">Sí</span>' : '<span style="color:var(--success)">No (core)</span>'}</td>
               </tr>
             `;
           }).join('')}
@@ -637,20 +630,18 @@ async function loadServicesStatus() {
     `;
   }
 
-  // Paper Trading
-  const pt = data.paper_trading;
+  // Scheduler 24/7
+  const pt = data.scheduler;
   if (!pt) {
     document.getElementById('paperTradingStatus').innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px">No disponible</div>';
   } else {
-    const running = pt.running || pt.status === 'running';
-    const ptColor = running ? 'var(--success)' : 'var(--text-dim)';
+    const running = pt.running;
+    const ptColor = running ? 'var(--success)' : 'var(--danger)';
     document.getElementById('paperTradingStatus').innerHTML = `
       <div class="stat-grid">
-        <div class="stat-card"><div class="stat-label">Estado</div><div class="stat-value" style="color:${ptColor}">${running ? 'Running' : 'Stopped'}</div></div>
+        <div class="stat-card"><div class="stat-label">Estado</div><div class="stat-value" style="color:${ptColor}">${running ? 'Running 24/7' : 'Stopped'}</div></div>
         <div class="stat-card"><div class="stat-label">Símbolos</div><div class="stat-value" style="font-size:14px">${(pt.symbols || []).join(', ') || '—'}</div></div>
-        <div class="stat-card"><div class="stat-label">Intervalo</div><div class="stat-value" style="font-size:14px">${pt.interval || '—'}</div></div>
-        <div class="stat-card"><div class="stat-label">Última ejecución</div><div class="stat-value" style="font-size:12px">${pt.last_run || 'Nunca'}</div></div>
-        <div class="stat-card"><div class="stat-label">Próxima ejecución</div><div class="stat-value" style="font-size:12px">${pt.next_run || '—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Intervalo</div><div class="stat-value" style="font-size:14px">${pt.interval_seconds ? pt.interval_seconds + 's' : '—'}</div></div>
       </div>
     `;
   }

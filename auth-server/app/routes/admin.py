@@ -418,41 +418,28 @@ def services_status(
         ai_status["detail"] = str(exc)[:100]
     services.append(ai_status)
 
-    # 4) AI Agent from Trading Client
+    # 4) AI Agents from AI Server (12 intelligence agents)
     agents = []
     try:
-        resp = httpx.get(f"{tc_url}/api/ai-agent/status", timeout=8)
+        resp = httpx.get(f"{ai_url}/v1/intelligence/agents", timeout=8)
         if resp.status_code == 200:
             data = resp.json()
-            # Trading Client returns a single agent status dict, not an array
-            agents = [{
-                "agentName": "AI Trading Agent",
-                "role": "Autonomous Trader",
-                "status": "running" if data.get("is_running") else "idle",
-                "provider": data.get("provider"),
-                "model": data.get("model"),
-                "interval": f"{data.get('interval_seconds', '?')}s",
-                "last_run": None,
-                "cycles": data.get("cycles", 0),
-                "auto_trade": data.get("auto_trade"),
-                "intelligence_mode": data.get("intelligence_mode"),
-                "grant_authorized": data.get("grant_authorized"),
-            }]
+            agents = data.get("agents", [])
     except Exception:
         pass
 
-    # 5) Paper trading scheduler status
-    paper_trading = None
+    # 5) AI Server scheduler status (24/7 consensus scheduler)
+    scheduler = None
     try:
-        resp = httpx.get(f"{tc_url}/api/paper-trading/status", timeout=5)
+        resp = httpx.get(f"{ai_url}/v1/intelligence/scheduler/status", timeout=5)
         if resp.status_code == 200:
-            paper_trading = resp.json()
+            scheduler = resp.json()
     except Exception:
         pass
 
     return {
         "services": services,
         "agents": agents,
-        "paper_trading": paper_trading,
+        "scheduler": scheduler,
         "timestamp": datetime.now(UTC).isoformat(),
     }
