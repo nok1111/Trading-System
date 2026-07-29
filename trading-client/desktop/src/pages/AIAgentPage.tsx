@@ -63,6 +63,8 @@ export function AIAgentPage() {
   const [aiMode, setAiMode] = useState<"conservative" | "balanced" | "aggressive">("balanced");
   const [showConfig, setShowConfig] = useState(false);
   const [plan, setPlan] = useState<any>(null);
+  const [brokers, setBrokers] = useState<any[]>([]);
+  const [selectedBroker, setSelectedBroker] = useState<string>("paper");
 
   const loadStatus = useCallback(async () => {
     try {
@@ -92,11 +94,20 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadBrokers = useCallback(async () => {
+    try {
+      const r = await api<any>("/api/ai-agent/brokers");
+      setBrokers(r.brokers || []);
+      setSelectedBroker(r.current || "paper");
+    } catch {}
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadLog();
     loadStats();
     loadPlan();
+    loadBrokers();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
@@ -105,7 +116,7 @@ export function AIAgentPage() {
       clearInterval(id2);
       clearInterval(id3);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan]);
+  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers]);
 
   const start = async () => {
     try {
@@ -180,6 +191,16 @@ export function AIAgentPage() {
     try {
       await api(`/api/ai-agent/auto-trade?enabled=${newVal}`, { method: "PATCH" });
       toast(`Auto-trade ${newVal ? "activado" : "desactivado"}`);
+    } catch (e: any) {
+      toast(e.message, false);
+    }
+  };
+
+  const selectBroker = async (brokerId: string) => {
+    try {
+      await api(`/api/ai-agent/broker?broker_id=${brokerId}`, { method: "PATCH" });
+      setSelectedBroker(brokerId);
+      toast(`Broker cambiado a ${brokerId}`);
     } catch (e: any) {
       toast(e.message, false);
     }
@@ -329,6 +350,68 @@ export function AIAgentPage() {
             )}>
               {tradeMode.toUpperCase()}
             </span>
+          </div>
+        </div>
+
+        {/* Broker selector */}
+        <div className="mt-3">
+          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
+            🏦 Broker — ¿Dónde debe ejecutar la IA?
+          </label>
+          <div className="flex gap-2 flex-wrap">
+            {brokers.filter((b) => b.id !== "paper").map((b) => {
+              const isSelected = selectedBroker === b.id;
+              const isDisabled = !b.implemented;
+              const brokerColors: Record<string, string> = {
+                binance: "#F0B90B",
+                bybit: "#F7A600",
+                coinbase: "#0052FF",
+                kraken: "#5841D8",
+                okx: "#000000",
+              };
+              const color = brokerColors[b.id] || "var(--color-accent)";
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => !isDisabled && !isRunning && selectBroker(b.id)}
+                  disabled={isDisabled || isRunning}
+                  className={cn(
+                    "px-3 h-9 rounded-[8px] text-[12px] font-bold transition-all border flex items-center gap-2",
+                    isSelected
+                      ? "text-white"
+                      : isDisabled
+                        ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] opacity-50 cursor-not-allowed"
+                        : !b.connected
+                          ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                          : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                  )}
+                  style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
+                  title={
+                    isDisabled
+                      ? "No implementado todavía"
+                      : !b.connected
+                        ? "Conecta tu cuenta en Connections primero"
+                        : b.name
+                  }
+                >
+                  {b.id === "binance" && "🟡"}
+                  {b.id === "bybit" && "🟠"}
+                  {b.id === "coinbase" && "🔵"}
+                  {b.id === "kraken" && "🟣"}
+                  {b.id === "okx" && "⚫"}
+                  {b.name}
+                  {b.connected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+                  )}
+                  {!b.connected && b.implemented && (
+                    <span className="text-[8px] opacity-60">no conectado</span>
+                  )}
+                  {!b.implemented && (
+                    <span className="text-[8px] opacity-60">próximamente</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
