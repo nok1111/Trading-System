@@ -1163,18 +1163,18 @@ class AITradingAgent:
                 ]
 
             # Market movers - spot (top gainers/losers from Binance, filtered)
-            movers_spot = self._api_get("/api/market/movers?market=spot&limit=20")
-            movers_futures = self._api_get("/api/market/movers?market=futures&limit=20")
+            movers_spot = self._api_get("/api/market/movers?market=spot&limit=50")
+            movers_futures = self._api_get("/api/market/movers?market=futures&limit=50")
             if isinstance(movers_spot, dict):
-                spot_up = [g for g in movers_spot.get("gainers", []) if self._is_tradeable(g.get("symbol", ""))][:10]
-                spot_dn = [l for l in movers_spot.get("losers", []) if self._is_tradeable(l.get("symbol", ""))][:5]
+                spot_up = [g for g in movers_spot.get("gainers", []) if self._is_tradeable(g.get("symbol", ""))][:20]
+                spot_dn = [l for l in movers_spot.get("losers", []) if self._is_tradeable(l.get("symbol", ""))][:10]
                 ctx["spot"] = {
                     "up": [{"s": g.get("symbol"), "p": g.get("price"), "chg": g.get("price_change_percent"), "vol": g.get("volume")} for g in spot_up],
                     "dn": [{"s": l.get("symbol"), "p": l.get("price"), "chg": l.get("price_change_percent")} for l in spot_dn],
                 }
             if isinstance(movers_futures, dict):
-                fut_up = [g for g in movers_futures.get("gainers", []) if self._is_tradeable(g.get("symbol", ""))][:10]
-                fut_dn = [l for l in movers_futures.get("losers", []) if self._is_tradeable(l.get("symbol", ""))][:5]
+                fut_up = [g for g in movers_futures.get("gainers", []) if self._is_tradeable(g.get("symbol", ""))][:20]
+                fut_dn = [l for l in movers_futures.get("losers", []) if self._is_tradeable(l.get("symbol", ""))][:10]
                 ctx["futures"] = {
                     "up": [{"s": g.get("symbol"), "p": g.get("price"), "chg": g.get("price_change_percent"), "vol": g.get("volume")} for g in fut_up],
                     "dn": [{"s": l.get("symbol"), "p": l.get("price"), "chg": l.get("price_change_percent")} for l in fut_dn],
@@ -1197,22 +1197,22 @@ class AITradingAgent:
                 settings = get_settings()
                 tech_data = []
 
-                # Analyze tracked symbols
+                # Start with tracked symbols from config
                 tracked = list(settings.symbols_list[:10])
 
-                # Also analyze top spot gainers (more opportunities for the LLM)
+                # Also analyze ALL top spot gainers (more opportunities for the LLM)
                 spot = ctx.get("spot", {})
-                for g in spot.get("up", [])[:5]:
+                for g in spot.get("up", [])[:15]:
                     sym = g.get("s", "")
                     if sym and sym not in tracked:
                         tracked.append(sym)
                 fut = ctx.get("futures", {})
-                for g in fut.get("up", [])[:3]:
+                for g in fut.get("up", [])[:10]:
                     sym = g.get("s", "")
                     if sym and sym not in tracked:
                         tracked.append(sym)
 
-                for sym in tracked[:18]:
+                for sym in tracked[:30]:
                     try:
                         ta = analyze_symbol(sym, interval="1h")
                         tech_data.append({
@@ -1264,21 +1264,24 @@ class AITradingAgent:
     _allowed_symbols: set[str] | None = None
 
     def _get_allowed_symbols(self) -> set[str]:
-        """Load allowed symbols from config DEFAULT_SYMBOLS."""
+        """Load allowed symbols from config DEFAULT_SYMBOLS.
+
+        Returns empty set if no restriction is configured (allow all tradeable USDT pairs).
+        """
         if self._allowed_symbols is None:
             try:
                 from app.config import get_settings
                 settings = get_settings()
                 self._allowed_symbols = {s.strip().upper() for s in settings.DEFAULT_SYMBOLS.split(",") if s.strip()}
             except Exception:
-                # Fallback: allow all tradeable USDT pairs
                 self._allowed_symbols = set()
         return self._allowed_symbols
 
     def _is_tradeable(self, symbol: str) -> bool:
-        """Filter out leveraged tokens and validate symbol exists on Binance.
+        """Filter out leveraged tokens and non-USDT pairs.
 
-        If DEFAULT_SYMBOLS is configured, only allow those symbols.
+        Does NOT restrict to DEFAULT_SYMBOLS — the agent can trade any
+        valid USDT pair available on the broker.
         """
         s = symbol.upper().strip()
         if not s or not s.endswith("USDT"):
@@ -1290,9 +1293,7 @@ class AITradingAgent:
         # Filter out obvious non-tradeable patterns
         if "UP" in s and s.endswith("UPUSDT") and not s.startswith("UP"):
             return False
-        # If we have an allowed symbols list, enforce it
-        allowed = self._get_allowed_symbols()
-        return not (allowed and s not in allowed)
+        return True
 
     def _ask_llm(self, context: dict) -> dict | None:
         """Envía el contexto al proveedor de IA y recibe la decisión validada."""
