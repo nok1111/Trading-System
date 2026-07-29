@@ -1,6 +1,7 @@
 """Modelos de datos del sistema de trading (Trading Client — sin User)."""
 
 from app.database.models.account_snapshot import AccountSnapshot
+from app.database.models.ai_recommendation import AIRecommendation
 from app.database.models.backtest_run import BacktestRun
 from app.database.models.broker_account import BrokerAccount
 from app.database.models.market_bar import MarketBar
@@ -23,6 +24,7 @@ from app.database.models.user_profile import UserProfile
 
 __all__ = [
     "AccountSnapshot",
+    "AIRecommendation",
     "BacktestRun",
     "BrokerAccount",
     "MarketBar",

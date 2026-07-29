@@ -606,6 +606,7 @@ class AITradingAgent:
 
         if not self.auto_trade:
             self._add_log("info", f"Auto-trade deshabilitado. {len(actions)} acciones propuestas", {"cycle": self._cycle, "phase": "proposed"})
+            self._save_recommendations(actions, signals)
             return
 
         for action in actions:
@@ -738,6 +739,53 @@ class AITradingAgent:
                 session.close()
         except Exception as exc:
             logger.warning("[AI Agent] Failed to record events to journal: %s", exc)
+
+    def _save_recommendations(self, actions: list[dict], signals: list) -> None:
+        """Save proposed actions as recommendations in the DB for the Reports tab."""
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.ai_recommendation import AIRecommendation
+
+            session = SessionLocal()
+            try:
+                # Build a lookup of signal data by asset
+                signal_map = {}
+                for sig in signals:
+                    asset_key = sig.asset.upper().replace("USDT", "").replace("USDC", "")
+                    signal_map[asset_key] = sig
+
+                for action in actions:
+                    symbol = action.get("symbol", "").upper()
+                    asset = symbol.replace("USDT", "").replace("USDC", "")
+                    sig = signal_map.get(asset)
+
+                    rec = AIRecommendation(
+                        asset=asset,
+                        action_type=action.get("type", "HOLD").upper(),
+                        confidence=float(action.get("confidence", 0)),
+                        reason=action.get("reason", ""),
+                        stop_loss_pct=action.get("stop_loss_pct"),
+                        take_profit_pct=action.get("take_profit_pct"),
+                        market_decision=sig.decision if sig else None,
+                        personal_recommendation=action.get("type", "").upper(),
+                        status="pending",
+                        metadata_json={
+                            "cycle": self._cycle,
+                            "signal_id": sig.id if sig else None,
+                            "main_reasons": sig.main_reasons if sig else [],
+                            "main_risks": sig.main_risks if sig else [],
+                        },
+                    )
+                    session.add(rec)
+
+                session.commit()
+                self._add_log("info", f"{len(actions)} recomendaciones guardadas en Reportes", {
+                    "cycle": self._cycle, "phase": "recommendations_saved",
+                })
+            finally:
+                session.close()
+        except Exception as exc:
+            logger.warning("[AI Agent] Failed to save recommendations: %s", exc)
 
     def _fetch_news(self) -> None:
         """Fetch and store important crypto news (runs every few cycles)."""

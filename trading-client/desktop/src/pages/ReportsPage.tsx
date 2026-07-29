@@ -7,8 +7,14 @@ import type { IntelligenceReport } from "../lib/intelligenceTypes";
 
 const ASSETS = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
 
+interface ReportItem extends IntelligenceReport {
+  action_type?: string;
+  confidence?: number;
+  status?: string;
+}
+
 export function ReportsPage() {
-  const [reports, setReports] = useState<IntelligenceReport[]>([]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [asset, setAsset] = useState("BTC");
   const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
@@ -21,7 +27,7 @@ export function ReportsPage() {
       try {
         const r = await getReports(asset);
         if (!alive) return;
-        setReports(r);
+        setReports(r as ReportItem[]);
       } catch { /* ignore */ }
       if (alive) setLoading(false);
     };
@@ -36,9 +42,23 @@ export function ReportsPage() {
   const typeBtn = (active: boolean) =>
     cn("px-2.5 h-7 rounded-[6px] text-[11px] font-bold transition-colors", active ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]");
 
+  const actionBadge = (action?: string) => {
+    if (!action) return null;
+    if (action === "BUY") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-success)] text-white">COMPRA</span>;
+    if (action === "SELL") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-danger)] text-white">VENTA</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">HOLD</span>;
+  };
+
+  const statusBadge = (status?: string) => {
+    if (!status || status === "pending") return <span className="text-[9px] text-[var(--color-text-muted)]">Pendiente</span>;
+    if (status === "executed") return <span className="text-[9px] text-[var(--color-success)] font-bold">Ejecutada</span>;
+    if (status === "dismissed") return <span className="text-[9px] text-[var(--color-text-muted)] line-through">Descartada</span>;
+    return null;
+  };
+
   return (
     <div className="p-5 max-w-[800px] mx-auto space-y-4">
-      <h2 className="text-[16px] font-extrabold text-[var(--color-text)]">Reportes de Inteligencia</h2>
+      <h2 className="text-[16px] font-extrabold text-[var(--color-text)]">Reportes & Recomendaciones</h2>
 
       {/* Asset selector */}
       <div className="flex gap-1.5 flex-wrap">
@@ -91,8 +111,17 @@ export function ReportsPage() {
                     <span className="text-[13px] font-bold text-[var(--color-text)]">
                       {r.type === "daily" ? "Daily" : r.type === "weekly" ? "Weekly" : "Monthly"} — {r.asset}
                     </span>
+                    {actionBadge(r.action_type)}
+                    {r.confidence != null && (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                        {Math.round(r.confidence * 100)}% confianza
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-[var(--color-text-muted)]">{r.date}</span>
+                  <div className="flex items-center gap-2">
+                    {statusBadge(r.status)}
+                    <span className="text-[10px] text-[var(--color-text-muted)]">{r.date}</span>
+                  </div>
                 </div>
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{r.summary}</p>
                 {isExpanded && r.sections && (
@@ -105,19 +134,19 @@ export function ReportsPage() {
                     )}
                     {r.sections.keyEvents && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Key Events</span>
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Recomendación</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.keyEvents}</p>
                       </div>
                     )}
                     {r.sections.performance && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Performance</span>
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Gestión de riesgo</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.performance}</p>
                       </div>
                     )}
                     {r.sections.outlook && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Outlook</span>
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Razón</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.outlook}</p>
                       </div>
                     )}
