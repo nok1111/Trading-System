@@ -17,8 +17,9 @@ set -euo pipefail
 
 # --- Config ---
 PROJECT_DIR="/opt/trading-system"
-PYTHON="${PYTHON:-python3}"
-PIP="${PIP:-pip3}"
+VENV_DIR="${PROJECT_DIR}/venv"
+PYTHON="${VENV_DIR}/bin/python"
+PIP="${VENV_DIR}/bin/pip"
 GIT_BRANCH="main"
 
 # Service ports
