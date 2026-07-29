@@ -1305,7 +1305,7 @@ class AITradingAgent:
         return True
 
     def _handle_llm_failure(self) -> bool:
-        """Check if the LLM failure is critical (quota/auth) and stop the agent.
+        """Check if the LLM failure is critical (quota/auth/no-key) and stop the agent.
 
         Returns True if the agent was stopped (critical error), False if it can continue.
         """
@@ -1316,14 +1316,20 @@ class AITradingAgent:
             return False
         err_lower = http_err.lower()
         is_quota = "429" in err_lower or "rate limit" in err_lower or "quota" in err_lower
-        is_auth = "401" in err_lower or "403" in err_lower or "invalid" in err_lower or "unauthorized" in err_lower
-        if is_quota or is_auth:
-            reason = "Cuota agotada (rate limit 429)" if is_quota else "API Key inválida o no autorizada (401/403)"
+        is_auth = "401" in err_lower or "403" in err_lower or "invalid api key" in err_lower or "unauthorized" in err_lower
+        is_no_key = "no hay" in err_lower and "api key" in err_lower
+        if is_quota or is_auth or is_no_key:
+            if is_quota:
+                reason = f"Cuota agotada del proveedor {self.provider} (rate limit 429)"
+            elif is_auth:
+                reason = f"API Key inválida o no autorizada para {self.provider} (401/403)"
+            else:
+                reason = f"No hay API key configurada para {self.provider}"
             self._add_log("error", f"🛑 Agente detenido — {reason}. Detalle: {http_err}", {"phase": "llm_critical_error"})
             self._create_notif(
                 "system_event",
                 "AI Agent detenido",
-                f"{reason}. Revisa tu API key del proveedor {self.provider} en Config.",
+                f"{reason}. Ve a Config e ingresa una API key válida para {self.provider}.",
                 severity="critical",
             )
             self._stop_event.set()

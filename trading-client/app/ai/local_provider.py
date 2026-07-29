@@ -122,6 +122,7 @@ class LocalAIProvider(AIProvider):
 
     def _ask_groq(self, system_prompt: str, user_msg: str) -> dict | None:
         if not self._config.groq_api_key:
+            self._last_http_error = "No hay Groq API key configurada"
             return None
         try:
             resp = httpx.post(
@@ -158,6 +159,7 @@ class LocalAIProvider(AIProvider):
 
     def _ask_gemini(self, system_prompt: str, user_msg: str) -> dict | None:
         if not self._config.gemini_api_key:
+            self._last_http_error = "No hay Gemini API key configurada"
             return None
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._config.gemini_model}:generateContent?key={self._config.gemini_api_key}"
@@ -191,6 +193,7 @@ class LocalAIProvider(AIProvider):
 
     def _ask_openai_compat(self, system_prompt: str, user_msg: str) -> dict | None:
         if not self._config.openai_api_key:
+            self._last_http_error = f"No hay API key configurada para {self._provider}"
             return None
         try:
             resp = httpx.post(
