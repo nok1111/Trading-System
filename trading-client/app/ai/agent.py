@@ -17,9 +17,10 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from threading import Event, Thread
-from typing import Any
+from typing import Any, Literal
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 from app.ai.intelligence_provider import IntelligenceProvider, create_intelligence_provider
 from app.ai.local_provider import LocalAIProvider
@@ -29,17 +30,43 @@ from app.risk.engine import RiskEngine
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que SOLO COMPRA. Devuelves SOLO JSON:
-{"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
+# ─── Single source of truth for profile → risk limits ─────────────────────────
+PROFILE_RISK_LIMITS: dict[str, dict[str, Any]] = {
+    "conservative": {"sl_range": (2.0, 3.0), "tp_range": (4.0, 8.0),  "min_confidence": 0.7, "max_positions": 3},
+    "moderate":     {"sl_range": (3.0, 4.0), "tp_range": (6.0, 10.0), "min_confidence": 0.6, "max_positions": 5},
+    "aggressive":   {"sl_range": (4.0, 5.0), "tp_range": (8.0, 15.0), "min_confidence": 0.5, "max_positions": 7},
+}
 
-PERFIL DEL USUARIO: El contexto incluye "user_profile" con el perfil del trader. DEBES referenciar el perfil en tus respuestas:
-- En "analysis": menciona cómo tu análisis se alinea con el perfil del usuario (ej: "Para tu perfil conservador, esta operación tiene riesgo moderado pero el RSI sugiere rebote")
-- En "risk_assessment": referencia el nivel de riesgo del usuario y si la operación es apropiada
-- En "reason" de cada acción: incluye por qué es adecuada para su perfil (ej: "Alineado con tu perfil agresivo — momentum fuerte con volumen confirmado")
-- En "market_overview": si el mercado no se alinea con el perfil del usuario, menciónalo (ej: "Mercado volátil — para tu perfil conservador, recomendamos cautela")
-- Ajusta stop_loss_pct y take_profit_pct según el perfil: conservador = SL más tight (2-3%), agresivo = SL más wide (4-5%)
-- Si el perfil es "conservative" y la confianza es < 0.7, NO compres — menciona en "analysis" que se descarta por no cumplir el umbral del perfil conservador
-- Si el perfil es "aggressive" y hay momentum, puedes ser más resolutivo
+# Models that benefit from few-shot examples in the prompt
+LIGHTWEIGHT_MODELS: frozenset[str] = frozenset({
+    "llama-3.1-8b-instant",
+    "llama3.2:3b",
+    "qwen2.5:7b",
+    "qwen2.5:14b",
+    "gemini-flash-lite-latest",
+    "gpt-4o-mini",
+})
+
+# ─── Pydantic schemas for LLM output validation ───────────────────────────────
+
+class TradeAction(BaseModel):
+    type: Literal["buy"]
+    symbol: str
+    confidence: float = Field(ge=0, le=1)
+    stop_loss_pct: float
+    take_profit_pct: float
+    reason: str = ""
+
+class AgentDecision(BaseModel):
+    market_overview: str = ""
+    portfolio_status: str = ""
+    analysis: str = ""
+    actions: list[TradeAction] = []
+    risk_assessment: str = ""
+    next_steps: str = ""
+
+SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que SOLO COMPRA. Devuelves SOLO JSON con este schema exacto:
+{"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
 
 SEÑALES REMOTAS: El contexto puede incluir "remote_signals" con señales de la Intelligence Platform (AI Server). USA estas señales COMO INPUT ADICIONAL:
 - Si una señal remota dice "BUY" o "STRONG_BUY" y tu análisis técnico local lo confirma → COMPRA con confianza alta
@@ -50,7 +77,7 @@ SEÑALES REMOTAS: El contexto puede incluir "remote_signals" con señales de la 
 
 SOLO COMPRAS. Las ventas son automáticas con trailing stop y take-profit. NO incluyas "sell".
 
-FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son SELL/STRONG_SELL, o ya tienes 5 posiciones abiertas. En cualquier otro caso, BUSCA oportunidades.
+FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son SELL/STRONG_SELL, o ya tienes el máximo de posiciones de tu perfil. En cualquier otro caso, BUSCA oportunidades.
 
 PRIORIDAD DE COMPRA (compra el mejor candidato del ciclo):
 1. Technical signal BUY o STRONG_BUY → compra INMEDIATAMENTE
@@ -59,8 +86,6 @@ PRIORIDAD DE COMPRA (compra el mejor candidato del ciclo):
 4. Gainer con volume_relative > 1.2 + cambio > 2% → compra (momentum)
 5. Precio cerca de soporte (Bollinger lower band) → compra
 6. Si hay cash > $1000 y 0 posiciones → compra el MEJOR candidato disponible
-
-confidence 0-1. Cash>$5000=suficiente. SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical.
 
 DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
 - signal "STRONG_BUY" o "BUY" = oportunidad alcista confirmada → COMPRA
@@ -73,13 +98,19 @@ DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, 
 - Si no hay technical data, usa gainers con momentum del spot/futures
 
 CADA COMPRA debe incluir:
-- stop_loss_pct: % de pérdida máxima (2-5% según ATR_pct y perfil del usuario, mínimo 2%)
-- take_profit_pct: % de ganancia objetivo (4-12% según potencial y perfil del usuario)
+- stop_loss_pct: % de pérdida máxima (según ATR_pct y perfil del usuario)
+- take_profit_pct: % de ganancia objetivo (según potencial y perfil del usuario)
 - reason: explicación técnica concreta que referencia el perfil (ej: "RSI 32 + volume 2.1x + EMA bullish — adecuado para tu perfil moderate")
 
 DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, COMPRA algo — no quedes en HOLD con el capital parado.
 
-BUY_CANDIDATES: El contexto incluye "buy_candidates" con los mejores símbolos rankeados por score técnico. USA esta lista como prioridad de compra. El primer candidato con score más alto = mejor oportunidad."""
+BUY_CANDIDATES: El contexto incluye "buy_candidates" con los mejores símbolos rankeados por score técnico. USA esta lista como prioridad de compra. El primer candidato con score más alto = mejor oportunidad.
+
+SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical. confidence entre 0 y 1."""
+
+FEW_SHOT_EXAMPLE = """
+EJEMPLO de respuesta válida:
+{"market_overview":"BTC en rango 60k-65k, volumen estable. ETH con momentum alcista.","portfolio_status":"2 posiciones abiertas (SOL, ADA), cash $3200","analysis":"ETH muestra RSI 35 + volume_relative 1.8 + EMA bullish. Alineado con perfil moderate.","actions":[{"type":"buy","symbol":"ETHUSDT","confidence":0.75,"stop_loss_pct":3.5,"take_profit_pct":8,"reason":"RSI 35 (oversold) + volume 1.8x + EMA bullish — adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 3.5% protege contra caída brusca. ATR_pct 2.1% justifica el SL elegido.","next_steps":"Monitorear ETH. Si sube 4%, trailing stop activará."}"""
 
 
 class AITradingAgent:
@@ -970,15 +1001,12 @@ class AITradingAgent:
         if not symbol.endswith("USDT"):
             symbol = symbol + "USDT"
 
-        # Get risk parameters from user profile and risk config
+        # Get risk parameters from PROFILE_RISK_LIMITS (single source of truth)
         profile = self._get_user_profile()
         risk_tol = profile.get("risk_tolerance") if profile else "moderate"
-        if risk_tol == "conservative":
-            sl_pct, tp_pct = 2.0, 5.0
-        elif risk_tol == "aggressive":
-            sl_pct, tp_pct = 5.0, 15.0
-        else:
-            sl_pct, tp_pct = 3.0, 8.0
+        limits = PROFILE_RISK_LIMITS.get(risk_tol, PROFILE_RISK_LIMITS["moderate"])
+        sl_pct = limits["sl_range"][0]
+        tp_pct = limits["tp_range"][1]
 
         if rec_type == "BUY":
             return {
@@ -1224,16 +1252,123 @@ class AITradingAgent:
         return not (allowed and s not in allowed)
 
     def _ask_llm(self, context: dict) -> dict | None:
-        """Envía el contexto al proveedor de IA y recibe la decisión."""
-        user_msg = f"Datos:{json.dumps(context,default=str)}\nAnaliza y decide. SOLO JSON."
-        response: AIResponse = self._ai_provider.ask(SYSTEM_PROMPT, user_msg)
+        """Envía el contexto al proveedor de IA y recibe la decisión validada."""
+        # Build dynamic prompt with profile block + optional few-shot
+        prompt = self._build_system_prompt()
+
+        user_msg = f"Datos:{json.dumps(context, default=str)}\nAnaliza y decide. SOLO JSON."
+        decision = self._ask_and_validate(prompt, user_msg)
+        if decision is None:
+            repair_msg = user_msg + "\n\nTu respuesta anterior no cumplió el schema. Responde SOLO con el JSON corregido."
+            decision = self._ask_and_validate(prompt, repair_msg)
+        return decision
+
+    def _build_system_prompt(self) -> str:
+        """Build the system prompt with dynamic profile block and optional few-shot example."""
+        prompt = SYSTEM_PROMPT
+
+        # Add profile-specific rules block
+        profile = self._get_user_profile()
+        prompt += self._build_profile_prompt_block(profile)
+
+        # Add few-shot example for lightweight models
+        active_model = self._get_active_model()
+        if active_model in LIGHTWEIGHT_MODELS:
+            prompt += FEW_SHOT_EXAMPLE
+
+        return prompt
+
+    def _get_active_model(self) -> str:
+        """Return the currently active model name for the selected provider."""
+        if self.provider == "groq":
+            return self.groq_model
+        elif self.provider == "gemini":
+            return self.gemini_model
+        elif self.provider == "ollama":
+            return self.ollama_model
+        elif self.provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            return self.openai_model
+        return ""
+
+    def _build_profile_prompt_block(self, profile: dict | None) -> str:
+        """Build a profile-specific rules block appended to the system prompt."""
+        limits = PROFILE_RISK_LIMITS.get(
+            (profile or {}).get("risk_tolerance", "moderate"),
+            PROFILE_RISK_LIMITS["moderate"],
+        )
+        sl_lo, sl_hi = limits["sl_range"]
+        tp_lo, tp_hi = limits["tp_range"]
+        risk_tol = (profile or {}).get("risk_tolerance", "moderate")
+        return (
+            f"\n\nPERFIL ACTIVO: {risk_tol}. confianza mínima {limits['min_confidence']}, "
+            f"stop_loss_pct entre {sl_lo}% y {sl_hi}%, take_profit_pct entre {tp_lo}% y {tp_hi}%, "
+            f"máximo {limits['max_positions']} posiciones abiertas. El sistema ajustará estos valores "
+            "si te sales de rango, así que respétalos desde el inicio. "
+            "Referencia el perfil del usuario en analysis, risk_assessment y reason de cada acción."
+        )
+
+    def _ask_and_validate(self, system_prompt: str, user_msg: str) -> dict | None:
+        """Send message to provider and validate response against AgentDecision schema."""
+        response: AIResponse = self._ai_provider.ask(system_prompt, user_msg)
         if not response.success:
-            self._add_log("error", response.error or "El proveedor de IA no respondió")
+            self._log_provider_error(response)
             return None
         if isinstance(self._ai_provider, LocalAIProvider):
             for log_entry in self._ai_provider.get_logs():
                 self._add_log("warn", log_entry)
-        return response.decision
+        try:
+            validated = AgentDecision.model_validate(response.decision)
+            return validated.model_dump()
+        except ValidationError as exc:
+            self._add_log("warn", f"JSON del LLM no cumple el schema: {exc}")
+            return None
+
+    def _log_provider_error(self, response: AIResponse) -> None:
+        """Log provider errors with differentiated messages."""
+        err = response.error or "El proveedor de IA no respondió"
+        err_lower = err.lower()
+        if "429" in err_lower or "rate limit" in err_lower or "quota" in err_lower:
+            self._add_log("error", f"Cuota agotada (429): {err}")
+        elif "401" in err_lower or "403" in err_lower or "invalid api key" in err_lower or "unauthorized" in err_lower:
+            self._add_log("error", f"API Key inválida o no autorizada: {err}")
+        elif "timeout" in err_lower or "timed out" in err_lower:
+            self._add_log("error", f"Timeout del proveedor: {err}")
+        elif "connection" in err_lower or "refused" in err_lower or "unreachable" in err_lower:
+            self._add_log("error", f"Error de conexión: {err}")
+        else:
+            self._add_log("error", err)
+
+    def _apply_profile_guardrails(self, action: dict, open_positions: list | None = None) -> dict | None:
+        """Valida y ajusta una acción de compra contra los límites duros del perfil.
+        None = se descarta (HOLD). Modifica action in-place con SL/TP clampados."""
+        profile = self._get_user_profile() or {}
+        limits = PROFILE_RISK_LIMITS.get(
+            profile.get("risk_tolerance", "moderate"),
+            PROFILE_RISK_LIMITS["moderate"],
+        )
+
+        confidence = float(action.get("confidence", 0))
+        if confidence < limits["min_confidence"]:
+            self._add_log("info", f"{action.get('symbol')}: confianza {confidence} < mínimo {limits['min_confidence']} de tu perfil — descartada")
+            return None
+
+        # Count open positions (use provided list or fetch)
+        if open_positions is not None:
+            open_count = len(open_positions)
+        else:
+            positions = self._api_get("/api/positions?status=open&limit=20")
+            open_count = len(positions) if isinstance(positions, list) else 0
+        if open_count >= limits["max_positions"]:
+            self._add_log("info", f"Máximo de posiciones para tu perfil ({limits['max_positions']}) alcanzado — no se compra {action.get('symbol')}")
+            return None
+
+        # Clamp SL/TP to profile range
+        sl_lo, sl_hi = limits["sl_range"]
+        tp_lo, tp_hi = limits["tp_range"]
+        action["confidence"] = confidence
+        action["stop_loss_pct"] = min(max(float(action.get("stop_loss_pct", sl_lo)), sl_lo), sl_hi)
+        action["take_profit_pct"] = min(max(float(action.get("take_profit_pct", tp_lo)), tp_lo), tp_hi)
+        return action
 
     def _execute_action(self, action: dict) -> None:
         """Ejecuta una acción de trading directamente via execution engine."""
@@ -1251,9 +1386,12 @@ class AITradingAgent:
             return
 
         if action_type == "buy":
-            confidence = action.get("confidence", 0.7)
-            sl_pct = action.get("stop_loss_pct", 3)
-            tp_pct = action.get("take_profit_pct", 8)
+            action = self._apply_profile_guardrails(action)
+            if action is None:
+                return
+            confidence = action["confidence"]
+            sl_pct = action["stop_loss_pct"]
+            tp_pct = action["take_profit_pct"]
             self._add_log("info", f"Comprando {symbol} (confianza: {confidence}, SL: {sl_pct}%, TP: {tp_pct}%): {reason}")
             result = self._api_post("/api/ai-agent/execute", {
                 "action_type": "buy",
