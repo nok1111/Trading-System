@@ -761,6 +761,32 @@ def place_binance_manual_order(
     if not req.quantity and not req.quote_order_qty:
         return {"error": "Requiere quantity o quote_order_qty"}
 
+    # Fetch LOT_SIZE filter from Binance to round quantity correctly
+    import httpx as _httpx
+    step_size = None
+    min_qty = None
+    min_notional = None
+    try:
+        ei = _httpx.get(f"https://api.binance.com/api/v3/exchangeInfo", params={"symbol": symbol}, timeout=10).json()
+        for f in ei.get("symbols", [{}])[0].get("filters", []):
+            if f["filterType"] == "LOT_SIZE":
+                step_size = float(f["stepSize"])
+                min_qty = float(f["minQty"])
+            elif f["filterType"] == "NOTIONAL":
+                min_notional = float(f.get("minNotional", 0))
+            elif f["filterType"] == "MIN_NOTIONAL":
+                min_notional = float(f.get("minNotional", 0))
+    except Exception:
+        pass
+
+    def _round_to_step(value: float, step: float | None) -> float:
+        if not step or step <= 0:
+            return value
+        import decimal
+        d = decimal.Decimal(str(value))
+        s = decimal.Decimal(str(step))
+        return float((d // s) * s)
+
     params: dict = {
         "symbol": symbol,
         "side": side,
@@ -772,7 +798,12 @@ def place_binance_manual_order(
         params["price"] = f"{req.price:.8f}".rstrip("0").rstrip(".")
 
     if req.quantity:
-        params["quantity"] = f"{req.quantity:.8f}".rstrip("0").rstrip(".")
+        qty = float(req.quantity)
+        if step_size:
+            qty = _round_to_step(qty, step_size)
+        if min_qty and qty < min_qty:
+            return {"error": f"Cantidad {qty} es menor al mínimo permitido ({min_qty}) para {symbol}"}
+        params["quantity"] = f"{qty:.8f}".rstrip("0").rstrip(".")
     elif req.quote_order_qty and order_type == "MARKET":
         params["quoteOrderQty"] = f"{req.quote_order_qty:.8f}".rstrip("0").rstrip(".")
 
