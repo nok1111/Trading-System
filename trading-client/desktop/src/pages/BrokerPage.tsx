@@ -3,6 +3,7 @@ import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineC
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
+import { toast } from "../components/ui/Toast";
 import { NotConnectedState } from "../components/common/NotConnectedState";
 import { BrokerStatusBadge } from "../components/brokers/BrokerStatusBadge";
 import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
@@ -456,9 +457,17 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
         body: JSON.stringify(payload),
       });
       setResult(r);
-      if (r.error) setError(r.error);
+      if (r.error) {
+        setError(r.error);
+        toast(r.error, false);
+      } else if (r.status === "ok") {
+        toast(`Orden ejecutada: ${r.executedQty || r.quantity || ""} ${r.symbol || symbol}`, true);
+      } else {
+        toast(`Respuesta: ${JSON.stringify(r)}`, true);
+      }
     } catch (e: any) {
       setError(e.message || "Error al enviar orden");
+      toast(e.message || "Error al enviar orden", false);
     }
     setSubmitting(false);
   };
@@ -836,9 +845,24 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
 
           {/* Success */}
           {result && result.status === "ok" && (
-            <div className="rounded-[8px] bg-[var(--color-success)]/10 p-3 space-y-1 text-[12px] font-semibold text-[var(--color-success)]">
-              <p>Orden ejecutada</p>
-              <p className="text-[var(--color-text-muted)]">ID: {result.orderId} · {result.executedQty} {result.symbol} · {result.status}</p>
+            <div className="rounded-[8px] bg-green-500/10 border border-green-500/30 p-3 space-y-1.5 text-[12px] font-semibold text-green-400">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px]">✓</span>
+                <span>Orden ejecutada correctamente</span>
+              </div>
+              <div className="text-[var(--color-text-muted)] text-[11px] space-y-0.5">
+                <div>ID: {result.orderId}</div>
+                <div>Símbolo: {result.symbol} · Lado: {result.side} · Tipo: {result.type}</div>
+                <div>Cantidad ejecutada: {result.executedQty || "N/A"} · Estado: {result.status}</div>
+                {result.price && <div>Precio: ${result.price}</div>}
+                {result.ocoOrderId && <div className="text-yellow-400">OCO (SL/TP) configurado · ID: {result.ocoOrderId}</div>}
+              </div>
+            </div>
+          )}
+          {/* Show raw result if status is not "ok" but no error */}
+          {result && result.status !== "ok" && !result.error && (
+            <div className="rounded-[8px] bg-yellow-500/10 border border-yellow-500/30 p-3 text-[12px] font-semibold text-yellow-400">
+              Respuesta del broker: {JSON.stringify(result)}
             </div>
           )}
         </div>
