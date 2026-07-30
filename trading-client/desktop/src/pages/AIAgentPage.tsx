@@ -108,14 +108,14 @@ export function AIAgentPage() {
   const loadBrokerBalance = useCallback(async () => {
     if (selectedBroker === "paper" || selectedBroker === "mock") { setBrokerBalance(null); return; }
     try {
-      const r = await api<any>("/api/ai-agent/binance/balance");
+      const r = await api<any>("/api/binance/balance");
       setBrokerBalance(r);
     } catch { setBrokerBalance(null); }
   }, [selectedBroker]);
 
   const loadTradingMode = useCallback(async () => {
     try {
-      const r = await api<any>("/api/ai-agent/trading-mode");
+      const r = await api<any>("/api/trading-mode");
       setAllocatedCapital(r.allocated_capital || 0);
     } catch {}
   }, []);
