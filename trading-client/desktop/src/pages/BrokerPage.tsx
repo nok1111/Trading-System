@@ -329,14 +329,18 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [quoteCurrency, setQuoteCurrency] = useState("USDT");
+  const [userBalance, setUserBalance] = useState<any>(null);
+  const [openPositions, setOpenPositions] = useState<any[]>([]);
 
+  const BINANCE_FEE_RATE = 0.001; // 0.1% spot fee
   const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA", "LINK", "DOT"];
   const symbols = baseSymbols.map((s) => s + quoteCurrency);
 
-  // Detect quote currency from user's balance
+  // Detect quote currency from user's balance and load balance + positions
   useEffect(() => {
     api<any>("/api/binance/balance").then((data) => {
       if (!data?.assets) return;
+      setUserBalance(data);
       const stablecoins = ["USDT", "BUSD", "USDC", "FDUSD", "TUSD", "EUR", "TRY", "BRL", "MXN"];
       for (const a of data.assets) {
         if (stablecoins.includes(a.asset) && a.total > 0) {
@@ -344,6 +348,10 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           break;
         }
       }
+    }).catch(() => {});
+    // Load open positions for P&L calculation
+    api<any[]>("/api/paper-trading/positions").then((positions) => {
+      setOpenPositions(positions || []);
     }).catch(() => {});
   }, []);
 
@@ -371,11 +379,40 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
     return () => clearInterval(id);
   }, [fetchPrice]);
 
+  // Available balance for the current operation
+  const baseAsset = symbol.replace(quoteCurrency, "");
+  const availableUsdt = userBalance?.assets?.find((a: any) => a.asset === quoteCurrency)?.free || 0;
+  const availableAsset = userBalance?.assets?.find((a: any) => a.asset === baseAsset)?.free || 0;
+
+  // Find open position for P&L calculation (sell)
+  const openPos = openPositions.find((p: any) => p.symbol === symbol && p.status === "open");
+  const entryPrice = openPos ? parseFloat(openPos.entry_price) : null;
+  const heldQty = openPos ? parseFloat(openPos.quantity) : 0;
+
   const computedQty = (() => {
     if (quantity) return parseFloat(quantity);
     if (amountUsd && livePrice && livePrice > 0) return parseFloat(amountUsd) / livePrice;
     return 0;
   })();
+
+  // Fee and P&L calculations
+  const orderValue = computedQty * (orderType === "LIMIT" && limitPrice ? parseFloat(limitPrice) : (livePrice || 0));
+  const fee = orderValue * BINANCE_FEE_RATE;
+  const netValue = orderValue - fee;
+
+  // For SELL: calculate P&L if we have entry price
+  const sellPnl = (side === "SELL" && entryPrice && computedQty > 0)
+    ? (orderValue - fee) - (entryPrice * computedQty)
+    : null;
+  const sellPnlPct = (side === "SELL" && entryPrice && computedQty > 0)
+    ? ((orderValue - fee) / (entryPrice * computedQty) - 1) * 100
+    : null;
+
+  // Validation
+  const maxBuyUsd = availableUsdt;
+  const maxSellQty = Math.min(availableAsset, heldQty || availableAsset);
+  const exceedsBalance = (side === "BUY" && amountUsd && parseFloat(amountUsd) > maxBuyUsd)
+    || (side === "SELL" && quantity && parseFloat(quantity) > maxSellQty);
 
   const handleSubmit = async () => {
     setError("");
@@ -386,6 +423,12 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
     }
     if (!computedQty || computedQty <= 0) {
       setError("Cantidad inválida");
+      return;
+    }
+    if (exceedsBalance) {
+      setError(side === "BUY"
+        ? `Excede tu saldo disponible de ${maxBuyUsd.toFixed(2)} ${quoteCurrency}`
+        : `Excede tu saldo disponible de ${maxSellQty.toFixed(6)} ${baseAsset}`);
       return;
     }
 
@@ -506,6 +549,16 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
             ))}
           </div>
 
+          {/* Available balance display */}
+          <div className="flex items-center justify-between text-[11px] rounded-[8px] bg-[var(--color-surface-2)]/50 px-3 py-2">
+            <span className="text-[var(--color-text-muted)] font-bold">Disponible:</span>
+            {side === "BUY" ? (
+              <span className="font-bold text-green-400">{availableUsdt.toFixed(2)} {quoteCurrency}</span>
+            ) : (
+              <span className="font-bold text-red-400">{availableAsset.toFixed(6)} {baseAsset}{heldQty > 0 && heldQty < availableAsset ? ` (pos: ${heldQty.toFixed(6)})` : ""}</span>
+            )}
+          </div>
+
           {/* Amount input */}
           {orderType === "MARKET" && side === "BUY" ? (
             <div>
@@ -516,25 +569,71 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                 <input
                   type="number"
                   value={amountUsd}
-                  onChange={(e) => setAmountUsd(e.target.value)}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (v > availableUsdt) setAmountUsd(availableUsdt.toString());
+                    else setAmountUsd(e.target.value);
+                  }}
                   placeholder="100"
-                  className="w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-[14px] font-bold text-[var(--color-text)] focus:border-[var(--color-primary)] outline-none"
+                  max={availableUsdt}
+                  className={cn(
+                    "w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border px-3 text-[14px] font-bold text-[var(--color-text)] outline-none",
+                    exceedsBalance ? "border-red-500/50" : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+                  )}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold text-[var(--color-text-muted)]">{quoteCurrency}</span>
+              </div>
+              {exceedsBalance && (
+                <div className="text-[10px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
+              )}
+              {/* Quick percentage buttons */}
+              <div className="flex gap-1 mt-1.5">
+                {[25, 50, 75, 100].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setAmountUsd((availableUsdt * pct / 100).toFixed(2))}
+                    className="flex-1 h-6 rounded-[4px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                  >
+                    {pct}%
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
             <div>
               <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
-                Cantidad ({symbol.replace(quoteCurrency, "")})
+                Cantidad ({baseAsset})
               </label>
               <input
                 type="number"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (v > maxSellQty) setQuantity(maxSellQty.toString());
+                  else setQuantity(e.target.value);
+                }}
                 placeholder="0.001"
-                className="w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-[14px] font-bold text-[var(--color-text)] focus:border-[var(--color-primary)] outline-none"
+                max={maxSellQty}
+                className={cn(
+                  "w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border px-3 text-[14px] font-bold text-[var(--color-text)] outline-none",
+                  exceedsBalance ? "border-red-500/50" : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+                )}
               />
+              {exceedsBalance && (
+                <div className="text-[10px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
+              )}
+              {/* Quick percentage buttons for sell */}
+              <div className="flex gap-1 mt-1.5">
+                {[25, 50, 75, 100].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setQuantity((maxSellQty * pct / 100).toFixed(6))}
+                    className="flex-1 h-6 rounded-[4px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -625,7 +724,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
             </div>
           )}
 
-          {/* Summary */}
+          {/* Summary with fees and P&L */}
           <div className="rounded-[10px] bg-[var(--color-surface-2)] p-3 space-y-1.5 text-[12px]">
             <div className="flex justify-between">
               <span className="text-[var(--color-text-muted)]">Orden</span>
@@ -637,14 +736,65 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
             </div>
             {computedQty > 0 && (
               <div className="flex justify-between">
-                <span className="text-[var(--color-text-muted)]">Cantidad aprox.</span>
-                <span className="font-bold text-[var(--color-text)]">{computedQty.toFixed(6)} {symbol.replace(quoteCurrency, "")}</span>
+                <span className="text-[var(--color-text-muted)]">Cantidad</span>
+                <span className="font-bold text-[var(--color-text)]">{computedQty.toFixed(6)} {baseAsset}</span>
               </div>
             )}
-            {amountUsd && (
-              <div className="flex justify-between">
-                <span className="text-[var(--color-text-muted)]">Total</span>
-                <span className="font-bold text-[var(--color-text)]">${parseFloat(amountUsd).toLocaleString("en-US")} {quoteCurrency}</span>
+            {orderValue > 0 && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-text-muted)]">Valor orden</span>
+                  <span className="font-bold text-[var(--color-text)]">${orderValue.toFixed(2)} {quoteCurrency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-text-muted)]">Comisión (0.1%)</span>
+                  <span className="font-bold text-yellow-400">−${fee.toFixed(4)} {quoteCurrency}</span>
+                </div>
+                <div className="flex justify-between border-t border-[var(--color-border)] pt-1.5">
+                  <span className="text-[var(--color-text-muted)] font-bold">Recibes/Pagas</span>
+                  <span className="font-bold text-[var(--color-text)]">${netValue.toFixed(2)} {quoteCurrency}</span>
+                </div>
+              </>
+            )}
+            {/* P&L for SELL */}
+            {side === "SELL" && sellPnl !== null && (
+              <div className={cn(
+                "rounded-[6px] px-2 py-1.5 mt-1.5 border",
+                sellPnl >= 0
+                  ? "bg-green-500/10 border-green-500/30"
+                  : "bg-red-500/10 border-red-500/30"
+              )}>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">
+                    {sellPnl >= 0 ? "📈 Ganancia" : "📉 Pérdida"}
+                  </span>
+                  <span className={cn(
+                    "text-[14px] font-extrabold",
+                    sellPnl >= 0 ? "text-green-400" : "text-red-400"
+                  )}>
+                    {sellPnl >= 0 ? "+" : ""}{sellPnl.toFixed(2)} {quoteCurrency}
+                  </span>
+                </div>
+                {sellPnlPct !== null && (
+                  <div className="flex justify-between items-center mt-0.5">
+                    <span className="text-[10px] text-[var(--color-text-muted)]">
+                      Precio entrada: ${entryPrice?.toFixed(4)}
+                    </span>
+                    <span className={cn(
+                      "text-[11px] font-bold",
+                      sellPnlPct >= 0 ? "text-green-400" : "text-red-400"
+                    )}>
+                      {sellPnlPct >= 0 ? "+" : ""}{sellPnlPct.toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Entry price info for SELL */}
+            {side === "SELL" && entryPrice && (
+              <div className="flex justify-between text-[10px] text-[var(--color-text-muted)]">
+                <span>Posición: {heldQty.toFixed(6)} {baseAsset} @ ${entryPrice.toFixed(4)}</span>
+                <span>Costo: ${(entryPrice * (computedQty || heldQty)).toFixed(2)}</span>
               </div>
             )}
             {stopLossPrice && (
@@ -674,7 +824,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                   : "bg-[var(--color-danger)] text-white hover:opacity-90"
             )}
           >
-            {submitting ? "Enviando..." : `${side === "BUY" ? "Comprar" : "Vender"} ${symbol.replace(quoteCurrency, "")}`}
+            {submitting ? "Enviando..." : `${side === "BUY" ? "Comprar" : "Vender"} ${baseAsset}`}
           </button>
 
           {/* Error */}
