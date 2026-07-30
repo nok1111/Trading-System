@@ -763,21 +763,26 @@ def place_binance_manual_order(
 
     # Fetch LOT_SIZE filter from Binance to round quantity correctly
     import httpx as _httpx
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     step_size = None
     min_qty = None
     min_notional = None
+    # Use the broker's own base URL (testnet or mainnet)
+    _base = getattr(adapter._broker, "_base_url", "https://api.binance.com")
     try:
-        ei = _httpx.get(f"https://api.binance.com/api/v3/exchangeInfo", params={"symbol": symbol}, timeout=10).json()
-        for f in ei.get("symbols", [{}])[0].get("filters", []):
+        ei = _httpx.get(f"{_base}/api/v3/exchangeInfo", params={"symbol": symbol}, timeout=10).json()
+        filters = ei.get("symbols", [{}])[0].get("filters", [])
+        _log.info("exchangeInfo filters for %s: %s", symbol, filters)
+        for f in filters:
             if f["filterType"] == "LOT_SIZE":
                 step_size = float(f["stepSize"])
                 min_qty = float(f["minQty"])
-            elif f["filterType"] == "NOTIONAL":
+            elif f["filterType"] in ("NOTIONAL", "MIN_NOTIONAL"):
                 min_notional = float(f.get("minNotional", 0))
-            elif f["filterType"] == "MIN_NOTIONAL":
-                min_notional = float(f.get("minNotional", 0))
-    except Exception:
-        pass
+        _log.info("LOT_SIZE for %s: step=%s minQty=%s minNotional=%s", symbol, step_size, min_qty, min_notional)
+    except Exception as _ei_err:
+        _log.warning("Failed to fetch exchangeInfo for %s: %s", symbol, _ei_err)
 
     def _round_to_step(value: float, step: float | None) -> float:
         if not step or step <= 0:
@@ -801,11 +806,31 @@ def place_binance_manual_order(
         qty = float(req.quantity)
         if step_size:
             qty = _round_to_step(qty, step_size)
+            _log.info("Rounded quantity %s -> %s (step=%s)", req.quantity, qty, step_size)
         if min_qty and qty < min_qty:
             return {"error": f"Cantidad {qty} es menor al mínimo permitido ({min_qty}) para {symbol}"}
         params["quantity"] = f"{qty:.8f}".rstrip("0").rstrip(".")
     elif req.quote_order_qty and order_type == "MARKET":
-        params["quoteOrderQty"] = f"{req.quote_order_qty:.8f}".rstrip("0").rstrip(".")
+        # For BUY with quoteOrderQty, Binance handles rounding internally
+        # For SELL, we need to convert quoteOrderQty to quantity using current price
+        if side == "SELL":
+            # SELL MARKET with quoteOrderQty is not supported on Binance Spot
+            # Convert to quantity: fetch current price and calculate qty
+            try:
+                ticker = _httpx.get(f"{_base}/api/v3/ticker/price", params={"symbol": symbol}, timeout=10).json()
+                current_price = float(ticker["price"])
+                qty = float(req.quote_order_qty) / current_price
+                if step_size:
+                    qty = _round_to_step(qty, step_size)
+                    _log.info("SELL: converted quoteOrderQty %s -> qty %s (price=%s, step=%s)", req.quote_order_qty, qty, current_price, step_size)
+                if min_qty and qty < min_qty:
+                    return {"error": f"Cantidad calculada {qty} es menor al mínimo permitido ({min_qty}) para {symbol}"}
+                params["quantity"] = f"{qty:.8f}".rstrip("0").rstrip(".")
+                params.pop("quoteOrderQty", None)
+            except Exception as _conv_err:
+                return {"error": f"No se pudo calcular cantidad para venta: {_conv_err}"}
+        else:
+            params["quoteOrderQty"] = f"{req.quote_order_qty:.8f}".rstrip("0").rstrip(".")
 
     try:
         resp = adapter._broker._signed_request("POST", "/api/v3/order", params)
