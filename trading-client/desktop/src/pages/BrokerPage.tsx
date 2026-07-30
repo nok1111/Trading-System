@@ -508,7 +508,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           {/* Buy/Sell toggle */}
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => setSide("BUY")}
+              onClick={() => { setSide("BUY"); setQuantity(""); setAmountUsd(""); setResult(null); setError(""); }}
               className={cn(
                 "h-11 rounded-[10px] text-[14px] font-extrabold transition-all",
                 side === "BUY"
@@ -519,7 +519,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               Comprar
             </button>
             <button
-              onClick={() => setSide("SELL")}
+              onClick={() => { setSide("SELL"); setQuantity(""); setAmountUsd(""); setResult(null); setError(""); }}
               className={cn(
                 "h-11 rounded-[10px] text-[14px] font-extrabold transition-all",
                 side === "SELL"
@@ -536,7 +536,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
             {(["MARKET", "LIMIT"] as const).map((t) => (
               <button
                 key={t}
-                onClick={() => setOrderType(t)}
+                onClick={() => { setOrderType(t); if (t === "MARKET") setLimitPrice(""); }}
                 className={cn(
                   "flex-1 h-8 rounded-[8px] text-[12px] font-bold transition-colors",
                   orderType === t
