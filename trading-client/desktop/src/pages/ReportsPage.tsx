@@ -74,29 +74,29 @@ export function ReportsPage() {
 
   const actionBadge = (action?: string) => {
     if (!action) return null;
-    if (action === "BUY") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-success)] text-white">COMPRA</span>;
-    if (action === "SELL") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-danger)] text-white">VENTA</span>;
-    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">HOLD</span>;
+    if (action === "BUY") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">▲ COMPRA</span>;
+    if (action === "SELL") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/40">▼ VENTA</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/40">— HOLD</span>;
   };
 
   const statusBadge = (status?: string) => {
-    if (!status || status === "pending") return <span className="text-[9px] text-[var(--color-text-muted)]">Pendiente</span>;
-    if (status === "executed") return <span className="text-[9px] text-[var(--color-success)] font-bold">Ejecutada</span>;
-    if (status === "dismissed") return <span className="text-[9px] text-[var(--color-text-muted)] line-through">Descartada</span>;
+    if (!status || status === "pending") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">⏳ PENDIENTE</span>;
+    if (status === "executed") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">✓ EJECUTADA</span>;
+    if (status === "dismissed") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/40">✕ DESCARTADA</span>;
     return null;
   };
 
   const modeBadge = (mode?: string | null, broker?: string | null) => {
     if (!mode) return null;
-    if (mode === "paper") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-info)] text-white">PAPER MONEY</span>;
-    if (mode === "live") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-success)] text-white">{(broker || "LIVE").toUpperCase()}</span>;
+    if (mode === "paper") return <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">📊 PAPER</span>;
+    if (mode === "live") return <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">🔴 {broker?.toUpperCase() || "LIVE"}</span>;
     return null;
   };
 
-  const cardBorder = (mode?: string | null) => {
-    if (mode === "paper") return "border-l-[3px] border-l-[var(--color-info)]";
-    if (mode === "live") return "border-l-[3px] border-l-[var(--color-success)]";
-    return "";
+  const cardStyle = (mode?: string | null) => {
+    if (mode === "paper") return "bg-blue-500/5 border-blue-500/30 border-l-[4px] border-l-blue-500";
+    if (mode === "live") return "bg-green-500/5 border-green-500/30 border-l-[4px] border-l-green-500";
+    return "bg-[var(--color-surface)] border-[var(--color-border)]";
   };
 
   return (
@@ -146,8 +146,9 @@ export function ReportsPage() {
               <div
                 key={r.id}
                 className={cn(
-                  "rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] p-3 cursor-pointer hover:border-[var(--color-border-strong)] transition-colors",
-                  cardBorder(r.trading_mode)
+                  "rounded-[10px] border p-3 cursor-pointer transition-colors",
+                  cardStyle(r.trading_mode),
+                  r.trading_mode === "paper" ? "hover:border-blue-500/50" : r.trading_mode === "live" ? "hover:border-green-500/50" : "hover:border-[var(--color-border-strong)]"
                 )}
                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
               >
