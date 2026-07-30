@@ -104,6 +104,32 @@ app.include_router(intelligence.router)
 # Startup / Shutdown events
 # ---------------------------------------------------------------------------
 
+_MIGRATIONS = {
+    "ai_recommendations": [
+        ("trading_mode", "VARCHAR(10) NOT NULL DEFAULT 'paper'"),
+        ("broker_name", "VARCHAR(30)"),
+        ("created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+    ],
+}
+
+
+def _auto_migrate_columns(engine) -> None:
+    """Add missing columns to existing SQLite tables (ALTER TABLE ADD COLUMN)."""
+    from sqlalchemy import text, inspect
+
+    inspector = inspect(engine)
+    for table_name, columns in _MIGRATIONS.items():
+        if not inspector.has_table(table_name):
+            continue
+        existing = {col["name"] for col in inspector.get_columns(table_name)}
+        for col_name, col_def in columns:
+            if col_name not in existing:
+                with engine.connect() as conn:
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+                    conn.commit()
+                import logging
+                logging.getLogger(__name__).info("Auto-migrated: added column %s.%s", table_name, col_name)
+
 
 @app.on_event("startup")
 def _startup_services() -> None:
@@ -114,9 +140,11 @@ def _startup_services() -> None:
         import app.database.models  # noqa: F401 — ensure all models are registered
         from app.database.session import engine
         Base.metadata.create_all(bind=engine)
+        # Auto-migrate: add missing columns to existing tables (SQLite doesn't support ADD COLUMN via ORM)
+        _auto_migrate_columns(engine)
     except Exception as exc:
         import logging
-        logging.getLogger(__name__).warning("Failed to auto-create DB tables: %s", exc)
+        logging.getLogger(__name__).warning("Failed to auto-create/migrate DB tables: %s", exc)
     try:
         init_price_stream(settings.symbols_list, testnet=settings.BINANCE_TESTNET)
     except Exception as exc:
