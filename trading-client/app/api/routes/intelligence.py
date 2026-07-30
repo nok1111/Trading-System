@@ -853,6 +853,55 @@ def get_active_signals(limit: int = 10) -> list[dict]:
         return []
 
 
+@router.get("/reports/all")
+def get_all_reports(limit: int = 50) -> list[dict]:
+    """Get all recent AI agent recommendations across all assets for the Reports tab."""
+    cached = _cached(f"reports_all_{limit}")
+    if cached:
+        return cached
+
+    result: list[dict] = []
+
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.ai_recommendation import AIRecommendation
+
+        db = SessionLocal()
+        try:
+            recs = db.query(AIRecommendation).order_by(
+                AIRecommendation.timestamp.desc()
+            ).limit(limit).all()
+
+            for r in recs:
+                action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
+                result.append({
+                    "id": f"rec-{r.id}",
+                    "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
+                    "type": "daily",
+                    "asset": r.asset,
+                    "summary": f"{action_label} — {r.reason or 'Sin razón especificada'}",
+                    "sections": {
+                        "marketOverview": f"Decisión del mercado: {r.market_decision or 'N/A'}",
+                        "keyEvents": f"Recomendación personal: {r.personal_recommendation or 'N/A'} (confianza: {float(r.confidence):.0%})",
+                        "performance": f"Stop loss: {r.stop_loss_pct or 'N/A'}% | Take profit: {r.take_profit_pct or 'N/A'}%",
+                        "outlook": r.reason or "",
+                    },
+                    "action_type": r.action_type,
+                    "confidence": float(r.confidence),
+                    "status": r.status,
+                    "trading_mode": r.trading_mode,
+                    "broker_name": r.broker_name,
+                    "timestamp": r.timestamp.isoformat() if r.timestamp else "",
+                })
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Reports(all) fetch failed: %s", exc)
+
+    _set_cache(f"reports_all_{limit}", result, ttl=10)
+    return result
+
+
 @router.get("/reports/{asset}")
 def get_reports(asset: str, limit: int = 20) -> list[dict]:
     """Get AI agent recommendations and executed trades for an asset.

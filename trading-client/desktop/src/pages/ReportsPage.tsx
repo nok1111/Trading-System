@@ -1,12 +1,11 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
-import { getReports } from "../lib/intelligenceApi";
 import { api } from "../lib/api";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { cn } from "../lib/utils";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
 
-const ASSETS = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
+const ASSETS = ["ALL", "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
 
 interface ReportItem extends IntelligenceReport {
   action_type?: string;
@@ -19,7 +18,7 @@ interface ReportItem extends IntelligenceReport {
 export function ReportsPage() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [asset, setAsset] = useState("BTC");
+  const [asset, setAsset] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -27,14 +26,17 @@ export function ReportsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await getReports(asset);
-      setReports(r as ReportItem[]);
+      const endpoint = asset === "ALL" ? "/api/intelligence/reports/all" : `/api/intelligence/reports/${asset}`;
+      const r = await api<ReportItem[]>(endpoint);
+      setReports(r || []);
     } catch { /* ignore */ }
     setLoading(false);
   }, [asset]);
 
   useEffect(() => {
     load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
   }, [load]);
 
   const handleAccept = async (e: React.MouseEvent, recId: number) => {
@@ -127,14 +129,14 @@ export function ReportsPage() {
       </div>
 
       <div className="text-[11px] text-[var(--color-text-muted)]">
-        {filtered.length} reportes para {asset}
+        {filtered.length} reportes{asset !== "ALL" ? ` para ${asset}` : ""}
       </div>
 
       {loading ? (
         <LoadingSkeleton lines={4} />
       ) : filtered.length === 0 ? (
         <div className="text-center py-8 text-[12px] text-[var(--color-text-muted)]">
-          No hay reportes disponibles para {asset}.
+          No hay reportes disponibles{asset !== "ALL" ? ` para ${asset}` : ""}.
         </div>
       ) : (
         <div className="space-y-2">
