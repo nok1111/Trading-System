@@ -65,6 +65,9 @@ export function AIAgentPage() {
   const [plan, setPlan] = useState<any>(null);
   const [brokers, setBrokers] = useState<any[]>([]);
   const [selectedBroker, setSelectedBroker] = useState<string>("paper");
+  const [brokerBalance, setBrokerBalance] = useState<any>(null);
+  const [allocatedCapital, setAllocatedCapital] = useState<number>(0);
+  const [capitalInput, setCapitalInput] = useState<string>("");
 
   const loadStatus = useCallback(async () => {
     try {
@@ -102,12 +105,28 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadBrokerBalance = useCallback(async () => {
+    if (selectedBroker === "paper" || selectedBroker === "mock") { setBrokerBalance(null); return; }
+    try {
+      const r = await api<any>("/api/ai-agent/binance/balance");
+      setBrokerBalance(r);
+    } catch { setBrokerBalance(null); }
+  }, [selectedBroker]);
+
+  const loadTradingMode = useCallback(async () => {
+    try {
+      const r = await api<any>("/api/ai-agent/trading-mode");
+      setAllocatedCapital(r.allocated_capital || 0);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadLog();
     loadStats();
     loadPlan();
     loadBrokers();
+    loadTradingMode();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
@@ -116,7 +135,13 @@ export function AIAgentPage() {
       clearInterval(id2);
       clearInterval(id3);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers]);
+  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode]);
+
+  useEffect(() => {
+    loadBrokerBalance();
+    const id = setInterval(loadBrokerBalance, 30000);
+    return () => clearInterval(id);
+  }, [loadBrokerBalance]);
 
   const start = async () => {
     try {
@@ -201,6 +226,28 @@ export function AIAgentPage() {
       await api(`/api/ai-agent/broker?broker_id=${brokerId}`, { method: "PATCH" });
       setSelectedBroker(brokerId);
       toast(`Broker cambiado a ${brokerId}`);
+    } catch (e: any) {
+      toast(e.message, false);
+    }
+  };
+
+  const assignCapital = async () => {
+    const amount = parseFloat(capitalInput) || 0;
+    try {
+      const r = await api<any>(`/api/ai-agent/capital?amount=${amount}`, { method: "PATCH" });
+      setAllocatedCapital(amount);
+      setCapitalInput("");
+      toast(r.message || `Capital asignado: $${amount}`);
+    } catch (e: any) {
+      toast(e.message, false);
+    }
+  };
+
+  const useAllBalance = async () => {
+    try {
+      const r = await api<any>(`/api/ai-agent/capital?amount=0`, { method: "PATCH" });
+      setAllocatedCapital(0);
+      toast(r.message || "Usando todo el saldo disponible");
     } catch (e: any) {
       toast(e.message, false);
     }
@@ -414,6 +461,87 @@ export function AIAgentPage() {
             })}
           </div>
         </div>
+
+        {/* Budget allocation panel — only for live mode with a real broker */}
+        {tradeMode === "live" && selectedBroker !== "paper" && selectedBroker !== "mock" && (
+          <div className="mt-3 rounded-[10px] border border-green-500/30 bg-green-500/5 p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-bold text-green-400">💰 Presupuesto de Trading</span>
+              {allocatedCapital > 0 ? (
+                <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">
+                  ASIGNADO: ${allocatedCapital.toFixed(2)}
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                  AUTO: Todo el saldo disponible
+                </span>
+              )}
+            </div>
+
+            {/* Balance display */}
+            {brokerBalance?.error ? (
+              <div className="text-[11px] text-red-400">{brokerBalance.error}</div>
+            ) : brokerBalance ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2">
+                  <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase">USDT Libre</div>
+                  <div className="text-[14px] font-bold text-green-400">${brokerBalance.usdt_free?.toFixed(2) || "0.00"}</div>
+                </div>
+                <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2">
+                  <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase">Total Portfolio</div>
+                  <div className="text-[14px] font-bold text-[var(--color-text)]">${brokerBalance.total_usd?.toFixed(2) || "0.00"}</div>
+                </div>
+                <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2">
+                  <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase">Activos</div>
+                  <div className="text-[14px] font-bold text-[var(--color-text)]">{brokerBalance.assets?.length || 0}</div>
+                </div>
+                <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2">
+                  <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase">En MXN</div>
+                  <div className="text-[14px] font-bold text-[var(--color-text)]">${brokerBalance.total_mxn?.toFixed(2) || "0.00"}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-[var(--color-text-muted)]">Cargando saldo...</div>
+            )}
+
+            {/* Asset list */}
+            {brokerBalance?.assets && brokerBalance.assets.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {brokerBalance.assets.slice(0, 8).map((a: any) => (
+                  <div key={a.asset} className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-[var(--color-surface-2)] text-[10px]">
+                    <CryptoIcon symbol={a.asset + "USDT"} size={14} />
+                    <span className="font-bold text-[var(--color-text)]">{a.asset}</span>
+                    <span className="text-[var(--color-text-muted)]">{a.free.toFixed(4)}</span>
+                    <span className="text-green-400/70">${a.usd_value.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Capital assignment controls */}
+            <div className="flex items-center gap-2 pt-2 border-t border-green-500/20">
+              <Input
+                type="number"
+                value={capitalInput}
+                onChange={(e) => setCapitalInput(e.target.value)}
+                placeholder="Asignar presupuesto fijo (USD)"
+                disabled={isRunning}
+                className="flex-1"
+                min={0}
+              />
+              <Button variant="primary" size="sm" onClick={assignCapital} disabled={isRunning || !capitalInput}>
+                Asignar
+              </Button>
+              <Button variant="ghost" size="sm" onClick={useAllBalance} disabled={isRunning}>
+                Auto
+              </Button>
+            </div>
+            <div className="text-[10px] text-[var(--color-text-muted)]">
+              💡 <strong>Auto</strong> = la IA usa todo el USDT disponible. <strong>Asignar</strong> = la IA solo usa el monto fijo que indiques.
+              El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja automáticamente en Binance.
+            </div>
+          </div>
+        )}
 
         {/* Config panel (collapsible) */}
         {showConfig && (
