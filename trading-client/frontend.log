@@ -636,3 +636,95 @@ WHERE positions.status = ? AND positions.user_id = ?]
 [2026-07-30T18:29:54.991998] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
 [2026-07-30T18:31:36.439058] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
 [2026-07-30T21:26:38.878878] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T23:55:39.616918] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.user_id AS orders_user_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders 
+WHERE orders.user_id = ? ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-30T23:55:58.773787] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.user_id AS orders_user_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders 
+WHERE orders.user_id = ? ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-30T23:56:24.182248] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.user_id AS orders_user_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders 
+WHERE orders.user_id = ? ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-31T04:56:31.263Z] [ERROR] React crash | v.toFixed is not a function | Stack: TypeError: v.toFixed is not a function
+    at fmtVol (http://localhost:1420/src/lib/utils.ts:28:12)
+    at http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:514:220
+    at Array.map (<anonymous>)
+    at OverviewModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:476:98)
+    at Object.react_stack_bottom_frame (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:18509:20)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:5654:24)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:7475:21)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:8525:20)
+    at runWithFiberInDEV (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:997:72)
+    at performUnitOfWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:12561:98) | ComponentStack: 
+    at OverviewModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:293:27)
+    at div (<anonymous>)
+    at BrokerPage (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:95:30)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://localhost:1420/src/components/layout/Layout.tsx?t=1785473704778:128:26)
+    at BrokerAwareContent (http://localhost:1420/src/App.tsx?t=1785473704778:109:3)
+    at BrokerProvider (http://localhost:1420/src/context/BrokerContext.tsx:35:34)
+    at AppContent (http://localhost:1420/src/App.tsx?t=1785473704778:58:46)
+    at AuthProvider (http://localhost:1420/src/context/AuthContext.tsx:21:32)
+    at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)
+[2026-07-30T23:56:39.564856] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.user_id AS orders_user_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders 
+WHERE orders.user_id = ? ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-31T04:56:39.569Z] [ERROR] React crash | v.toFixed is not a function | Stack: TypeError: v.toFixed is not a function
+    at fmtVol (http://localhost:1420/src/lib/utils.ts:28:12)
+    at http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:514:220
+    at Array.map (<anonymous>)
+    at OverviewModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:476:98)
+    at Object.react_stack_bottom_frame (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:18509:20)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:5654:24)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:7475:21)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:8525:20)
+    at runWithFiberInDEV (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:997:72)
+    at performUnitOfWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=ea323c11:12561:98) | ComponentStack: 
+    at OverviewModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:293:27)
+    at div (<anonymous>)
+    at BrokerPage (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785473704778:95:30)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://localhost:1420/src/components/layout/Layout.tsx?t=1785473704778:128:26)
+    at BrokerAwareContent (http://localhost:1420/src/App.tsx?t=1785473704778:109:3)
+    at BrokerProvider (http://localhost:1420/src/context/BrokerContext.tsx:35:34)
+    at AppContent (http://localhost:1420/src/App.tsx?t=1785473704778:58:46)
+    at AuthProvider (http://localhost:1420/src/context/AuthContext.tsx:21:32)
+    at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)
+[2026-07-31T06:48:24.253906] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.user_id AS orders_user_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders 
+WHERE orders.user_id = ? ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders
+[2026-07-31T06:48:52.771974] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: orders.idempotency_key
+[SQL: SELECT orders.id AS orders_id, orders.user_id AS orders_user_id, orders.client_order_id AS orders_client_order_id, orders.idempotency_key AS orders_idempotency_key, orders.broker_order_id AS orders_broker_order_id, orders.timestamp AS orders_timestamp, orders.symbol AS orders_symbol, orders.side AS orders_side, orders.order_type AS orders_order_type, orders.quantity AS orders_quantity, orders.filled_quantity AS orders_filled_quantity, orders.price AS orders_price, orders.status AS orders_status, orders.internal_status AS orders_internal_status, orders.signal_id AS orders_signal_id, orders.metadata_json AS orders_metadata_json, orders.created_at AS orders_created_at, orders.updated_at AS orders_updated_at 
+FROM orders 
+WHERE orders.user_id = ? ORDER BY orders.id DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 50, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/orders

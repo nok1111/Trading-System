@@ -1,5 +1,5 @@
-import { Sun, Moon, Bell, Globe, Server, Rocket, Shield, Wallet, Target, Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Sun, Moon, Bell, Globe, Server, Rocket, Shield, Wallet, Target, Check, Network } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
 import { useTheme } from "../theme/ThemeContext";
 import { useBrokerContext } from "../context/BrokerContext";
 import { Button } from "../components/ui/Button";
@@ -8,6 +8,7 @@ import { isFeatureEnabled } from "../lib/featureFlags";
 import type { FeatureFlag } from "../lib/featureFlags";
 import { getUserProfile, saveUserProfile, type UserProfileData } from "../lib/intelligenceApi";
 import { cn } from "../lib/utils";
+import { getProxyConfig, setProxyConfig, testProxyConnection } from "../lib/binanceProxy";
 
 const EXPERIENCE_OPTIONS = [
   { value: "beginner", label: "Principiante", icon: "🌱" },
@@ -81,6 +82,32 @@ function ProfileChip({
 }
 
 export function PreferencesPage() {
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxyToken, setProxyToken] = useState("");
+  const [proxyStatus, setProxyStatus] = useState("");
+
+  const loadProxyConfig = useCallback(() => {
+    const cfg = getProxyConfig();
+    setProxyUrl(cfg.url);
+    setProxyToken(cfg.token);
+  }, []);
+
+  const saveProxyConfig = async () => {
+    setProxyConfig(proxyUrl, proxyToken);
+    setProxyStatus("Probando...");
+    const ok = await testProxyConnection();
+    setProxyStatus(ok ? "✓ Proxy conectado" : "✗ Proxy no responde");
+  };
+
+  const testProxy = async () => {
+    setProxyStatus("Probando...");
+    const ok = await testProxyConnection();
+    setProxyStatus(ok ? "✓ Proxy conectado" : "✗ Proxy no responde");
+  };
+
+  useEffect(() => {
+    loadProxyConfig();
+  }, [loadProxyConfig]);
   const { theme, toggleTheme } = useTheme();
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
 
@@ -264,6 +291,47 @@ export function PreferencesPage() {
             {theme === "dark" ? "Cambiar a Claro" : "Cambiar a Oscuro"}
           </Button>
         </div>
+      </div>
+
+      {/* VPS Proxy Configuration */}
+      <div className="panel p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Network size={18} />
+          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Proxy VPS (Binance)</h3>
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-[var(--color-text-muted)] mb-1.5">
+            Proxy URL
+          </label>
+          <Input
+            type="text"
+            value={proxyUrl}
+            onChange={(e: any) => setProxyUrl(e.target.value)}
+            placeholder="http://76.13.180.80:9100"
+            className="w-full"
+          />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-[var(--color-text-muted)] mb-1.5">
+            Proxy Token
+          </label>
+          <Input
+            type="password"
+            value={proxyToken}
+            onChange={(e: any) => setProxyToken(e.target.value)}
+            placeholder="Token secreto del proxy"
+            className="w-full"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="default" size="sm" onClick={saveProxyConfig}>Guardar</Button>
+          <Button variant="default" size="sm" onClick={testProxy}>Probar conexión</Button>
+        </div>
+        {proxyStatus && <div className="text-[12px]">{proxyStatus}</div>}
+        <p className="text-[11px] text-[var(--color-text-muted)]">
+          El proxy enruta tus órdenes a Binance desde una IP fija.
+          Agrega la IP del proxy a tu whitelist en Binance API Management.
+        </p>
       </div>
 
       {/* AI Server */}

@@ -619,10 +619,6 @@ def get_binance_balance(
     """
     import httpx as _httpx
 
-    settings = get_settings()
-    if settings.BROKER_PROVIDER != "binance":
-        return {"error": "Binance no configurado", "assets": [], "total_usd": 0, "total_mxn": 0}
-
     creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "assets": [], "total_usd": 0, "total_mxn": 0}
@@ -710,10 +706,6 @@ def get_binance_open_orders(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
     """Consulta las órdenes abiertas reales en Binance en tiempo real."""
-    settings = get_settings()
-    if settings.BROKER_PROVIDER != "binance":
-        return {"error": "Binance no configurado", "orders": []}
-
     creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones.", "orders": []}
@@ -916,10 +908,6 @@ def place_binance_manual_order(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
     """Place a manual order on Binance (buy/sell, market/limit)."""
-    settings = get_settings()
-    if settings.BROKER_PROVIDER != "binance":
-        return {"error": "Binance no configurado"}
-
     creds = resolve_broker_credentials("binance", current_user)
     if not creds:
         return {"error": "No tienes API keys de Binance configuradas. Conecta tu broker desde Conexiones."}
@@ -1522,7 +1510,7 @@ def get_trading_mode(
     settings = get_settings()
     is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
     keys = resolve_binance_keys(current_user)
-    is_binance = settings.BROKER_PROVIDER == "binance" and bool(keys)
+    is_binance = bool(keys)
     # Use runtime override if set, otherwise use config value
     allocated = state.ai_allocated_capital if state.ai_allocated_capital > 0 else settings.AI_ALLOCATED_CAPITAL
     return {
@@ -1607,7 +1595,7 @@ def ai_agent_execute(
     # Determinar si estamos en modo live
     is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
     keys = resolve_binance_keys(current_user)
-    is_binance_broker = settings.BROKER_PROVIDER == "binance" and bool(keys)
+    is_binance_broker = bool(keys)
 
     # Safety: Kill switch (blocks buys, allows sells to close positions)
     if is_live and settings.LIVE_KILL_SWITCH and action == "buy":

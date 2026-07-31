@@ -26,11 +26,13 @@ export function fmtDate(d: string | null | undefined): string {
   });
 }
 
-export function fmtVol(v: number): string {
-  if (v >= 1e9) return (v / 1e9).toFixed(2) + "B";
-  if (v >= 1e6) return (v / 1e6).toFixed(2) + "M";
-  if (v >= 1e3) return (v / 1e3).toFixed(2) + "K";
-  return v.toFixed(2);
+export function fmtVol(v: number | string | null | undefined): string {
+  const n = Number(v);
+  if (isNaN(n)) return "--";
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + "K";
+  return n.toFixed(2);
 }
 
 export function nowTime(): string {

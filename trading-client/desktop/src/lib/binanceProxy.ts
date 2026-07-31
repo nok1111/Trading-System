@@ -9,6 +9,7 @@ import { signBinanceRequest } from "./binanceSigner";
 import { getBinanceCredentials } from "./binanceCredentials";
 
 const DEFAULT_PROXY_URL = "http://76.13.180.80:9100";
+const DEFAULT_PROXY_TOKEN = "9448c6314b9a70f270728f4fadf7f0cee73d643481094a56b52d6aed2f76de4c";
 const PROXY_TOKEN_KEY = "binanceProxyToken";
 
 function getProxyUrl(): string {
@@ -16,7 +17,7 @@ function getProxyUrl(): string {
 }
 
 function getProxyToken(): string {
-  return localStorage.getItem(PROXY_TOKEN_KEY) || "";
+  return localStorage.getItem(PROXY_TOKEN_KEY) || DEFAULT_PROXY_TOKEN;
 }
 
 export function setProxyConfig(url: string, token: string): void {

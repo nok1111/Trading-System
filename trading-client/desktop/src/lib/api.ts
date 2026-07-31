@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8080";
+const API_BASE = "";
 
 // In-memory cache for GET requests with TTL
 const _cache = new Map<string, { data: any; expires: number }>();

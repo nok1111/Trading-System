@@ -106,6 +106,38 @@ export function SlTpPanel({
         // Live mode: place OCO via VPS proxy, then update DB
         const brokerSymbol = symbol.toUpperCase().replace(/[-_/]/g, "");
 
+        // Fetch exchange info to get LOT_SIZE and PRICE filters
+        let stepSize = "0.00000001";
+        let tickSize = "0.00000001";
+        let minQty = "0";
+        try {
+          const exInfo = await binanceProxy.getExchangeInfo(brokerSymbol);
+          const filters = exInfo?.symbols?.[0]?.filters || [];
+          for (const f of filters) {
+            if (f.filterType === "LOT_SIZE") {
+              stepSize = f.stepSize || stepSize;
+              minQty = f.minQty || minQty;
+            } else if (f.filterType === "PRICE_FILTER") {
+              tickSize = f.tickSize || tickSize;
+            }
+          }
+        } catch (err) {
+          console.warn("Could not fetch exchangeInfo, using defaults", err);
+        }
+
+        // Helper: round to step size
+        const roundToStep = (value: number, step: string): string => {
+          const stepNum = parseFloat(step);
+          if (stepNum <= 0) return String(value);
+          const decimals = (step.split(".")[1] || "").length;
+          const rounded = Math.floor(value / stepNum) * stepNum;
+          return rounded.toFixed(decimals).replace(/0+$/, "").replace(/\.$/, "");
+        };
+
+        const formattedQty = roundToStep(quantity, stepSize);
+        const formattedTp = roundToStep(tp, tickSize);
+        const formattedSl = roundToStep(sl, tickSize);
+
         // First, cancel existing SL/TP orders for this symbol
         try {
           const openOrders = await binanceProxy.getOpenOrders(brokerSymbol);
@@ -123,10 +155,10 @@ export function SlTpPanel({
         const ocoResp = await binanceProxy.placeOCO({
           symbol: brokerSymbol,
           side: "SELL",
-          quantity: String(quantity),
-          price: tp.toFixed(8).replace(/0+$/, "").replace(/\.$/, ""),
-          stopPrice: sl.toFixed(8).replace(/0+$/, "").replace(/\.$/, ""),
-          stopLimitPrice: sl.toFixed(8).replace(/0+$/, "").replace(/\.$/, ""),
+          quantity: formattedQty,
+          price: formattedTp,
+          stopPrice: formattedSl,
+          stopLimitPrice: formattedSl,
           stopLimitTimeInForce: "GTC",
         });
 
@@ -160,8 +192,10 @@ export function SlTpPanel({
         }
       }
       if (onSuccess) onSuccess();
-    } catch (err) {
-      toast("Error al colocar SL/TP", false);
+    } catch (err: any) {
+      const msg = err?.message || err?.error || JSON.stringify(err);
+      toast(`Error SL/TP: ${msg}`, false);
+      console.error("SlTpPanel OCO error:", err);
     }
     setLoading(false);
   };
