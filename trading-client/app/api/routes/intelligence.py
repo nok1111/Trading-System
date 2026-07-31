@@ -782,14 +782,17 @@ def update_risk_config(req: RiskConfigRequest) -> dict:
 
 
 @router.get("/risk/status")
-def get_risk_status() -> dict:
+def get_risk_status(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Get current risk status — open positions, exposure, circuit breaker state."""
+    uid = current_user.id if current_user else 0
     try:
         from app.database.session import SessionLocal
         from app.database.models.position import Position
         db = SessionLocal()
         try:
-            positions = db.query(Position).filter(Position.status == "open", Position.user_id == 0).all()
+            positions = db.query(Position).filter(Position.status == "open", Position.user_id == uid).all()
             total_exposure = sum(
                 abs(float(p.quantity or 0)) * float(p.current_price or p.entry_price or 0)
                 for p in positions
@@ -1668,6 +1671,7 @@ def _create_notification(
     message: str = "",
     severity: str = "info",
     asset: str | None = None,
+    user_id: int = 0,
 ) -> None:
     """Create an in-app notification (shown in the bell dropdown)."""
     try:
@@ -1682,6 +1686,7 @@ def _create_notification(
             message=message,
             severity=severity,
             asset=asset,
+            user_id=user_id,
         )
         db.close()
     except Exception:
@@ -1724,6 +1729,7 @@ def update_oco_on_position(
             message=f"SL: {sl_price} | TP: {tp_price} | Qty: {pos.quantity} | Order ID: {req.oco_order_id}",
             severity="info",
             asset=pos.symbol,
+            user_id=current_user.id if current_user else 0,
         )
 
         return {
@@ -1770,6 +1776,7 @@ def clear_oco_on_position(
             message=f"Orden OCO {oco_order_id} cancelada en Binance para {pos.symbol}",
             severity="info",
             asset=pos.symbol,
+            user_id=current_user.id if current_user else 0,
         )
 
         return {"status": "cancelled", "oco_order_id": oco_order_id}

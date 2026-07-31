@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Index, String, func
+from sqlalchemy import JSON, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -12,6 +12,7 @@ class SystemEvent(Base):
     __tablename__ = "system_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
     level: Mapped[str] = mapped_column(String(20), nullable=False)  # info, warning, error, critical
     source: Mapped[str] = mapped_column(String(100), nullable=False)

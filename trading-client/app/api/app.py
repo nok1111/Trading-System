@@ -123,14 +123,45 @@ _MIGRATIONS = {
         ("ai_provider", "VARCHAR(50)"),
         ("ai_model", "VARCHAR(100)"),
     ],
+    "signals": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "risk_events": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "account_snapshots": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "prediction_records": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "order_reconciliations": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "system_events": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "backtest_runs": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "intelligence_analyses": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "intelligence_events": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
 }
 
 
 def _auto_migrate_columns(engine) -> None:
-    """Add missing columns to existing SQLite tables (ALTER TABLE ADD COLUMN)."""
+    """Add missing columns to existing tables (ALTER TABLE ADD COLUMN).
+    
+    Works with both SQLite and PostgreSQL. For PostgreSQL, uses IF NOT EXISTS.
+    """
     from sqlalchemy import text, inspect
 
     inspector = inspect(engine)
+    is_postgres = not str(engine.url).startswith("sqlite")
     for table_name, columns in _MIGRATIONS.items():
         if not inspector.has_table(table_name):
             continue
@@ -138,7 +169,10 @@ def _auto_migrate_columns(engine) -> None:
         for col_name, col_def in columns:
             if col_name not in existing:
                 with engine.connect() as conn:
-                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+                    if is_postgres:
+                        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_def}"))
+                    else:
+                        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
                     conn.commit()
                 import logging
                 logging.getLogger(__name__).info("Auto-migrated: added column %s.%s", table_name, col_name)

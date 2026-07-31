@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Index, String, func
+from sqlalchemy import JSON, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -19,6 +19,7 @@ class IntelligenceEvent(Base):
     __tablename__ = "intelligence_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     # consensus_change, new_opportunity, invalidated, institutional_flow,
     # risk_change, news_high_impact, macro_event, whale_move, portfolio_change

@@ -109,6 +109,7 @@ def check_sltp_prices() -> list[dict]:
                 continue
             if meta.get("sl_triggered") or meta.get("tp_triggered"):
                 continue
+            # Skip positions without user_id (legacy data)
             monitored.append(pos)
 
         if not monitored:
@@ -171,6 +172,7 @@ def check_sltp_prices() -> list[dict]:
                         message=notif_msg,
                         severity="critical" if triggered == "sl" else "info",
                         asset=pos.symbol,
+                        user_id=pos.user_id,
                     )
                 except Exception:
                     pass

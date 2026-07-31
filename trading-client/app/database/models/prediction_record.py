@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Index, Numeric, String, func
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -15,6 +15,7 @@ class PredictionRecord(Base):
     __tablename__ = "prediction_records"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     signal_type: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY, SELL, HOLD

@@ -5,7 +5,7 @@ Registra discrepancias entre el estado interno y el estado real en el broker.
 
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, String, func
+from sqlalchemy import ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -17,6 +17,7 @@ class OrderReconciliation(Base):
     __tablename__ = "order_reconciliations"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     order_id: Mapped[int] = mapped_column(
         ForeignKey("orders.id"), nullable=False,
     )

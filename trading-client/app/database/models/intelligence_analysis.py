@@ -8,7 +8,7 @@ without re-computing from scratch or spending tokens.
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Index, Numeric, String, func
+from sqlalchemy import JSON, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -25,6 +25,7 @@ class IntelligenceAnalysis(Base):
     __tablename__ = "intelligence_analyses"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     asset: Mapped[str] = mapped_column(String(20), nullable=False)
     # BTC, ETH, SOL, etc.
     decision: Mapped[str] = mapped_column(String(30), nullable=False)

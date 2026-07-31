@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Index, Numeric, String, func
+from sqlalchemy import JSON, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -13,6 +13,7 @@ class BacktestRun(Base):
     __tablename__ = "backtest_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     strategy_name: Mapped[str] = mapped_column(String(50), nullable=False)
     symbols: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     start_date: Mapped[date] = mapped_column(nullable=False)
