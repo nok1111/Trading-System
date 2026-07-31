@@ -24,6 +24,8 @@ if not PROXY_TOKEN:
 
 BINANCE_MAINNET = "https://api.binance.com"
 BINANCE_TESTNET = "https://testnet.binance.vision"
+BINANCE_FAPI_MAINNET = "https://fapi.binance.com"
+BINANCE_FAPI_TESTNET = "https://testnetbinancefuture.com"
 
 # Rate limiting: 1200 requests per minute per token
 RATE_LIMIT = 1200
@@ -38,7 +40,7 @@ app = FastAPI(title="Binance VPS Proxy", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -82,7 +84,12 @@ async def proxy_request(
 ):
     check_rate_limit(token)
 
-    base_url = BINANCE_TESTNET if req.testnet else BINANCE_MAINNET
+    # Route futures paths to fapi.binance.com, spot paths to api.binance.com
+    is_futures = req.path.startswith("/fapi/")
+    if is_futures:
+        base_url = BINANCE_FAPI_TESTNET if req.testnet else BINANCE_FAPI_MAINNET
+    else:
+        base_url = BINANCE_TESTNET if req.testnet else BINANCE_MAINNET
     url = f"{base_url}{req.path}"
     headers = {"X-MBX-APIKEY": req.api_key_header}
 

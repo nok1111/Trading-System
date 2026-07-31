@@ -172,6 +172,39 @@ export async function getFuturesPositions(): Promise<any[]> {
   return binanceRequest("GET", "/fapi/v2/positionRisk");
 }
 
+export async function getFuturesOpenOrders(symbol?: string): Promise<any[]> {
+  const params: Record<string, string> = {};
+  if (symbol) params.symbol = symbol;
+  return binanceRequest("GET", "/fapi/v1/openOrders", params);
+}
+
+export async function placeFuturesOrder(params: {
+  symbol: string;
+  side: string;
+  type: string;
+  quantity?: string;
+  price?: string;
+  stopPrice?: string;
+  timeInForce?: string;
+  reduceOnly?: boolean;
+  workingType?: string;
+  priceProtect?: boolean;
+}): Promise<any> {
+  const { reduceOnly, priceProtect, ...rest } = params;
+  const finalParams: Record<string, string | number> = { ...rest };
+  if (reduceOnly) finalParams.reduceOnly = "true";
+  if (priceProtect) finalParams.priceProtect = "true";
+  return binanceRequest("POST", "/fapi/v1/order", finalParams);
+}
+
+export async function cancelFuturesOrder(symbol: string, orderId: string): Promise<any> {
+  return binanceRequest("DELETE", "/fapi/v1/order", { symbol, orderId });
+}
+
+export async function getFuturesExchangeInfo(symbol: string): Promise<any> {
+  return binanceRequest("GET", "/fapi/v1/exchangeInfo", { symbol }, false);
+}
+
 export async function getExchangeInfo(symbol: string): Promise<any> {
   return binanceRequest("GET", "/api/v3/exchangeInfo", { symbol }, false);
 }

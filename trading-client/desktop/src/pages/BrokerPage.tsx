@@ -1619,6 +1619,8 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                             existingTp={p.take_profit ? Number(p.take_profit) : null}
                             quantity={Number(p.quantity || 0)}
                             isLive={true}
+                            isFutures={!!(p.metadata_json?.source && String(p.metadata_json.source).includes("futures"))}
+                            side={p.side || "long"}
                             onSuccess={() => { loadLivePositions(); setShowSlTpPanel(new Set()); }}
                           />
                         )}

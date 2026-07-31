@@ -1968,6 +1968,9 @@ def apply_oco_from_report(
         if not pos:
             return {"status": "error", "reason": f"Posición {position_id} no encontrada"}
 
+        pos_meta = pos.metadata_json or {}
+        is_futures = "futures" in (pos_meta.get("source") or "")
+
         return {
             "status": "ready",
             "position_id": position_id,
@@ -1975,6 +1978,8 @@ def apply_oco_from_report(
             "quantity": float(pos.quantity),
             "stop_loss": float(suggested_sl),
             "take_profit": float(suggested_tp),
+            "side": pos.side,
+            "is_futures": is_futures,
             "message": "Coloca el OCO en Binance via proxy y luego confirma con /update-oco",
         }
     except Exception as exc:

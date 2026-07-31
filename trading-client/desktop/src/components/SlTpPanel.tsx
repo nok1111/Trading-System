@@ -13,6 +13,8 @@ interface SlTpPanelProps {
   existingTp: number | null;
   quantity: number;
   isLive: boolean;
+  isFutures?: boolean;
+  side?: string;
   onSuccess?: () => void;
 }
 
@@ -25,6 +27,8 @@ export function SlTpPanel({
   existingTp,
   quantity,
   isLive,
+  isFutures = false,
+  side = "long",
   onSuccess,
 }: SlTpPanelProps) {
   const [slPrice, setSlPrice] = useState<string>("");
@@ -105,6 +109,7 @@ export function SlTpPanel({
       if (isLive) {
         // Live mode: place OCO via VPS proxy, then update DB
         const brokerSymbol = symbol.toUpperCase().replace(/[-_/]/g, "");
+        const closeSide = side === "short" ? "BUY" : "SELL";
 
         // Fetch exchange info to get LOT_SIZE and PRICE filters
         let stepSize = "0.00000001";
@@ -112,8 +117,19 @@ export function SlTpPanel({
         let minQty = "0";
         let minNotional = "0";
         let exchangeInfoOk = false;
+        const exInfoUrl = isFutures
+          ? `https://fapi.binance.com/fapi/v1/exchangeInfo?symbol=${brokerSymbol}`
+          : `https://api.binance.com/api/v3/exchangeInfo?symbol=${brokerSymbol}`;
         try {
-          const exInfo = await binanceProxy.getExchangeInfo(brokerSymbol);
+          let exInfo: any = null;
+          try {
+            exInfo = isFutures
+              ? await binanceProxy.getFuturesExchangeInfo(brokerSymbol)
+              : await binanceProxy.getExchangeInfo(brokerSymbol);
+          } catch {
+            const directResp = await fetch(exInfoUrl);
+            if (directResp.ok) exInfo = await directResp.json();
+          }
           const filters = exInfo?.symbols?.[0]?.filters || [];
           for (const f of filters) {
             if (f.filterType === "LOT_SIZE") {
@@ -121,48 +137,24 @@ export function SlTpPanel({
               minQty = f.minQty || minQty;
             } else if (f.filterType === "PRICE_FILTER") {
               tickSize = f.tickSize || tickSize;
-            } else if (f.filterType === "MIN_NOTIONAL") {
-              minNotional = f.minNotional || minNotional;
+            } else if (f.filterType === "MIN_NOTIONAL" || f.filterType === "NOTIONAL") {
+              minNotional = f.minNotional || f.notional || minNotional;
             }
           }
           exchangeInfoOk = true;
         } catch (err) {
-          console.warn("Could not fetch exchangeInfo via proxy, trying direct", err);
-          // Fallback: fetch exchangeInfo directly from Binance (public endpoint, no auth needed)
-          try {
-            const directResp = await fetch(`https://api.binance.com/api/v3/exchangeInfo?symbol=${brokerSymbol}`);
-            if (directResp.ok) {
-              const exInfo = await directResp.json();
-              const filters = exInfo?.symbols?.[0]?.filters || [];
-              for (const f of filters) {
-                if (f.filterType === "LOT_SIZE") {
-                  stepSize = f.stepSize || stepSize;
-                  minQty = f.minQty || minQty;
-                } else if (f.filterType === "PRICE_FILTER") {
-                  tickSize = f.tickSize || tickSize;
-                } else if (f.filterType === "MIN_NOTIONAL") {
-                  minNotional = f.minNotional || minNotional;
-                }
-              }
-              exchangeInfoOk = true;
-            }
-          } catch (err2) {
-            console.warn("Direct exchangeInfo also failed", err2);
-          }
+          console.warn("Could not fetch exchangeInfo", err);
         }
 
         // Helper: round to step size (robust against floating point errors)
         const roundToStep = (value: number, step: string): string => {
           const stepNum = parseFloat(step);
           if (stepNum <= 0 || isNaN(stepNum)) return String(value);
-          // Count decimals from step string (e.g. "0.00010000" → 4 meaningful decimals)
           const stepStr = step.replace(/0+$/, "").replace(/\.$/, "");
           const decimals = (stepStr.split(".")[1] || "").length;
-          // Use string-based rounding to avoid floating point errors
           const quotient = Math.floor(value / stepNum);
           const rounded = quotient * stepNum;
           let result = rounded.toFixed(Math.max(decimals, 0));
-          // Strip trailing zeros but keep at least one digit
           result = result.replace(/0+$/, "").replace(/\.$/, "");
           if (result === "" || result === "-0" || parseFloat(result) === 0) return "0";
           return result;
@@ -173,7 +165,6 @@ export function SlTpPanel({
         const formattedSl = roundToStep(sl, tickSize);
 
         // If rounding to step makes qty 0 but original qty > 0, use original qty
-        // (Binance allows fractional qty for existing positions even if LOT_SIZE step changed)
         if (parseFloat(formattedQty) === 0 && quantity > 0) {
           formattedQty = String(quantity);
         }
@@ -202,41 +193,77 @@ export function SlTpPanel({
           toast(`Aviso: No se pudo obtener exchangeInfo. Usando step size por defecto.`, false);
         }
 
-        // First, cancel existing SL/TP orders for this symbol
-        try {
-          const openOrders = await binanceProxy.getOpenOrders(brokerSymbol);
-          for (const o of openOrders) {
-            const otype = o.type || "";
-            if (["STOP_LOSS", "STOP_LOSS_LIMIT", "TAKE_PROFIT", "TAKE_PROFIT_LIMIT", "STOP_MARKET", "TAKE_PROFIT_MARKET"].includes(otype)) {
-              try { await binanceProxy.cancelOrder(brokerSymbol, String(o.orderId)); } catch {}
+        let orderIds: string[] = [];
+
+        if (isFutures) {
+          // Futures: cancel existing orders, then place STOP_MARKET + TAKE_PROFIT_MARKET
+          try {
+            const openOrders = await binanceProxy.getFuturesOpenOrders(brokerSymbol);
+            for (const o of openOrders) {
+              const otype = o.type || "";
+              if (["STOP_MARKET", "TAKE_PROFIT_MARKET", "STOP", "TAKE_PROFIT"].includes(otype)) {
+                try { await binanceProxy.cancelFuturesOrder(brokerSymbol, String(o.orderId)); } catch {}
+              }
             }
-          }
-        } catch (err) {
-          // Non-fatal: continue with OCO placement
+          } catch {}
+
+          // Place TAKE_PROFIT_MARKET
+          const tpResp = await binanceProxy.placeFuturesOrder({
+            symbol: brokerSymbol,
+            side: closeSide,
+            type: "TAKE_PROFIT_MARKET",
+            stopPrice: formattedTp,
+            quantity: formattedQty,
+            reduceOnly: true,
+            workingType: "MARK_PRICE",
+          });
+          orderIds.push(String(tpResp.orderId));
+
+          // Place STOP_MARKET
+          const slResp = await binanceProxy.placeFuturesOrder({
+            symbol: brokerSymbol,
+            side: closeSide,
+            type: "STOP_MARKET",
+            stopPrice: formattedSl,
+            quantity: formattedQty,
+            reduceOnly: true,
+            workingType: "MARK_PRICE",
+          });
+          orderIds.push(String(slResp.orderId));
+        } else {
+          // Spot: cancel existing orders, then place OCO
+          try {
+            const openOrders = await binanceProxy.getOpenOrders(brokerSymbol);
+            for (const o of openOrders) {
+              const otype = o.type || "";
+              if (["STOP_LOSS", "STOP_LOSS_LIMIT", "TAKE_PROFIT", "TAKE_PROFIT_LIMIT", "STOP_MARKET", "TAKE_PROFIT_MARKET"].includes(otype)) {
+                try { await binanceProxy.cancelOrder(brokerSymbol, String(o.orderId)); } catch {}
+              }
+            }
+          } catch {}
+
+          const ocoResp = await binanceProxy.placeOCO({
+            symbol: brokerSymbol,
+            side: closeSide,
+            quantity: formattedQty,
+            price: formattedTp,
+            stopPrice: formattedSl,
+            stopLimitPrice: formattedSl,
+            stopLimitTimeInForce: "GTC",
+          });
+          orderIds.push(String(ocoResp.orderListId));
         }
-
-        // Place OCO via proxy
-        const ocoResp = await binanceProxy.placeOCO({
-          symbol: brokerSymbol,
-          side: "SELL",
-          quantity: formattedQty,
-          price: formattedTp,
-          stopPrice: formattedSl,
-          stopLimitPrice: formattedSl,
-          stopLimitTimeInForce: "GTC",
-        });
-
-        const ocoOrderId = ocoResp.orderListId;
 
         // Update DB via backend
         const res = await api<any>(`/api/intelligence/positions/${positionId}/update-oco`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ oco_order_id: ocoOrderId, stop_loss: sl, take_profit: tp }),
+          body: JSON.stringify({ oco_order_id: orderIds.join(","), stop_loss: sl, take_profit: tp }),
         });
 
-        if (res?.status === "placed") {
-          toast(`OCO colocado en Binance para ${symbol} (ID: ${ocoOrderId})`, true);
+        const label = isFutures ? "Futuros SL/TP" : "OCO Spot";
+        if (res?.status === "placed" || res?.status === "ok") {
+          toast(`${label} colocado en Binance para ${symbol} (IDs: ${orderIds.join(", ")})`, true);
         } else {
           toast(res?.error || "Error al actualizar DB tras OCO", false);
         }
