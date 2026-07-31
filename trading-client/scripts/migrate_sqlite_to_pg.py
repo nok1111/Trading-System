@@ -1,89 +1,115 @@
-"""Migrate data from SQLite to PostgreSQL.
+"""Migrate data from SQLite to PostgreSQL — raw SQL approach (column-resilient).
 
 Usage: python scripts/migrate_sqlite_to_pg.py
 Run on the VPS after PostgreSQL is configured and .env points to it.
 """
-import sys
+import sqlite3
+import psycopg2
 import os
 
-# Add trading-client to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.orm import sessionmaker
-from app.database.models import (
-    AccountSnapshot, AIRecommendation, BacktestRun, BrokerAccount,
-    MarketBar, ModelVersion, IntelligenceAnalysis, IntelligenceEvent,
-    IntelligenceNews, Notification, Order, OrderReconciliation, Position,
-    PriceAlert, PredictionRecord, RiskEvent, Signal, StrategyRun,
-    SystemEvent, Trade, UserSettings, UserProfile,
-)
-
-SQLITE_PATH = "trading.db"
+SQLITE_PATH = os.environ.get("SQLITE_PATH", "trading.db")
 PG_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg2://trading_app:Tr4d1ngApp2026!@localhost:5432/trading_system")
 
-# All models to migrate, in dependency order (parents first)
-MODELS = [
-    UserProfile,
-    UserSettings,
-    StrategyRun,
-    Signal,
-    RiskEvent,
-    Position,
-    Order,
-    Trade,
-    AccountSnapshot,
-    MarketBar,
-    ModelVersion,
-    PredictionRecord,
-    BacktestRun,
-    OrderReconciliation,
-    SystemEvent,
-    BrokerAccount,
-    AIRecommendation,
-    PriceAlert,
-    Notification,
-    IntelligenceAnalysis,
-    IntelligenceEvent,
-    IntelligenceNews,
+# Parse PG URL
+pg_url_clean = PG_URL.replace("postgresql+psycopg2://", "")
+pg_user_pass, pg_host_db = pg_url_clean.split("@")
+pg_user, pg_pass = pg_user_pass.split(":")
+pg_host, pg_db = pg_host_db.split("/")
+pg_host = pg_host.split(":")[0]
+
+# Tables to migrate in dependency order
+TABLES = [
+    "user_profiles",
+    "user_settings",
+    "strategy_runs",
+    "signals",
+    "risk_events",
+    "positions",
+    "orders",
+    "trades",
+    "account_snapshots",
+    "market_bars",
+    "model_versions",
+    "prediction_records",
+    "backtest_runs",
+    "order_reconciliations",
+    "system_events",
+    "broker_accounts",
+    "ai_recommendations",
+    "price_alerts",
+    "notifications",
+    "intelligence_analyses",
+    "intelligence_events",
+    "intelligence_news",
 ]
 
 
 def migrate():
-    sqlite_engine = create_engine(f"sqlite:///{SQLITE_PATH}")
-    pg_engine = create_engine(PG_URL)
+    sqlite_conn = sqlite3.connect(SQLITE_PATH)
+    sqlite_conn.row_factory = sqlite3.Row
+    sqlite_cur = sqlite_conn.cursor()
 
-    sqlite_session = sessionmaker(bind=sqlite_engine)()
-    pg_session = sessionmaker(bind=pg_engine)()
+    pg_conn = psycopg2.connect(
+        host=pg_host, database=pg_db, user=pg_user, password=pg_pass
+    )
+    pg_cur = pg_conn.cursor()
 
-    # Create all tables in PostgreSQL
-    from app.database.base import Base
-    import app.database.models  # noqa: F401
-    Base.metadata.create_all(bind=pg_engine)
-
-    inspector = inspect(sqlite_engine)
     total_migrated = 0
 
-    for model in MODELS:
-        table_name = model.__tablename__
-        if not inspector.has_table(table_name):
-            print(f"  SKIP: {table_name} (not in SQLite)")
+    for table in TABLES:
+        # Check if table exists in SQLite
+        sqlite_cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        if not sqlite_cur.fetchone():
+            print(f"  SKIP: {table} (not in SQLite)")
             continue
 
-        rows = sqlite_session.query(model).all()
+        # Get SQLite columns
+        sqlite_cur.execute(f"PRAGMA table_info({table})")
+        sqlite_cols = [row["name"] for row in sqlite_cur.fetchall()]
+
+        # Get PostgreSQL columns
+        pg_cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = %s
+        """, (table,))
+        pg_cols = {row[0] for row in pg_cur.fetchall()}
+
+        if not pg_cols:
+            print(f"  SKIP: {table} (not in PostgreSQL)")
+            continue
+
+        # Only migrate columns that exist in BOTH databases
+        common_cols = [c for c in sqlite_cols if c in pg_cols]
+
+        # Read all rows from SQLite
+        col_list = ", ".join(common_cols)
+        sqlite_cur.execute(f"SELECT {col_list} FROM {table}")
+        rows = sqlite_cur.fetchall()
+
         if not rows:
-            print(f"  SKIP: {table_name} (empty)")
+            print(f"  SKIP: {table} (empty)")
             continue
 
-        print(f"  Migrating {table_name}: {len(rows)} rows...")
+        print(f"  Migrating {table}: {len(rows)} rows (cols: {len(common_cols)})...")
+
+        # Build INSERT with ON CONFLICT DO NOTHING (preserve existing IDs)
+        placeholders = ", ".join(["%s"] * len(common_cols))
+        insert_sql = f"""
+            INSERT INTO {table} ({col_list})
+            VALUES ({placeholders})
+            ON CONFLICT (id) DO NOTHING
+        """
+
         for row in rows:
-            pg_session.merge(row)
-        pg_session.commit()
+            values = [row[col] for col in common_cols]
+            pg_cur.execute(insert_sql, values)
+
+        pg_conn.commit()
         total_migrated += len(rows)
         print(f"    OK: {len(rows)} rows migrated")
 
-    sqlite_session.close()
-    pg_session.close()
+    sqlite_conn.close()
+    pg_conn.close()
     print(f"\nMigration complete! Total rows migrated: {total_migrated}")
 
 
