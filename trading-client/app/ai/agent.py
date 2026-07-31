@@ -220,6 +220,7 @@ class AITradingAgent:
         jwt_token: str | None = None,
         auth_server_url: str | None = None,
         ai_provider: AIProvider | None = None,
+        user_id: int = 0,
     ) -> None:
         self.provider = provider
         self.groq_api_key = groq_api_key
@@ -246,6 +247,7 @@ class AITradingAgent:
         self._position_peaks: dict[str, float] = {}  # symbol -> highest price seen (legacy)
         self._risk_engine = RiskEngine()  # Deterministic risk engine with trailing stop
         self._jwt_token = jwt_token
+        self._user_id = user_id
         self._auth_server_url = auth_server_url
         self._grant_fail_streak = 0  # consecutive grant failures
         self._intelligence_provider: IntelligenceProvider | None = None
@@ -1081,6 +1083,7 @@ class AITradingAgent:
                         conf_val = conf_val / 100.0
 
                     rec = AIRecommendation(
+                        user_id=self._user_id,
                         asset=asset,
                         action_type=action.get("type", "HOLD").upper(),
                         confidence=conf_val,
@@ -1945,6 +1948,7 @@ class AITradingAgent:
                 current_tp = pos_data.get("take_profit")
 
                 rec = AIRecommendation(
+                    user_id=self._user_id,
                     asset=asset,
                     action_type="position_analysis",
                     confidence=conf_val,

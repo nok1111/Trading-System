@@ -461,11 +461,6 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict:
 # Alerts & Notifications Endpoints
 # ---------------------------------------------------------------------------
 
-# In-memory price alerts store (simple, no DB needed)
-_price_alerts: list[dict] = []
-_alert_id_counter = 0
-
-
 class PriceAlertRequest(_BaseModel):
     symbol: str
     condition: str  # "above" or "below"
@@ -473,22 +468,54 @@ class PriceAlertRequest(_BaseModel):
     note: str | None = None
 
 
+def _pa_to_dict(a) -> dict:
+    return {
+        "id": a.id,
+        "symbol": a.symbol,
+        "condition": a.condition,
+        "target_price": float(a.target_price),
+        "note": a.note,
+        "triggered": a.triggered,
+        "acknowledged": a.acknowledged,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "triggered_at": a.triggered_at.isoformat() if a.triggered_at else None,
+        "triggered_price": float(a.triggered_price) if a.triggered_price else None,
+    }
+
+
 @router.get("/alerts")
-def get_alerts(limit: int = 20) -> list[dict]:
+def get_alerts(
+    limit: int = 20,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> list[dict]:
     """Get recent alerts — generated from price alerts and risk events."""
+    uid = current_user.id if current_user else 0
     alerts: list[dict] = []
 
-    # Check price alerts that have been triggered
-    for a in _price_alerts:
-        if a.get("triggered"):
-            alerts.append({
-                "id": a["id"],
-                "type": "price_alert",
-                "symbol": a["symbol"],
-                "message": f"{a['symbol']} {'subió por encima de' if a['condition'] == 'above' else 'bajó por debajo de'} ${a['target_price']:,.2f}",
-                "severity": "info",
-                "timestamp": a.get("triggered_at", a.get("created_at")),
-            })
+    # Check price alerts that have been triggered (from DB)
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            triggered = db.query(PriceAlert).filter(
+                PriceAlert.user_id == uid,
+                PriceAlert.triggered == True,
+            ).order_by(PriceAlert.triggered_at.desc()).limit(limit).all()
+            for a in triggered:
+                alerts.append({
+                    "id": a.id,
+                    "type": "price_alert",
+                    "symbol": a.symbol,
+                    "message": f"{a.symbol} {'subió por encima de' if a.condition == 'above' else 'bajó por debajo de'} ${float(a.target_price):,.2f}",
+                    "severity": "info",
+                    "timestamp": a.triggered_at.isoformat() if a.triggered_at else (a.created_at.isoformat() if a.created_at else ""),
+                })
+        finally:
+            db.close()
+    except Exception:
+        pass
 
     # Add recent signals as alerts
     try:
@@ -517,70 +544,147 @@ def get_alerts(limit: int = 20) -> list[dict]:
 
 
 @router.get("/pending")
-def get_pending_notifications(user_hash: str = "") -> list[dict]:
-    """Get pending notifications for a user (simplified local version)."""
-    # Return triggered price alerts that haven't been acknowledged
-    return [
-        {
-            "id": a["id"],
-            "type": "price_alert",
-            "title": f"Alerta de precio: {a['symbol']}",
-            "message": f"{a['symbol']} {'subió por encima de' if a['condition'] == 'above' else 'bajó por debajo de'} ${a['target_price']:,.2f}",
-            "read": a.get("acknowledged", False),
-            "timestamp": a.get("triggered_at", a.get("created_at")),
-        }
-        for a in _price_alerts
-        if a.get("triggered") and not a.get("acknowledged")
-    ]
+def get_pending_notifications(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> list[dict]:
+    """Get pending notifications for a user."""
+    uid = current_user.id if current_user else 0
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            pending = db.query(PriceAlert).filter(
+                PriceAlert.user_id == uid,
+                PriceAlert.triggered == True,
+                PriceAlert.acknowledged == False,
+            ).all()
+            return [
+                {
+                    "id": a.id,
+                    "type": "price_alert",
+                    "title": f"Alerta de precio: {a.symbol}",
+                    "message": f"{a.symbol} {'subió por encima de' if a.condition == 'above' else 'bajó por debajo de'} ${float(a.target_price):,.2f}",
+                    "read": a.acknowledged,
+                    "timestamp": a.triggered_at.isoformat() if a.triggered_at else (a.created_at.isoformat() if a.created_at else ""),
+                }
+                for a in pending
+            ]
+        finally:
+            db.close()
+    except Exception:
+        return []
 
 
 @router.post("/pending/{alert_id}/read")
 def mark_alert_read(alert_id: int) -> dict:
     """Mark a price alert notification as read."""
-    for a in _price_alerts:
-        if a["id"] == alert_id:
-            a["acknowledged"] = True
-            return {"status": "ok"}
-    return {"status": "not_found"}
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            a = db.query(PriceAlert).filter(PriceAlert.id == alert_id).first()
+            if a:
+                a.acknowledged = True
+                db.commit()
+                return {"status": "ok"}
+            return {"status": "not_found"}
+        finally:
+            db.close()
+    except Exception:
+        return {"status": "error"}
 
 
 @router.post("/price-alerts")
-def create_price_alert(req: PriceAlertRequest) -> dict:
+def create_price_alert(
+    req: PriceAlertRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Create a new price alert."""
-    global _alert_id_counter
-    _alert_id_counter += 1
-    alert = {
-        "id": _alert_id_counter,
-        "symbol": req.symbol.upper(),
-        "condition": req.condition,
-        "target_price": req.target_price,
-        "note": req.note,
-        "triggered": False,
-        "acknowledged": False,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-    _price_alerts.append(alert)
-    return {"status": "ok", "alert": alert}
+    uid = current_user.id if current_user else 0
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            alert = PriceAlert(
+                user_id=uid,
+                symbol=req.symbol.upper(),
+                condition=req.condition,
+                target_price=req.target_price,
+                note=req.note,
+            )
+            db.add(alert)
+            db.commit()
+            db.refresh(alert)
+            return {"status": "ok", "alert": _pa_to_dict(alert)}
+        finally:
+            db.close()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
 
 
 @router.get("/price-alerts")
-def list_price_alerts() -> list[dict]:
-    """List all price alerts."""
-    return list(_price_alerts)
+def list_price_alerts(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> list[dict]:
+    """List all price alerts for the current user."""
+    uid = current_user.id if current_user else 0
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            alerts = db.query(PriceAlert).filter(
+                PriceAlert.user_id == uid,
+            ).order_by(PriceAlert.created_at.desc()).all()
+            return [_pa_to_dict(a) for a in alerts]
+        finally:
+            db.close()
+    except Exception:
+        return []
 
 
 @router.delete("/price-alerts/{alert_id}")
 def delete_price_alert(alert_id: int) -> dict:
     """Delete a price alert."""
-    global _price_alerts
-    _price_alerts = [a for a in _price_alerts if a["id"] != alert_id]
-    return {"status": "ok"}
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            a = db.query(PriceAlert).filter(PriceAlert.id == alert_id).first()
+            if a:
+                db.delete(a)
+                db.commit()
+            return {"status": "ok"}
+        finally:
+            db.close()
+    except Exception:
+        return {"status": "error"}
 
 
 @router.post("/price-alerts/check")
 def check_price_alerts() -> dict:
     """Check all active price alerts against current prices and trigger if met."""
-    if not _price_alerts:
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.price_alert import PriceAlert
+
+        db = SessionLocal()
+        try:
+            active = db.query(PriceAlert).filter(PriceAlert.triggered == False).all()
+            if not active:
+                return {"status": "ok", "triggered": 0}
+        finally:
+            db.close()
+    except Exception:
         return {"status": "ok", "triggered": 0}
 
     # Fetch current prices
@@ -593,22 +697,28 @@ def check_price_alerts() -> dict:
         return {"status": "error", "error": str(exc)}
 
     triggered_count = 0
-    for alert in _price_alerts:
-        if alert.get("triggered"):
-            continue
-        current = prices.get(alert["symbol"])
-        if current is None:
-            continue
-        if alert["condition"] == "above" and current >= alert["target_price"]:
-            alert["triggered"] = True
-            alert["triggered_at"] = datetime.now(UTC).isoformat()
-            alert["triggered_price"] = current
-            triggered_count += 1
-        elif alert["condition"] == "below" and current <= alert["target_price"]:
-            alert["triggered"] = True
-            alert["triggered_at"] = datetime.now(UTC).isoformat()
-            alert["triggered_price"] = current
-            triggered_count += 1
+    try:
+        db = SessionLocal()
+        try:
+            for alert in active:
+                current = prices.get(alert.symbol)
+                if current is None:
+                    continue
+                if alert.condition == "above" and current >= alert.target_price:
+                    alert.triggered = True
+                    alert.triggered_at = datetime.now(UTC)
+                    alert.triggered_price = current
+                    triggered_count += 1
+                elif alert.condition == "below" and current <= alert.target_price:
+                    alert.triggered = True
+                    alert.triggered_at = datetime.now(UTC)
+                    alert.triggered_price = current
+                    triggered_count += 1
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Failed to update alerts: %s", exc)
 
     return {"status": "ok", "triggered": triggered_count}
 
@@ -876,9 +986,13 @@ def get_active_signals(limit: int = 10) -> list[dict]:
 
 
 @router.get("/reports/all")
-def get_all_reports(limit: int = 50) -> list[dict]:
+def get_all_reports(
+    limit: int = 50,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> list[dict]:
     """Get all recent AI agent recommendations across all assets for the Reports tab."""
-    cached = _cached(f"reports_all_{limit}")
+    uid = current_user.id if current_user else 0
+    cached = _cached(f"reports_all_{uid}_{limit}")
     if cached:
         return cached
 
@@ -890,7 +1004,9 @@ def get_all_reports(limit: int = 50) -> list[dict]:
 
         db = SessionLocal()
         try:
-            recs = db.query(AIRecommendation).order_by(
+            recs = db.query(AIRecommendation).filter(
+                AIRecommendation.user_id == uid
+            ).order_by(
                 AIRecommendation.timestamp.desc()
             ).limit(limit).all()
 
@@ -944,19 +1060,99 @@ def get_all_reports(limit: int = 50) -> list[dict]:
     except Exception as exc:
         logger.warning("Reports(all) fetch failed: %s", exc)
 
-    _set_cache(f"reports_all_{limit}", result, ttl=10)
+    # 2. Executed trades from Trade table
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.trade import Trade
+        from app.database.models.order import Order
+        from app.config import get_settings
+
+        settings = get_settings()
+        db = SessionLocal()
+        try:
+            trades = db.query(Trade).order_by(
+                Trade.timestamp.desc()
+            ).limit(limit).all()
+
+            for t in trades:
+                trading_mode = "paper"
+                broker_name = None
+                if t.order_id:
+                    order = db.query(Order).filter(Order.id == t.order_id).first()
+                    if order and order.broker_order_id:
+                        if not order.broker_order_id.startswith("MOCK-"):
+                            trading_mode = "live"
+                            broker_name = settings.BROKER_PROVIDER
+
+                side_label = "Compra ejecutada" if t.side.upper() == "BUY" else "Venta ejecutada"
+                result.append({
+                    "id": f"trade-{t.id}",
+                    "date": t.timestamp.strftime("%Y-%m-%d %H:%M") if t.timestamp else "",
+                    "type": "daily",
+                    "asset": t.symbol.replace("USDT", "").replace("/", "") if t.symbol else "",
+                    "summary": f"{side_label} — {float(t.quantity):.6f} @ ${float(t.price):,.2f}" + (f" (PnL: ${float(t.realized_pnl):,.2f})" if float(t.realized_pnl) != 0 else ""),
+                    "sections": {
+                        "marketOverview": f"Cantidad: {float(t.quantity):.6f}",
+                        "keyEvents": f"Precio: ${float(t.price):,.2f}",
+                        "performance": f"Comisión: ${float(t.commission):,.2f}" + (f" | PnL realizado: ${float(t.realized_pnl):,.2f}" if float(t.realized_pnl) != 0 else ""),
+                        "outlook": t.strategy_name or "",
+                    },
+                    "action_type": t.side.upper(),
+                    "confidence": None,
+                    "status": "executed",
+                    "trading_mode": trading_mode,
+                    "broker_name": broker_name,
+                    "timestamp": t.timestamp.isoformat() if t.timestamp else "",
+                })
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Trades fetch for reports(all) failed: %s", exc)
+
+    # 3. Sort by timestamp descending
+    result.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    # 4. If still empty, include daily reports for major assets as fallback
+    if not result:
+        try:
+            daily = get_daily_report()
+            for asset_name in ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX"]:
+                result.append({
+                    "id": f"daily-{asset_name}",
+                    "date": daily.get("date", ""),
+                    "type": "daily",
+                    "asset": asset_name,
+                    "summary": daily.get("summary", "Sin datos"),
+                    "sections": daily.get("sections", {
+                        "marketOverview": "",
+                        "keyEvents": "",
+                        "performance": "",
+                        "outlook": "",
+                    }),
+                    "trading_mode": None,
+                    "broker_name": None,
+                })
+        except Exception:
+            pass
+
+    _set_cache(f"reports_all_{uid}_{limit}", result, ttl=10)
     return result
 
 
 @router.get("/reports/{asset}")
-def get_reports(asset: str, limit: int = 20) -> list[dict]:
+def get_reports(
+    asset: str,
+    limit: int = 20,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> list[dict]:
     """Get AI agent recommendations and executed trades for an asset.
 
     Returns:
     - AI recommendations saved when auto_trade=false (status=pending)
     - Executed trades from the Trade table (paper and live)
     """
-    cached = _cached(f"reports_{asset}_{limit}")
+    uid = current_user.id if current_user else 0
+    cached = _cached(f"reports_{uid}_{asset}_{limit}")
     if cached:
         return cached
 
@@ -971,7 +1167,8 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
         db = SessionLocal()
         try:
             recs = db.query(AIRecommendation).filter(
-                AIRecommendation.asset == asset_upper
+                AIRecommendation.asset == asset_upper,
+                AIRecommendation.user_id == uid,
             ).order_by(AIRecommendation.timestamp.desc()).limit(limit).all()
 
             for r in recs:
@@ -1101,7 +1298,7 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
         except Exception:
             pass
 
-    _set_cache(f"reports_{asset}_{limit}", result, 60)
+    _set_cache(f"reports_{uid}_{asset}_{limit}", result, 60)
     return result
 
 

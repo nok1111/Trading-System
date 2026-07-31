@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Index, Numeric, String, func
+from sqlalchemy import JSON, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -16,6 +16,7 @@ class AIRecommendation(Base):
     __tablename__ = "ai_recommendations"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     timestamp: Mapped[datetime] = mapped_column(nullable=False, default=func.now())
     asset: Mapped[str] = mapped_column(String(16), nullable=False)
     action_type: Mapped[str] = mapped_column(String(20), nullable=False)  # BUY, SELL, HOLD

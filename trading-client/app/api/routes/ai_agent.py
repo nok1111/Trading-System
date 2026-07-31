@@ -271,6 +271,7 @@ def ai_agent_start(
 
     # Capture JWT token for AI agent grant requests
     jwt_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    agent._user_id = current_user.id if current_user else 0
     if jwt_token:
         state.ai_jwt_token = jwt_token
         agent._jwt_token = jwt_token

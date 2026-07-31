@@ -13,6 +13,7 @@ from app.database.models.notification import Notification
 from app.database.models.order import Order
 from app.database.models.order_reconciliation import OrderReconciliation
 from app.database.models.position import Position
+from app.database.models.price_alert import PriceAlert
 from app.database.models.prediction_record import PredictionRecord
 from app.database.models.risk_event import RiskEvent
 from app.database.models.signal import Signal
@@ -36,6 +37,7 @@ __all__ = [
     "Order",
     "OrderReconciliation",
     "Position",
+    "PriceAlert",
     "PredictionRecord",
     "RiskEvent",
     "Signal",

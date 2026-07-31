@@ -114,6 +114,7 @@ app.include_router(intelligence.router)
 
 _MIGRATIONS = {
     "ai_recommendations": [
+        ("user_id", "INTEGER NOT NULL DEFAULT 0"),
         ("trading_mode", "VARCHAR(10) NOT NULL DEFAULT 'paper'"),
         ("broker_name", "VARCHAR(30)"),
         ("created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"),
