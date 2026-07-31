@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Index, Numeric, String, func
+from sqlalchemy import JSON, Boolean, Index, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -36,6 +36,9 @@ class Position(Base):
     )
     strategy_name: Mapped[str] = mapped_column(String(50), nullable=False)
     metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    auto_sell_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, default=func.now(), server_default=func.now()
     )

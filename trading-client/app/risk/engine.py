@@ -62,6 +62,29 @@ class TrailingStopResult:
     close_type: str = ""  # stop_loss, breakeven, trailing, take_profit
 
 
+@dataclass
+class TechnicalExitResult:
+    """Resultado de evaluar criterios técnicos de salida."""
+
+    should_close: bool
+    reason: str
+    indicator: str = ""  # rsi, macd, time, volume
+    value: float = 0.0
+
+
+@dataclass
+class AutoSellConfig:
+    """Configuración de umbrales para auto-sell técnico."""
+
+    rsi_overbought: float = 70.0
+    max_position_hours: float = 24.0
+    min_volume_relative: float = 0.5
+    macd_bearish_enabled: bool = True
+    rsi_enabled: bool = True
+    time_enabled: bool = True
+    volume_enabled: bool = True
+
+
 class CircuitBreaker:
     """Circuit breaker con 4 estados y transiciones deterministas.
 
@@ -394,3 +417,139 @@ class RiskEngine:
     def get_position_peak(self, symbol: str) -> Decimal | None:
         """Devuelve el peak tracking para un símbolo."""
         return self._position_peaks.get(symbol)
+
+    def evaluate_technical_exit(
+        self,
+        symbol: str,
+        entry_price: Decimal,
+        current_price: Decimal,
+        opened_at: datetime,
+        config: AutoSellConfig | None = None,
+    ) -> TechnicalExitResult:
+        """Evalúa criterios técnicos adicionales para salir de una posición.
+
+        Criterios (todos configurables):
+        - RSI overbought: RSI > threshold → vender
+        - MACD bearish cross: MACD line cruza bajo signal line → vender
+        - Tiempo máximo: posición abierta > max_hours → vender
+        - Caída de volumen: volume_relative < threshold → vender
+        """
+        if config is None:
+            config = AutoSellConfig()
+
+        import httpx
+
+        # 1. Time-based exit
+        if config.time_enabled and config.max_position_hours > 0:
+            now = datetime.now(UTC)
+            if opened_at.tzinfo is None:
+                from datetime import timezone
+                opened_at = opened_at.replace(tzinfo=timezone.utc)
+            elapsed_hours = (now - opened_at).total_seconds() / 3600
+            if elapsed_hours >= config.max_position_hours:
+                return TechnicalExitResult(
+                    should_close=True,
+                    reason=f"Tiempo máximo: {elapsed_hours:.1f}h >= {config.max_position_hours}h",
+                    indicator="time",
+                    value=elapsed_hours,
+                )
+
+        # Fetch klines for technical indicators
+        try:
+            resp = httpx.get(
+                f"https://api.binance.com/api/v3/klines",
+                params={"symbol": symbol, "interval": "1h", "limit": 50},
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return TechnicalExitResult(should_close=False, reason="No klines")
+            klines = resp.json()
+        except Exception:
+            return TechnicalExitResult(should_close=False, reason="klines fetch failed")
+
+        closes = [float(k[4]) for k in klines]
+        volumes = [float(k[5]) for k in klines]
+        if len(closes) < 26:
+            return TechnicalExitResult(should_close=False, reason="Insufficient data")
+
+        # 2. RSI overbought
+        if config.rsi_enabled and config.rsi_overbought > 0:
+            rsi = self._calc_rsi(closes, period=14)
+            if rsi >= config.rsi_overbought:
+                return TechnicalExitResult(
+                    should_close=True,
+                    reason=f"RSI overbought: {rsi:.1f} >= {config.rsi_overbought}",
+                    indicator="rsi",
+                    value=rsi,
+                )
+
+        # 3. MACD bearish cross
+        if config.macd_bearish_enabled:
+            macd_line, signal_line = self._calc_macd(closes)
+            if macd_line is not None and signal_line is not None:
+                prev_macd, prev_signal = self._calc_macd(closes[:-1])
+                if prev_macd is not None and prev_signal is not None:
+                    if prev_macd >= prev_signal and macd_line < signal_line:
+                        return TechnicalExitResult(
+                            should_close=True,
+                            reason=f"MACD bearish cross: MACD {macd_line:.6f} < Signal {signal_line:.6f}",
+                            indicator="macd",
+                            value=macd_line,
+                        )
+
+        # 4. Volume drop
+        if config.volume_enabled and config.min_volume_relative > 0 and len(volumes) >= 20:
+            avg_vol = sum(volumes[-20:]) / 20
+            current_vol = volumes[-1]
+            vol_relative = current_vol / avg_vol if avg_vol > 0 else 1.0
+            if vol_relative < config.min_volume_relative:
+                return TechnicalExitResult(
+                    should_close=True,
+                    reason=f"Caída de volumen: {vol_relative:.2f}x < {config.min_volume_relative}x",
+                    indicator="volume",
+                    value=vol_relative,
+                )
+
+        return TechnicalExitResult(should_close=False, reason="Indicadores OK")
+
+    @staticmethod
+    def _calc_rsi(closes: list[float], period: int = 14) -> float:
+        """Calculate RSI from close prices."""
+        if len(closes) < period + 1:
+            return 50.0
+        gains = []
+        losses = []
+        for i in range(1, len(closes)):
+            change = closes[i] - closes[i - 1]
+            gains.append(max(change, 0))
+            losses.append(max(-change, 0))
+        avg_gain = sum(gains[:period]) / period
+        avg_loss = sum(losses[:period]) / period
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    @staticmethod
+    def _calc_macd(closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[float | None, float | None]:
+        """Calculate MACD line and signal line."""
+        if len(closes) < slow + signal:
+            return None, None
+
+        def ema(data: list[float], period: int) -> list[float]:
+            multiplier = 2 / (period + 1)
+            ema_values = [data[0]]
+            for i in range(1, len(data)):
+                ema_values.append(data[i] * multiplier + ema_values[-1] * (1 - multiplier))
+            return ema_values
+
+        ema_fast = ema(closes, fast)
+        ema_slow = ema(closes, slow)
+        macd_values = [f - s for f, s in zip(ema_fast, ema_slow)]
+        signal_values = ema(macd_values[-(signal + len(macd_values) - len(macd_values)):], signal)
+        if len(signal_values) == 0:
+            return macd_values[-1], None
+        return macd_values[-1], signal_values[-1]

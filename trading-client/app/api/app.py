@@ -40,7 +40,7 @@ if _static_path.exists():
 # ---------------------------------------------------------------------------
 
 # Paths that don't require license validation
-_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/ai-agent/status", "/api/paper-trading/status"}
+_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/paper-trading/status"}
 
 
 @app.middleware("http")
@@ -59,14 +59,22 @@ async def license_check(request: Request, call_next):
 
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if not token:
-        return JSONResponse(status_code=401, content={"detail": "No autenticado"})
+        resp = JSONResponse(status_code=401, content={"detail": "No autenticado"})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "*"
+        return resp
 
     license_info = validate_license(token)
     if not license_info or not license_info.get("valid"):
-        return JSONResponse(
+        resp = JSONResponse(
             status_code=403,
             content={"detail": "Suscripción inactiva o sin conexión al Auth Server"},
         )
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "*"
+        return resp
 
     request.state.user = license_info
     request.state.plan_limits = license_info.get("plan_limits", {})
@@ -109,6 +117,10 @@ _MIGRATIONS = {
         ("trading_mode", "VARCHAR(10) NOT NULL DEFAULT 'paper'"),
         ("broker_name", "VARCHAR(30)"),
         ("created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+    ],
+    "user_settings": [
+        ("ai_provider", "VARCHAR(50)"),
+        ("ai_model", "VARCHAR(100)"),
     ],
 }
 

@@ -9,6 +9,8 @@ import {
   Bar,
   Cell,
   ReferenceLine,
+  ReferenceArea,
+  ReferenceDot,
   ResponsiveContainer,
   YAxis,
   XAxis,
@@ -45,6 +47,7 @@ interface PositionChartProps {
   stopLoss: number;
   takeProfit: number;
   side: string;
+  openedAt?: string;
   height?: number;
 }
 
@@ -97,6 +100,7 @@ export function PositionChart({
   stopLoss,
   takeProfit,
   side,
+  openedAt,
   height = 200,
 }: PositionChartProps) {
   const [chartType, setChartType] = useState<ChartType>("candle");
@@ -146,6 +150,22 @@ export function PositionChart({
     if (maxP === minP) return height / 2;
     return height - ((v - minP) / (maxP - minP)) * height;
   };
+
+  const entryMarkerTime = useMemo(() => {
+    if (!openedAt || klines.length === 0) return null;
+    const target = new Date(openedAt).getTime();
+    if (isNaN(target)) return null;
+    let closest = klines[0];
+    let minDiff = Math.abs(klines[0].time * 1000 - target);
+    for (const k of klines) {
+      const diff = Math.abs(k.time * 1000 - target);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = k;
+      }
+    }
+    return closest.time;
+  }, [openedAt, klines]);
 
   // --- Data transforms for special chart types ---
 
@@ -359,9 +379,11 @@ export function PositionChart({
               <XAxis dataKey="time" hide />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [`$${fmt(v)}`, "Close"]} labelFormatter={() => ""} />
               <Area type="monotone" dataKey="v" stroke="var(--color-primary)" strokeWidth={2} fill="url(#lineGrad)" dot={false} />
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </AreaChart>
           </ResponsiveContainer>
         );
@@ -379,9 +401,11 @@ export function PositionChart({
                   <Cell key={i} fill={d.up ? "var(--color-success)" : "var(--color-danger)"} fillOpacity={0.7} />
                 ))}
               </Bar>
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -395,9 +419,11 @@ export function PositionChart({
               <XAxis dataKey="time" hide />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: any, name: any) => [`$${fmt(v)}`, name]} labelFormatter={() => ""} />
               <Bar dataKey="high" shape={<CandlestickShape yScale={yScale} />} />
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -451,9 +477,11 @@ export function PositionChart({
                   <Cell key={i} fill={d.up ? "var(--color-success)" : "var(--color-danger)"} fillOpacity={0.6} />
                 ))}
               </Bar>
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -472,9 +500,11 @@ export function PositionChart({
                   <Cell key={i} fill={d.type === "X" ? "var(--color-success)" : "var(--color-danger)"} />
                 ))}
               </Scatter>
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ScatterChart>
           </ResponsiveContainer>
         );
@@ -492,9 +522,11 @@ export function PositionChart({
                   <Cell key={i} fill={d.up ? "var(--color-success)" : "var(--color-danger)"} fillOpacity={0.7} />
                 ))}
               </Bar>
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -508,9 +540,11 @@ export function PositionChart({
               <XAxis dataKey="i" hide />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [`$${fmt(v)}`, "Precio"]} labelFormatter={() => ""} />
               <Line type="stepAfter" dataKey="price" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -529,9 +563,11 @@ export function PositionChart({
                   <Cell key={i} fill={d.up ? "var(--color-success)" : "var(--color-danger)"} fillOpacity={0.7} />
                 ))}
               </Bar>
+              {stopLoss > 0 && takeProfit > 0 && <ReferenceArea y1={stopLoss} y2={takeProfit} fill="var(--color-primary)" fillOpacity={0.05} />}
               <ReferenceLine y={entry} stroke="var(--color-text-muted)" strokeDasharray="4 4" label={{ value: "Entry", position: "insideTopRight", fill: "var(--color-text-muted)", fontSize: 9 }} />
               {stopLoss > 0 && <ReferenceLine y={stopLoss} stroke="var(--color-danger)" strokeDasharray="3 3" label={{ value: "SL", position: "insideTopRight", fill: "var(--color-danger)", fontSize: 9 }} />}
               {takeProfit > 0 && <ReferenceLine y={takeProfit} stroke="var(--color-success)" strokeDasharray="3 3" label={{ value: "TP", position: "insideTopRight", fill: "var(--color-success)", fontSize: 9 }} />}
+              {entryMarkerTime != null && entry > 0 && <ReferenceDot x={entryMarkerTime} y={entry} r={4} fill="var(--color-primary)" stroke="white" strokeWidth={1} />}
             </ComposedChart>
           </ResponsiveContainer>
         );

@@ -50,18 +50,30 @@ def _load_user_keys(user_id: int) -> dict:
                 keys["premium"] = decrypt(s.ai_premium_key_enc)
             except Exception:
                 pass
-        if s.ai_premium_provider:
-            keys["premium_provider"] = s.ai_premium_provider
-        if s.ai_premium_base_url:
-            keys["premium_base_url"] = s.ai_premium_base_url
-        if s.ai_premium_model:
-            keys["premium_model"] = s.ai_premium_model
+        try:
+            if s.ai_premium_provider:
+                keys["premium_provider"] = s.ai_premium_provider
+            if s.ai_premium_base_url:
+                keys["premium_base_url"] = s.ai_premium_base_url
+            if s.ai_premium_model:
+                keys["premium_model"] = s.ai_premium_model
+        except Exception:
+            pass
+        try:
+            if s.ai_provider:
+                keys["ai_provider"] = s.ai_provider
+            if s.ai_model:
+                keys["ai_model"] = s.ai_model
+        except Exception:
+            pass
         return keys
+    except Exception:
+        return {}
     finally:
         db.close()
 
 
-def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str | None = None, premium_key: str | None = None, premium_provider: str | None = None, premium_base_url: str | None = None, premium_model: str | None = None) -> None:
+def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str | None = None, premium_key: str | None = None, premium_provider: str | None = None, premium_base_url: str | None = None, premium_model: str | None = None, ai_provider: str | None = None, ai_model: str | None = None) -> None:
     """Persist AI provider keys to DB (encrypted) so they survive agent restarts."""
     db = SessionLocal()
     try:
@@ -81,6 +93,10 @@ def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str |
             s.ai_premium_base_url = premium_base_url or None
         if premium_model is not None:
             s.ai_premium_model = premium_model or None
+        if ai_provider is not None:
+            s.ai_provider = ai_provider or None
+        if ai_model is not None:
+            s.ai_model = ai_model or None
         db.commit()
     finally:
         db.close()
@@ -224,8 +240,19 @@ def ai_agent_start(
             save_kwargs["premium_provider"] = provider
             save_kwargs["premium_base_url"] = agent.openai_base_url
             save_kwargs["premium_model"] = agent.openai_model
-        if save_kwargs:
-            _save_user_keys(current_user.id, **save_kwargs)
+        # Always save selected provider and model so they persist across sessions
+        save_kwargs["ai_provider"] = provider
+        if req.model:
+            save_kwargs["ai_model"] = req.model
+        elif provider == "groq":
+            save_kwargs["ai_model"] = agent.groq_model
+        elif provider == "gemini":
+            save_kwargs["ai_model"] = agent.gemini_model
+        elif provider in PREMIUM_BASE_URLS:
+            save_kwargs["ai_model"] = agent.openai_model
+        elif provider == "ollama":
+            save_kwargs["ai_model"] = agent.ollama_model
+        _save_user_keys(current_user.id, **save_kwargs)
 
     # Enforce plan-based interval minimum
     if current_user:
@@ -273,6 +300,147 @@ def ai_agent_stop() -> dict:
     agent._grant_fail_streak = 0
     state.ai_jwt_token = None
     return agent.get_status()
+
+
+class AnalyzePositionsRequest(BaseModel):
+    """Payload for position analysis — list of positions to analyze."""
+    positions: list[dict] = []
+    broker: str = "paper"
+    provider: str | None = None
+    model: str | None = None
+
+
+@router.post("/ai-agent/analyze-positions")
+def ai_agent_analyze_positions(
+    request: Request,
+    req: AnalyzePositionsRequest = AnalyzePositionsRequest(),
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Analyze open positions with the AI Trading Agent (one-shot, agent must be stopped).
+
+    Validates:
+    - Agent must NOT be running (block if running).
+    - AI provider must have an API key configured.
+
+    Starts a background thread that runs agent.analyze_positions() and returns immediately.
+    """
+    agent = get_or_create_agent()
+
+    # 1. Block if agent is running
+    if agent.is_running:
+        raise HTTPException(
+            status_code=409,
+            detail="El agente IA está activo. Debes detenerlo primero para analizar posiciones.",
+        )
+
+    # 2. Check if AI provider has a key configured
+    settings = get_settings()
+
+    # Load user's stored keys and last selected provider/model from DB
+    user_keys = _load_user_keys(current_user.id) if current_user else {}
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("analyze_positions: user_id=%s, user_keys=%s, agent.provider=%s", current_user.id if current_user else None, list(user_keys.keys()), agent.provider)
+
+    # Use request provider/model first, then user's last saved, then agent or .env
+    provider = req.provider or user_keys.get("ai_provider") or agent.provider or getattr(settings, "AI_PROVIDER", "groq")
+    saved_model = req.model or user_keys.get("ai_model")
+    logger.info("analyze_positions: resolved provider=%s, saved_model=%s", provider, saved_model)
+
+    # If provider has no key, try to infer the provider from whichever key the user has saved
+    if not req.provider and not saved_model and not user_keys.get("ai_provider"):
+        if user_keys.get("gemini"):
+            provider = "gemini"
+        elif user_keys.get("groq"):
+            provider = "groq"
+        elif user_keys.get("premium"):
+            provider = user_keys.get("premium_provider") or "openai"
+        logger.info("analyze_positions: inferred provider=%s from saved keys", provider)
+
+    # Apply the saved provider and model to the agent
+    agent.provider = provider
+    if saved_model:
+        if provider == "groq":
+            agent.groq_model = saved_model
+        elif provider == "gemini":
+            agent.gemini_model = saved_model
+        elif provider in PREMIUM_PROVIDERS:
+            agent.openai_model = saved_model
+            if user_keys.get("premium_base_url"):
+                agent.openai_base_url = user_keys["premium_base_url"]
+        elif provider == "ollama":
+            agent.ollama_model = saved_model
+    else:
+        # No saved model — reset to safe defaults per provider to avoid cross-provider model mismatches
+        if provider == "groq" and agent.groq_model not in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
+            agent.groq_model = "llama-3.1-8b-instant"
+        elif provider == "gemini" and not agent.gemini_model.startswith("gemini"):
+            agent.gemini_model = "gemini-2.0-flash"
+        elif provider in PREMIUM_PROVIDERS and user_keys.get("premium_model"):
+            agent.openai_model = user_keys["premium_model"]
+            if user_keys.get("premium_base_url"):
+                agent.openai_base_url = user_keys["premium_base_url"]
+
+    # Apply saved keys to the agent
+    if user_keys.get("groq"):
+        agent.groq_api_key = user_keys["groq"]
+    if user_keys.get("gemini"):
+        agent.gemini_api_key = user_keys["gemini"]
+    if user_keys.get("premium"):
+        agent.openai_api_key = user_keys["premium"]
+
+    has_key = False
+    if provider == "groq":
+        has_key = bool(agent.groq_api_key or user_keys.get("groq") or getattr(settings, "GROQ_API_KEY", None))
+    elif provider == "gemini":
+        has_key = bool(agent.gemini_api_key or user_keys.get("gemini") or getattr(settings, "GEMINI_API_KEY", None))
+    elif provider == "ollama":
+        has_key = True  # Ollama runs locally, no key needed
+    elif provider in PREMIUM_PROVIDERS:
+        has_key = bool(agent.openai_api_key or user_keys.get("premium"))
+    else:
+        has_key = False
+
+    logger.info("analyze_positions: has_key=%s, agent.groq_api_key=%s, agent.gemini_api_key=%s, agent.openai_api_key=%s", has_key, bool(agent.groq_api_key), bool(agent.gemini_api_key), bool(agent.openai_api_key))
+
+    if not has_key:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No tienes una API key configurada para {provider}. Ve a AI Agent para configurar tu proveedor.",
+        )
+
+    # 3. Capture JWT token for the agent (needed for profile lookup)
+    jwt_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if jwt_token:
+        agent._jwt_token = jwt_token
+
+    # 4. Rebuild provider with current settings (in case keys were updated since last start)
+    agent._rebuild_provider()
+
+    # 5. Validate positions data
+    if not req.positions:
+        raise HTTPException(status_code=400, detail="No se enviaron posiciones para analizar.")
+
+    # 6. Run analysis in background thread
+    from threading import Thread
+    positions_data = req.positions
+    broker = req.broker or "paper"
+
+    def _run_analysis():
+        try:
+            agent.analyze_positions(positions_data, broker)
+        except Exception as exc:
+            agent._add_log("error", f"Error en análisis de posiciones (thread): {exc}")
+
+    thread = Thread(target=_run_analysis, daemon=True)
+    thread.start()
+
+    return {
+        "status": "started",
+        "positions_count": len(positions_data),
+        "broker": broker,
+        "provider": provider,
+    }
 
 
 @router.post("/ai-agent/test-key")
@@ -378,10 +546,19 @@ def ai_agent_test_key(
 
 
 @router.get("/ai-agent/status")
-def ai_agent_status() -> dict:
-    """Obtiene el estado del agente de IA."""
+def ai_agent_status(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Obtiene el estado del agente de IA, incluyendo la última config guardada del usuario."""
     agent = get_or_create_agent()
-    return agent.get_status()
+    status = agent.get_status()
+    # Include user's saved provider/model so frontend can restore them on session start
+    user_keys = _load_user_keys(current_user.id) if current_user else {}
+    if user_keys.get("ai_provider"):
+        status["saved_provider"] = user_keys["ai_provider"]
+    if user_keys.get("ai_model"):
+        status["saved_model"] = user_keys["ai_model"]
+    return status
 
 
 @router.get("/ai-agent/plan")
@@ -405,6 +582,8 @@ def ai_agent_plan(
         "has_premium_key": bool(user_keys.get("premium")),
         "premium_provider": user_keys.get("premium_provider"),
         "premium_model": user_keys.get("premium_model"),
+        "saved_provider": user_keys.get("ai_provider"),
+        "saved_model": user_keys.get("ai_model"),
         "free_providers": ["groq", "gemini", "ollama"],
         "premium_providers": list(PREMIUM_PROVIDERS),
         "get_keys_links": {
@@ -2219,3 +2398,198 @@ def mark_all_notifications_read() -> dict:
         return {"ok": False, "error": str(exc)}
     finally:
         session.close()
+
+
+# ─── Client-side Binance trade recording (proxy architecture) ────────────────
+
+
+class TradeRecordRequest(BaseModel):
+    """Client sends Binance order result to record in DB."""
+    symbol: str
+    side: str  # BUY or SELL
+    order_type: str  # MARKET or LIMIT
+    quantity: float
+    price: float | None = None
+    executed_qty: float | None = None
+    avg_price: float | None = None
+    broker_order_id: str | None = None
+    oco_order_id: str | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    strategy_name: str = "manual_binance"
+
+
+@router.post("/trades/record")
+def record_trade(
+    req: TradeRecordRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Record a Binance trade in DB after client placed it via proxy."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as PositionModel
+    from app.database.models.trade import Trade
+    from decimal import Decimal as Dec
+
+    db = SessionLocal()
+    try:
+        user_id = current_user.id if current_user else 1
+
+        symbol = req.symbol.upper()
+        side = req.side.upper()
+        qty = Dec(str(req.quantity))
+        price = Dec(str(req.avg_price or req.price or 0))
+
+        # Create trade record
+        trade = Trade(
+            user_id=user_id,
+            symbol=symbol,
+            side=side.lower(),
+            quantity=qty,
+            price=price,
+            strategy_name=req.strategy_name,
+            broker_order_id=req.broker_order_id,
+            status="filled",
+            opened_at=datetime.now(tz=UTC),
+        )
+        db.add(trade)
+
+        # Update or create position
+        if side == "BUY":
+            existing = db.query(PositionModel).filter(
+                PositionModel.symbol == symbol,
+                PositionModel.status == "open",
+                PositionModel.user_id == user_id,
+            ).first()
+
+            if existing:
+                # Add to existing position
+                total_qty = existing.quantity + qty
+                avg_entry = ((existing.entry_price * existing.quantity) + (price * qty)) / total_qty
+                existing.quantity = total_qty
+                existing.entry_price = avg_entry.normalize()
+            else:
+                pos = PositionModel(
+                    user_id=user_id,
+                    symbol=symbol,
+                    opened_at=datetime.now(tz=UTC),
+                    side="long",
+                    quantity=qty,
+                    entry_price=price,
+                    current_price=price,
+                    unrealized_pnl=Dec("0"),
+                    status="open",
+                    strategy_name=req.strategy_name,
+                    broker_order_id=req.broker_order_id,
+                )
+                if req.stop_loss:
+                    pos.stop_loss = Dec(str(req.stop_loss))
+                if req.take_profit:
+                    pos.take_profit = Dec(str(req.take_profit))
+                db.add(pos)
+        elif side == "SELL":
+            existing = db.query(PositionModel).filter(
+                PositionModel.symbol == symbol,
+                PositionModel.status == "open",
+                PositionModel.user_id == user_id,
+            ).first()
+            if existing:
+                if qty >= existing.quantity:
+                    existing.status = "closed"
+                    existing.closed_at = datetime.now(tz=UTC)
+                else:
+                    existing.quantity -= qty
+
+        db.commit()
+
+        # Create notification
+        try:
+            from app.services.notification_service import create_notification
+            create_notification(
+                db,
+                type="trade_executed",
+                title=f"Trade ejecutado: {side} {qty} {symbol}",
+                message=f"Precio: {price} | Orden: {req.broker_order_id or 'N/A'}",
+                severity="info",
+                asset=symbol,
+            )
+            db.commit()
+        except Exception:
+            pass
+
+        return {"status": "ok", "trade_id": trade.id}
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()
+
+
+class BulkImportRequest(BaseModel):
+    """Client sends Binance balances to import as positions."""
+    positions: list[dict]
+
+
+@router.post("/positions/bulk-import")
+def bulk_import_positions(
+    req: BulkImportRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Import positions from client-fetched Binance data into DB."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as PositionModel
+    from decimal import Decimal as Dec
+
+    db = SessionLocal()
+    try:
+        user_id = current_user.id if current_user else 1
+        imported = []
+        skipped = 0
+
+        for p in req.positions:
+            symbol = p.get("symbol", "").upper()
+            quantity = float(p.get("quantity", 0))
+            entry_price = float(p.get("entry_price", 0))
+            side = p.get("side", "long")
+
+            if not symbol or quantity <= 0 or entry_price <= 0:
+                continue
+
+            existing = db.query(PositionModel).filter(
+                PositionModel.symbol == symbol,
+                PositionModel.status == "open",
+                PositionModel.user_id == user_id,
+            ).first()
+
+            if existing:
+                existing.current_price = Dec(str(entry_price))
+                skipped += 1
+                continue
+
+            pos = PositionModel(
+                user_id=user_id,
+                symbol=symbol,
+                opened_at=datetime.now(tz=UTC),
+                side=side,
+                quantity=Dec(str(quantity)),
+                entry_price=Dec(str(entry_price)),
+                current_price=Dec(str(entry_price)),
+                unrealized_pnl=Dec("0"),
+                status="open",
+                strategy_name="imported_binance",
+                metadata_json={"source": "binance_proxy_import"},
+            )
+            db.add(pos)
+            imported.append({"symbol": symbol, "quantity": quantity, "entry_price": entry_price})
+
+        db.commit()
+        return {
+            "imported": imported,
+            "imported_count": len(imported),
+            "skipped": skipped,
+            "message": f"Se importaron {len(imported)} posiciones. {skipped} ya existían.",
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()

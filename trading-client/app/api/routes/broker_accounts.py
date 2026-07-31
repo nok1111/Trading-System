@@ -160,3 +160,25 @@ def revoke(
     if not result:
         raise HTTPException(status_code=404, detail="Cuenta no encontrada")
     return result
+
+
+@router.get("/binance/credentials")
+def get_binance_credentials(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Return decrypted Binance API keys for client-side signing.
+
+    The client uses these to sign requests locally (HMAC-SHA256) and
+    sends them through the VPS proxy. Keys are never sent to the proxy.
+    """
+    from app.api.helpers import resolve_broker_credentials
+
+    creds = resolve_broker_credentials("binance", current_user)
+    if not creds:
+        raise HTTPException(status_code=404, detail="No hay cuenta de Binance configurada")
+
+    return {
+        "api_key": creds.api_key,
+        "api_secret": creds.api_secret,
+        "testnet": creds.testnet,
+    }

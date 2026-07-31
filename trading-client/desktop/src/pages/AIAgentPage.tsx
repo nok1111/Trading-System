@@ -257,6 +257,16 @@ export function AIAgentPage() {
   const decisions = log.filter((e) => e.phase === "decision");
   const activityLog = log.slice(0, 60);
 
+  // Restore saved provider and model from user's last session (only when agent is stopped)
+  useEffect(() => {
+    if (!isRunning && status?.saved_provider) {
+      setProvider(status.saved_provider);
+    }
+    if (!isRunning && status?.saved_model) {
+      setModel(status.saved_model);
+    }
+  }, [status?.saved_provider, status?.saved_model, isRunning]);
+
   // Plan info
   const isFree = plan?.is_free ?? true;
   const isPaid = plan?.is_paid ?? false;

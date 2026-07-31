@@ -11,10 +11,12 @@ Provides real data for:
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.services.auth import LocalUser, get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
@@ -33,6 +35,12 @@ def _cached(key: str) -> Any | None:
 
 def _set_cache(key: str, data: Any, ttl: int = _CACHE_TTL) -> None:
     _cache[key] = (data, datetime.now(UTC).timestamp() + ttl)
+
+
+def _clear_cache(prefix: str) -> None:
+    keys_to_delete = [k for k in _cache if k.startswith(prefix)]
+    for k in keys_to_delete:
+        del _cache[k]
 
 
 @router.get("/fear-greed")
@@ -618,6 +626,13 @@ _risk_config: dict = {
     "max_open_positions": 5,
     "daily_loss_limit_pct": 5.0,
     "circuit_breaker_enabled": True,
+    "auto_sell_rsi_overbought": 70.0,
+    "auto_sell_max_position_hours": 24.0,
+    "auto_sell_min_volume_relative": 0.5,
+    "auto_sell_macd_bearish": True,
+    "auto_sell_rsi_enabled": True,
+    "auto_sell_time_enabled": True,
+    "auto_sell_volume_enabled": True,
 }
 
 
@@ -629,6 +644,13 @@ class RiskConfigRequest(_BaseModel):
     max_open_positions: int | None = None
     daily_loss_limit_pct: float | None = None
     circuit_breaker_enabled: bool | None = None
+    auto_sell_rsi_overbought: float | None = None
+    auto_sell_max_position_hours: float | None = None
+    auto_sell_min_volume_relative: float | None = None
+    auto_sell_macd_bearish: bool | None = None
+    auto_sell_rsi_enabled: bool | None = None
+    auto_sell_time_enabled: bool | None = None
+    auto_sell_volume_enabled: bool | None = None
 
 
 @router.get("/risk/config")
@@ -873,26 +895,50 @@ def get_all_reports(limit: int = 50) -> list[dict]:
             ).limit(limit).all()
 
             for r in recs:
-                action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
-                result.append({
-                    "id": f"rec-{r.id}",
-                    "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
-                    "type": "daily",
-                    "asset": r.asset,
-                    "summary": f"{action_label} — {r.reason or 'Sin razón especificada'}",
-                    "sections": {
-                        "marketOverview": f"Decisión del mercado: {r.market_decision or 'N/A'}",
-                        "keyEvents": f"Recomendación personal: {r.personal_recommendation or 'N/A'} (confianza: {float(r.confidence):.0%})",
-                        "performance": f"Stop loss: {r.stop_loss_pct or 'N/A'}% | Take profit: {r.take_profit_pct or 'N/A'}%",
-                        "outlook": r.reason or "",
-                    },
-                    "action_type": r.action_type,
-                    "confidence": float(r.confidence),
-                    "status": r.status,
-                    "trading_mode": r.trading_mode,
-                    "broker_name": r.broker_name,
-                    "timestamp": r.timestamp.isoformat() if r.timestamp else "",
-                })
+                if r.action_type == "position_analysis":
+                    meta = r.metadata_json or {}
+                    result.append({
+                        "id": f"rec-{r.id}",
+                        "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
+                        "type": "daily",
+                        "asset": r.asset,
+                        "summary": f"Análisis de {meta.get('symbol', r.asset)} — {r.reason or 'Sin razón especificada'}",
+                        "sections": {
+                            "marketOverview": f"Símbolo: {meta.get('symbol', 'N/A')} | Posición ID: {meta.get('position_id', 'N/A')}",
+                            "keyEvents": f"SL actual: {meta.get('current_sl', 'N/A')} → SL sugerido: {meta.get('suggested_sl', 'N/A')}",
+                            "performance": f"TP actual: {meta.get('current_tp', 'N/A')} → TP sugerido: {meta.get('suggested_tp', 'N/A')}",
+                            "outlook": f"Horizonte: {meta.get('time_horizon', 'N/A')} | {r.reason or ''}",
+                            "detailedAnalysis": meta.get("detailed_analysis", ""),
+                        },
+                        "action_type": r.action_type,
+                        "confidence": float(r.confidence),
+                        "status": r.status,
+                        "trading_mode": r.trading_mode,
+                        "broker_name": r.broker_name,
+                        "metadata": meta,
+                        "timestamp": r.timestamp.isoformat() if r.timestamp else "",
+                    })
+                else:
+                    action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
+                    result.append({
+                        "id": f"rec-{r.id}",
+                        "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
+                        "type": "daily",
+                        "asset": r.asset,
+                        "summary": f"{action_label} — {r.reason or 'Sin razón especificada'}",
+                        "sections": {
+                            "marketOverview": f"Decisión del mercado: {r.market_decision or 'N/A'}",
+                            "keyEvents": f"Recomendación personal: {r.personal_recommendation or 'N/A'} (confianza: {float(r.confidence):.0%})",
+                            "performance": f"Stop loss: {r.stop_loss_pct or 'N/A'}% | Take profit: {r.take_profit_pct or 'N/A'}%",
+                            "outlook": r.reason or "",
+                        },
+                        "action_type": r.action_type,
+                        "confidence": float(r.confidence),
+                        "status": r.status,
+                        "trading_mode": r.trading_mode,
+                        "broker_name": r.broker_name,
+                        "timestamp": r.timestamp.isoformat() if r.timestamp else "",
+                    })
         finally:
             db.close()
     except Exception as exc:
@@ -929,26 +975,50 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
             ).order_by(AIRecommendation.timestamp.desc()).limit(limit).all()
 
             for r in recs:
-                action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
-                result.append({
-                    "id": f"rec-{r.id}",
-                    "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
-                    "type": "daily",
-                    "asset": r.asset,
-                    "summary": f"{action_label} — {r.reason or 'Sin razón especificada'}",
-                    "sections": {
-                        "marketOverview": f"Decisión del mercado: {r.market_decision or 'N/A'}",
-                        "keyEvents": f"Recomendación personal: {r.personal_recommendation or 'N/A'} (confianza: {float(r.confidence):.0%})",
-                        "performance": f"Stop loss: {r.stop_loss_pct or 'N/A'}% | Take profit: {r.take_profit_pct or 'N/A'}%",
-                        "outlook": r.reason or "",
-                    },
-                    "action_type": r.action_type,
-                    "confidence": float(r.confidence),
-                    "status": r.status,
-                    "trading_mode": r.trading_mode,
-                    "broker_name": r.broker_name,
-                    "timestamp": r.timestamp.isoformat() if r.timestamp else "",
-                })
+                if r.action_type == "position_analysis":
+                    meta = r.metadata_json or {}
+                    result.append({
+                        "id": f"rec-{r.id}",
+                        "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
+                        "type": "daily",
+                        "asset": r.asset,
+                        "summary": f"Análisis de {meta.get('symbol', r.asset)} — {r.reason or 'Sin razón especificada'}",
+                        "sections": {
+                            "marketOverview": f"Símbolo: {meta.get('symbol', 'N/A')} | Posición ID: {meta.get('position_id', 'N/A')}",
+                            "keyEvents": f"SL actual: {meta.get('current_sl', 'N/A')} → SL sugerido: {meta.get('suggested_sl', 'N/A')}",
+                            "performance": f"TP actual: {meta.get('current_tp', 'N/A')} → TP sugerido: {meta.get('suggested_tp', 'N/A')}",
+                            "outlook": f"Horizonte: {meta.get('time_horizon', 'N/A')} | {r.reason or ''}",
+                            "detailedAnalysis": meta.get("detailed_analysis", ""),
+                        },
+                        "action_type": r.action_type,
+                        "confidence": float(r.confidence),
+                        "status": r.status,
+                        "trading_mode": r.trading_mode,
+                        "broker_name": r.broker_name,
+                        "metadata": meta,
+                        "timestamp": r.timestamp.isoformat() if r.timestamp else "",
+                    })
+                else:
+                    action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
+                    result.append({
+                        "id": f"rec-{r.id}",
+                        "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
+                        "type": "daily",
+                        "asset": r.asset,
+                        "summary": f"{action_label} — {r.reason or 'Sin razón especificada'}",
+                        "sections": {
+                            "marketOverview": f"Decisión del mercado: {r.market_decision or 'N/A'}",
+                            "keyEvents": f"Recomendación personal: {r.personal_recommendation or 'N/A'} (confianza: {float(r.confidence):.0%})",
+                            "performance": f"Stop loss: {r.stop_loss_pct or 'N/A'}% | Take profit: {r.take_profit_pct or 'N/A'}%",
+                            "outlook": r.reason or "",
+                        },
+                        "action_type": r.action_type,
+                        "confidence": float(r.confidence),
+                        "status": r.status,
+                        "trading_mode": r.trading_mode,
+                        "broker_name": r.broker_name,
+                        "timestamp": r.timestamp.isoformat() if r.timestamp else "",
+                    })
         finally:
             db.close()
     except Exception as exc:
@@ -1036,7 +1106,10 @@ def get_reports(asset: str, limit: int = 20) -> list[dict]:
 
 
 @router.post("/reports/{rec_id}/accept")
-def accept_recommendation(rec_id: int) -> dict:
+def accept_recommendation(
+    rec_id: int,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Accept an AI recommendation and execute a simulated buy (paper mode).
 
     Creates a Position and Trade in the DB with strategy_name='AI-Recommendation'.
@@ -1057,6 +1130,45 @@ def accept_recommendation(rec_id: int) -> dict:
         if rec.status != "pending":
             return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
 
+        # ─── Position Analysis: update existing position's SL/TP ───────────────
+        if rec.action_type == "position_analysis":
+            meta = rec.metadata_json or {}
+            position_id = meta.get("position_id")
+            suggested_sl = meta.get("suggested_sl")
+            suggested_tp = meta.get("suggested_tp")
+
+            if not position_id:
+                return {"status": "error", "reason": "No se encontró position_id en la sugerencia"}
+
+            pos = db.query(Position).filter(Position.id == position_id).first()
+            if not pos:
+                return {"status": "error", "reason": f"Posición {position_id} no encontrada"}
+
+            old_sl = pos.stop_loss
+            old_tp = pos.take_profit
+
+            # Update DB
+            if suggested_sl is not None:
+                pos.stop_loss = Dec(str(suggested_sl))
+            if suggested_tp is not None:
+                pos.take_profit = Dec(str(suggested_tp))
+
+            rec.status = "executed"
+            db.commit()
+            _clear_cache("reports_")
+
+            return {
+                "status": "applied",
+                "position_id": position_id,
+                "old_sl": str(old_sl) if old_sl else None,
+                "old_tp": str(old_tp) if old_tp else None,
+                "new_sl": str(suggested_sl) if suggested_sl else None,
+                "new_tp": str(suggested_tp) if suggested_tp else None,
+                "broker_updated": False,
+                "broker_error": None,
+            }
+
+        # ─── Default: paper trade buy (existing logic) ─────────────────────────
         symbol = rec.asset.upper() + "USDT"
 
         # Fetch live price from Binance
@@ -1142,6 +1254,8 @@ def accept_recommendation(rec_id: int) -> dict:
 
         db.commit()
 
+        _clear_cache("reports_")
+
         return {
             "status": "executed",
             "symbol": symbol,
@@ -1176,6 +1290,8 @@ def decline_recommendation(rec_id: int) -> dict:
 
         rec.status = "dismissed"
         db.commit()
+
+        _clear_cache("reports_")
 
         return {"status": "dismissed", "id": rec_id}
     except Exception as exc:
@@ -1324,3 +1440,325 @@ def sell_paper_position(position_id: int) -> dict:
         return {"status": "error", "reason": str(exc)}
     finally:
         db.close()
+
+
+# ─── SL/TP OCO and Monitoring endpoints ───────────────────────────────────────
+
+from pydantic import BaseModel as _BM
+
+
+class OcoRequest(_BM):
+    stop_loss: float
+    take_profit: float
+
+
+class OcoResultRequest(_BM):
+    """Client sends the OCO result from Binance (placed via proxy)."""
+    oco_order_id: int | str
+    stop_loss: float
+    take_profit: float
+
+
+class OcoCancelResultRequest(_BM):
+    """Client sends confirmation that OCO was cancelled on Binance (via proxy)."""
+    oco_order_id: int | str
+
+
+def _create_notification(
+    *,
+    type: str,
+    title: str,
+    message: str = "",
+    severity: str = "info",
+    asset: str | None = None,
+) -> None:
+    """Create an in-app notification (shown in the bell dropdown)."""
+    try:
+        from app.database.session import SessionLocal
+        from app.services.notification_service import create_notification
+
+        db = SessionLocal()
+        create_notification(
+            db,
+            type=type,
+            title=title,
+            message=message,
+            severity=severity,
+            asset=asset,
+        )
+        db.close()
+    except Exception:
+        pass
+
+
+@router.post("/positions/{position_id}/update-oco")
+def update_oco_on_position(
+    position_id: int,
+    req: OcoResultRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Update position in DB after client placed OCO on Binance via proxy."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from decimal import Decimal as Dec
+
+    db = SessionLocal()
+    try:
+        pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos:
+            return {"status": "error", "error": f"Posición {position_id} no encontrada"}
+        if pos.status != "open":
+            return {"status": "error", "error": f"Posición {position_id} no está abierta"}
+
+        sl_price = Dec(str(req.stop_loss))
+        tp_price = Dec(str(req.take_profit))
+
+        pos.stop_loss = sl_price
+        pos.take_profit = tp_price
+        meta = pos.metadata_json or {}
+        meta["oco_order_id"] = req.oco_order_id
+        meta["monitoring_active"] = False
+        pos.metadata_json = meta
+        db.commit()
+
+        _create_notification(
+            type="trade_executed",
+            title=f"OCO colocado: {pos.symbol}",
+            message=f"SL: {sl_price} | TP: {tp_price} | Qty: {pos.quantity} | Order ID: {req.oco_order_id}",
+            severity="info",
+            asset=pos.symbol,
+        )
+
+        return {
+            "status": "placed",
+            "oco_order_id": req.oco_order_id,
+            "sl": str(sl_price),
+            "tp": str(tp_price),
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()
+
+
+@router.delete("/positions/{position_id}/clear-oco")
+def clear_oco_on_position(
+    position_id: int,
+    req: OcoCancelResultRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Clear OCO from position metadata after client cancelled it on Binance via proxy."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+
+    db = SessionLocal()
+    try:
+        pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos:
+            return {"status": "error", "error": f"Posición {position_id} no encontrada"}
+
+        meta = pos.metadata_json or {}
+        oco_order_id = meta.get("oco_order_id")
+        if not oco_order_id:
+            return {"status": "error", "error": "No hay OCO activo en esta posición"}
+
+        meta.pop("oco_order_id", None)
+        pos.metadata_json = meta
+        db.commit()
+
+        _create_notification(
+            type="system_event",
+            title=f"OCO cancelado: {pos.symbol}",
+            message=f"Orden OCO {oco_order_id} cancelada en Binance para {pos.symbol}",
+            severity="info",
+            asset=pos.symbol,
+        )
+
+        return {"status": "cancelled", "oco_order_id": oco_order_id}
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/positions/{position_id}/stop-monitoring")
+def stop_monitoring(position_id: int) -> dict:
+    """Stop SL/TP monitoring for a position."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+
+    db = SessionLocal()
+    try:
+        pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos:
+            return {"status": "error", "error": f"Posición {position_id} no encontrada"}
+
+        meta = pos.metadata_json or {}
+        meta["monitoring_active"] = False
+        pos.metadata_json = meta
+        db.commit()
+
+        return {"status": "monitoring_stopped", "position_id": position_id}
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/reports/{rec_id}/monitor-only")
+def monitor_only(rec_id: int) -> dict:
+    """Accept a position_analysis recommendation but only monitor (no Binance orders)."""
+    from app.database.session import SessionLocal
+    from app.database.models.ai_recommendation import AIRecommendation
+    from app.database.models.position import Position
+    from decimal import Decimal as Dec
+
+    db = SessionLocal()
+    try:
+        rec = db.query(AIRecommendation).filter(AIRecommendation.id == rec_id).first()
+        if not rec:
+            return {"status": "error", "reason": "Recomendación no encontrada"}
+        if rec.status != "pending":
+            return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
+
+        if rec.action_type != "position_analysis":
+            return {"status": "error", "reason": "Solo aplica a sugerencias de position_analysis"}
+
+        meta = rec.metadata_json or {}
+        position_id = meta.get("position_id")
+        suggested_sl = meta.get("suggested_sl")
+        suggested_tp = meta.get("suggested_tp")
+
+        if not position_id:
+            return {"status": "error", "reason": "No se encontró position_id en la sugerencia"}
+
+        pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos:
+            return {"status": "error", "reason": f"Posición {position_id} no encontrada"}
+
+        if suggested_sl is not None:
+            pos.stop_loss = Dec(str(suggested_sl))
+        if suggested_tp is not None:
+            pos.take_profit = Dec(str(suggested_tp))
+
+        pos_meta = pos.metadata_json or {}
+        pos_meta["monitoring_active"] = True
+        pos.metadata_json = pos_meta
+
+        rec.status = "executed"
+        db.commit()
+        _clear_cache("reports_")
+
+        return {
+            "status": "monitoring",
+            "position_id": position_id,
+            "sl": str(suggested_sl) if suggested_sl else None,
+            "tp": str(suggested_tp) if suggested_tp else None,
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/reports/{rec_id}/apply-oco")
+def apply_oco_from_report(
+    rec_id: int,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Return SL/TP data for client to place OCO on Binance via proxy.
+
+    The client receives the suggested SL/TP and position info, places the OCO
+    via the VPS proxy, then calls /positions/{id}/update-oco to confirm.
+    """
+    from app.database.session import SessionLocal
+    from app.database.models.ai_recommendation import AIRecommendation
+    from app.database.models.position import Position
+
+    db = SessionLocal()
+    try:
+        rec = db.query(AIRecommendation).filter(AIRecommendation.id == rec_id).first()
+        if not rec:
+            return {"status": "error", "reason": "Recomendación no encontrada"}
+        if rec.status != "pending":
+            return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
+
+        if rec.action_type != "position_analysis":
+            return {"status": "error", "reason": "Solo aplica a sugerencias de position_analysis"}
+
+        meta = rec.metadata_json or {}
+        position_id = meta.get("position_id")
+        suggested_sl = meta.get("suggested_sl")
+        suggested_tp = meta.get("suggested_tp")
+
+        if not position_id or not suggested_sl or not suggested_tp:
+            return {"status": "error", "reason": "Faltan datos de SL/TP en la sugerencia"}
+
+        pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos:
+            return {"status": "error", "reason": f"Posición {position_id} no encontrada"}
+
+        return {
+            "status": "ready",
+            "position_id": position_id,
+            "symbol": pos.symbol,
+            "quantity": float(pos.quantity),
+            "stop_loss": float(suggested_sl),
+            "take_profit": float(suggested_tp),
+            "message": "Coloca el OCO en Binance via proxy y luego confirma con /update-oco",
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/paper-positions/{position_id}/place-oco")
+def paper_place_oco(position_id: int, req: OcoRequest) -> dict:
+    """Set SL/TP on a paper position and activate monitoring (simulated OCO)."""
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from decimal import Decimal as Dec
+
+    db = SessionLocal()
+    try:
+        pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos:
+            return {"status": "error", "error": f"Posición {position_id} no encontrada"}
+        if pos.status != "open":
+            return {"status": "error", "error": f"Posición {position_id} no está abierta"}
+
+        pos.stop_loss = Dec(str(req.stop_loss))
+        pos.take_profit = Dec(str(req.take_profit))
+        meta = pos.metadata_json or {}
+        meta["monitoring_active"] = True
+        pos.metadata_json = meta
+        db.commit()
+
+        return {
+            "status": "monitoring",
+            "position_id": position_id,
+            "sl": str(req.stop_loss),
+            "tp": str(req.take_profit),
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/sltp/check")
+def check_sltp() -> dict:
+    """Run SL/TP price monitoring check for all open positions with monitoring active."""
+    try:
+        from app.monitoring.sltp_monitor import check_sltp_prices
+        results = check_sltp_prices()
+        return {"status": "ok", "results": results}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}

@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { toast } from "../components/ui/Toast";
+import { getProxyConfig, setProxyConfig, testProxyConnection } from "../lib/binanceProxy";
 
 export function SettingsPage() {
   const { user } = useAuthContext();
@@ -61,12 +62,36 @@ export function SettingsPage() {
     }
   }, []);
 
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxyToken, setProxyToken] = useState("");
+  const [proxyStatus, setProxyStatus] = useState<string>("");
+
+  const loadProxyConfig = useCallback(() => {
+    const cfg = getProxyConfig();
+    setProxyUrl(cfg.url);
+    setProxyToken(cfg.token);
+  }, []);
+
+  const saveProxyConfig = async () => {
+    setProxyConfig(proxyUrl, proxyToken);
+    toast("Configuración del proxy guardada");
+    const ok = await testProxyConnection();
+    setProxyStatus(ok ? "✓ Proxy conectado" : "✗ Proxy no responde");
+  };
+
+  const testProxy = async () => {
+    setProxyStatus("Probando...");
+    const ok = await testProxyConnection();
+    setProxyStatus(ok ? "✓ Proxy conectado" : "✗ Proxy no responde");
+  };
+
   useEffect(() => {
     loadLicense();
     checkApiKeys();
     loadKeys();
     checkAuthServer();
-  }, [loadLicense, checkApiKeys, loadKeys, checkAuthServer]);
+    loadProxyConfig();
+  }, [loadLicense, checkApiKeys, loadKeys, checkAuthServer, loadProxyConfig]);
 
   const saveBinanceKeys = async () => {
     if (!binanceKey || !binanceSecret) {
@@ -258,6 +283,47 @@ export function SettingsPage() {
         <p className="text-xs text-[var(--color-text-muted)] mt-3">
           Las keys se guardan encriptadas localmente. Nunca se envían al cloud.
           Si no configuras keys aquí, se usarán las del archivo .env.
+        </p>
+      </Card>
+
+      {/* VPS Proxy Configuration */}
+      <Card>
+        <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-4">
+          Configuración del Proxy VPS (Binance)
+        </h3>
+        <div className="space-y-3">
+          <div>
+            <CardLabel>Proxy URL</CardLabel>
+            <Input
+              value={proxyUrl}
+              onChange={(e: any) => setProxyUrl(e.target.value)}
+              placeholder="http://76.13.180.80:9100"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <CardLabel>Proxy Token</CardLabel>
+            <Input
+              type="password"
+              value={proxyToken}
+              onChange={(e: any) => setProxyToken(e.target.value)}
+              placeholder="Token secreto del proxy"
+              className="mt-1"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="default" size="sm" onClick={saveProxyConfig}>
+              Guardar
+            </Button>
+            <Button variant="default" size="sm" onClick={testProxy}>
+              Probar conexión
+            </Button>
+          </div>
+          {proxyStatus && <div className="text-sm">{proxyStatus}</div>}
+        </div>
+        <p className="text-xs text-[var(--color-text-muted)] mt-3">
+          El proxy enruta tus órdenes a Binance desde una IP fija.
+          Agrega la IP del proxy a tu whitelist en Binance API Management.
         </p>
       </Card>
 

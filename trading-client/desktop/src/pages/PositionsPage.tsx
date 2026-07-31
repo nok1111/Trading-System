@@ -9,6 +9,7 @@ import { fmt, fmtDate } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PositionChart } from "../components/PositionChart";
+import { toast } from "../components/ui/Toast";
 
 export function PositionsPage() {
   const [positions, setPositions] = useState<any[]>([]);
@@ -20,7 +21,7 @@ export function PositionsPage() {
   const [paperAction, setPaperAction] = useState("");
   const [depositAmount, setDepositAmount] = useState("1000");
   const [paperInterval, setPaperInterval] = useState("30");
-  const [activeTab, setActiveTab] = useState<"positions" | "paper">("positions");
+  const [activeTab, setActiveTab] = useState<"live" | "paper">("live");
   const [paperPositions, setPaperPositions] = useState<any[]>([]);
 
   const load = useCallback(async () => {
@@ -81,12 +82,20 @@ export function PositionsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "paper") {
-      loadPaperPositions();
-      const id = setInterval(loadPaperPositions, 5000);
-      return () => clearInterval(id);
-    }
+    loadPaperPositions();
+    const id = setInterval(loadPaperPositions, activeTab === "paper" ? 5000 : 10000);
+    return () => clearInterval(id);
   }, [activeTab, loadPaperPositions]);
+
+  const handleToggleAutoSell = async (positionId: number, enabled: boolean) => {
+    try {
+      await api(`/api/positions/${positionId}/auto-sell?enabled=${enabled}`, { method: "PATCH" });
+      toast(`Auto-sell ${enabled ? "activado" : "desactivado"} para posición #${positionId}`, enabled);
+      load();
+    } catch (e: any) {
+      toast(`Error al cambiar auto-sell: ${e.message}`, false);
+    }
+  };
 
   const handlePaperSell = async (positionId: number) => {
     try {
@@ -155,13 +164,13 @@ export function PositionsPage() {
         <button
           className={cn(
             "px-3 h-8 rounded-[6px] text-[12px] font-bold transition-colors",
-            activeTab === "positions"
+            activeTab === "live"
               ? "bg-[var(--color-primary)] text-white"
               : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
           )}
-          onClick={() => setActiveTab("positions")}
+          onClick={() => setActiveTab("live")}
         >
-          Posiciones
+          Live
         </button>
         <button
           className={cn(
@@ -209,6 +218,83 @@ export function PositionsPage() {
             </Card>
           </div>
 
+          {/* Paper Trading Control Panel */}
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[var(--color-primary)]">
+                Paper Trading
+              </h3>
+              <span
+                className={`text-[11px] font-bold px-2 h-5 rounded flex items-center ${
+                  paperStatus?.status === "running"
+                    ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+                }`}
+              >
+                {paperStatus?.status === "running" ? "RUNNING" : "STOPPED"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-3 items-end">
+              {paperStatus?.status === "running" ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handlePaperStop}
+                  disabled={!!paperAction}
+                >
+                  {paperAction === "stopping" ? "Stopping..." : "Stop"}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handlePaperStart}
+                  disabled={!!paperAction}
+                >
+                  {paperAction === "starting" ? "Starting..." : "Start"}
+                </Button>
+              )}
+              <div>
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                  Interval (sec)
+                </label>
+                <div className="flex gap-1">
+                  <input
+                    type="number"
+                    value={paperInterval}
+                    onChange={(e) => setPaperInterval(e.target.value)}
+                    min={5}
+                    className="w-20 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <Button variant="default" size="sm" onClick={handlePaperInterval}>
+                    Set
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                  Deposit (USDT)
+                </label>
+                <div className="flex gap-1">
+                  <input
+                    type="number"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="w-24 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <Button variant="default" size="sm" onClick={handlePaperDeposit}>
+                    Deposit
+                  </Button>
+                </div>
+              </div>
+              {paperStatus?.local_time && (
+                <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">
+                  {paperStatus.local_time}
+                </span>
+              )}
+            </div>
+          </Card>
+
           {paperPositions.length === 0 ? (
             <div className="text-center py-12 text-[12px] text-[var(--color-text-muted)]">
               No hay paper positions activas.
@@ -253,6 +339,19 @@ export function PositionsPage() {
                           {isProfit ? "+" : ""}${fmt(Math.abs(pnl))}
                         </div>
                       </div>
+                    </div>
+
+                    {/* Chart with entry marker + SL/TP zone */}
+                    <div className="mb-3">
+                      <PositionChart
+                        symbol={p.symbol}
+                        entry={entry}
+                        stopLoss={sl}
+                        takeProfit={tp}
+                        side={p.side || "BUY"}
+                        openedAt={p.opened_at}
+                        height={180}
+                      />
                     </div>
 
                     {/* Stats grid */}
@@ -342,7 +441,7 @@ export function PositionsPage() {
       )}
 
       {/* Positions Tab */}
-      {activeTab === "positions" && (
+      {activeTab === "live" && (
         <>
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
@@ -379,83 +478,6 @@ export function PositionsPage() {
         </Card>
       </div>
 
-      {/* Paper Trading Control Panel */}
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-[var(--color-primary)]">
-            Paper Trading
-          </h3>
-          <span
-            className={`text-[11px] font-bold px-2 h-5 rounded flex items-center ${
-              paperStatus?.status === "running"
-                ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
-                : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
-            }`}
-          >
-            {paperStatus?.status === "running" ? "RUNNING" : "STOPPED"}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-3 items-end">
-          {paperStatus?.status === "running" ? (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handlePaperStop}
-              disabled={!!paperAction}
-            >
-              {paperAction === "stopping" ? "Stopping..." : "Stop"}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handlePaperStart}
-              disabled={!!paperAction}
-            >
-              {paperAction === "starting" ? "Starting..." : "Start"}
-            </Button>
-          )}
-          <div>
-            <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-              Interval (sec)
-            </label>
-            <div className="flex gap-1">
-              <input
-                type="number"
-                value={paperInterval}
-                onChange={(e) => setPaperInterval(e.target.value)}
-                min={5}
-                className="w-20 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
-              />
-              <Button variant="default" size="sm" onClick={handlePaperInterval}>
-                Set
-              </Button>
-            </div>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-              Deposit (USDT)
-            </label>
-            <div className="flex gap-1">
-              <input
-                type="number"
-                value={depositAmount}
-                onChange={(e) => setDepositAmount(e.target.value)}
-                className="w-24 h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
-              />
-              <Button variant="default" size="sm" onClick={handlePaperDeposit}>
-                Deposit
-              </Button>
-            </div>
-          </div>
-          {paperStatus?.local_time && (
-            <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">
-              {paperStatus.local_time}
-            </span>
-          )}
-        </div>
-      </Card>
-
       {/* Filter */}
       <div className="flex gap-2 items-center">
         <Select
@@ -490,6 +512,7 @@ export function PositionsPage() {
               const qty = Number(p.quantity || 0);
               const invested = qty * entry;
               const isHeld = !!(p.metadata_json?.hold);
+              const autoSell = p.auto_sell_enabled !== false;
               return (
                 <Card key={p.id}>
                   {/* Header */}
@@ -508,6 +531,11 @@ export function PositionsPage() {
                           <Badge variant="primary" className="ml-2">
                             HOLD
                           </Badge>
+                        )}
+                        {autoSell ? (
+                          <Badge variant="success" className="ml-2">AUTO-SELL</Badge>
+                        ) : (
+                          <Badge variant="warning" className="ml-2">MANUAL</Badge>
                         )}
                       </div>
                     </div>
@@ -535,6 +563,7 @@ export function PositionsPage() {
                       stopLoss={sl}
                       takeProfit={tp}
                       side={p.side}
+                      openedAt={p.opened_at}
                       height={200}
                     />
                   </div>
@@ -598,7 +627,7 @@ export function PositionsPage() {
                     </div>
                   </div>
 
-                  {/* Sell & Hold buttons */}
+                  {/* Sell & Auto-Sell toggle */}
                   <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex gap-2">
                       <Button
                         variant="danger"
@@ -621,24 +650,13 @@ export function PositionsPage() {
                         Sell
                       </Button>
                       <Button
-                        variant={isHeld ? "primary" : "default"}
+                        variant={autoSell ? "primary" : "default"}
                         size="sm"
                         className="flex-1"
-                        title={isHeld ? "Quitar Hold: la IA podrá vender esta posición" : "Hold: la IA no venderá esta posición automáticamente"}
-                        onClick={async () => {
-                          try {
-                            await api("/api/paper-trading/hold", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ symbol: p.symbol, hold: !isHeld }),
-                            });
-                            load();
-                          } catch (e) {
-                            console.error("Hold failed:", e);
-                          }
-                        }}
+                        title={autoSell ? "Desactivar auto-sell: la IA no venderá esta posición automáticamente" : "Activar auto-sell: la IA venderá automáticamente según SL/TP/indicadores"}
+                        onClick={() => handleToggleAutoSell(p.id, !autoSell)}
                       >
-                        {isHeld ? "Hold ✓" : "Hold"}
+                        {autoSell ? "Auto-Sell ✓" : "Auto-Sell"}
                       </Button>
                   </div>
                 </Card>

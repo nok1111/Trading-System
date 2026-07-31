@@ -5,9 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function fmt(n: number | null | undefined): string {
+export function fmt(n: number | string | null | undefined): string {
   if (n == null) return "-";
-  return Number(n).toFixed(2);
+  const v = Number(n);
+  if (isNaN(v)) return "-";
+  if (v === 0) return "0";
+  // Show full precision, no rounding
+  return String(v);
 }
 
 export function fmtDate(d: string | null | undefined): string {

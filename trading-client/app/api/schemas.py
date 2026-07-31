@@ -59,6 +59,7 @@ class PositionOut(BaseModel):
     status: str
     strategy_name: str
     metadata_json: dict = {}
+    auto_sell_enabled: bool = True
     created_at: datetime
 
 

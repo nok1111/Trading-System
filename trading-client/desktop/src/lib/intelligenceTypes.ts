@@ -67,6 +67,7 @@ export interface DailyReport {
     keyEvents: string;
     performance: string;
     outlook: string;
+    detailedAnalysis?: string;
   };
   timestamp: string;
 }
@@ -189,6 +190,7 @@ export interface IntelligenceReport {
     keyEvents: string;
     performance: string;
     outlook: string;
+    detailedAnalysis?: string;
   };
 }
 

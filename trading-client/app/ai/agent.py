@@ -14,6 +14,7 @@ Configuración (.env):
 
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 from threading import Event, Thread
@@ -64,6 +65,91 @@ class AgentDecision(BaseModel):
     actions: list[TradeAction] = []
     risk_assessment: str = ""
     next_steps: str = ""
+
+
+class PositionSuggestion(BaseModel):
+    symbol: str
+    position_id: int = 0
+    suggested_stop_loss: float | None = None
+    suggested_take_profit: float | None = None
+    time_horizon: str = ""
+    confidence: float = Field(ge=0, le=1, default=0.5)
+    reason: str = ""
+    detailed_analysis: str = ""
+
+
+class PositionAnalysisDecision(BaseModel):
+    market_overview: str = ""
+    analysis: str = ""
+    suggestions: list[PositionSuggestion] = []
+    risk_assessment: str = ""
+    next_steps: str = ""
+
+
+POSITION_ANALYSIS_PROMPT = """Eres un analista de trading experto de élite. El usuario tiene posiciones ABIERTAS y necesita un análisis PROFUNDO y EXHAUSTIVO para optimizarlas.
+
+⚠️ MÁXIMA PRIORIDAD Y ESFUERZO: Esta es la tarea más importante del momento. Dedica tu MÁXIMA CAPACIDAD DE ANÁLISIS a cada posición. No te apresures. Analiza cada posición con el mismo rigor que un analista profesional aplicaría en un informe detallado.
+
+Devuelves SOLO JSON con este schema exacto:
+{"market_overview":"...","analysis":"...","suggestions":[{"symbol":"BTCUSDT","position_id":123,"suggested_stop_loss":58000,"suggested_take_profit":68000,"time_horizon":"4h-8h","confidence":0.8,"reason":"...","detailed_analysis":"..."}],"risk_assessment":"...","next_steps":"..."}
+
+Recibes posiciones abiertas con: symbol, entry_price, current_price, stop_loss, take_profit, quantity, unrealized_pnl.
+También recibes datos técnicos del mercado (RSI, MACD, EMA, ATR, volumen) para los símbolos de las posiciones.
+También recibes el perfil del usuario (risk_tolerance, experience_level, preferred_strategies, trading_goal).
+
+Para CADA posición, realiza un ANÁLISIS EXHAUSTIVO:
+
+1. ANÁLISIS DE TENDENCIA Y MOMENTUM (profundo):
+   - Evalúa la tendencia general del activo (alcista, bajista, lateral)
+   - Analiza el momentum con MACD (cruces, divergencias, histograma)
+   - Identifica si el precio está en zona de expansión o contracción
+   - Considera la estructura de mercado (máximos/mínimos crecientes o decrecientes)
+
+2. ANÁLISIS DE VOLATILIDAD Y RIESGO (detallado):
+   - Calcula el ATR actual y compáralo con el histórico para evaluar volatilidad
+   - ¿Está el SL bien colocado o debería ajustarse según volatilidad actual (ATR)?
+   - Evalúa el ratio riesgo/recompensa actual de la posición
+   - Considera el tamaño de la posición relativo al capital
+
+3. ANÁLISIS DE NIVELES Y OBJETIVOS (preciso):
+   - ¿Está el TP bien colocado o hay más potencial alcista?
+   - Identifica soportes y resistencias clave cercanos
+   - Evalúa si el precio actual está cerca de zonas de reversión
+   - Proyecta objetivos realistas basados en volatilidad y momentum
+
+4. ANÁLISIS DE MOMENTUM DEL MERCADO (contextual):
+   - ¿El momentum del mercado favorece mantener, reducir, o cerrar la posición?
+   - Considera el volumen relativo para validar movimientos
+   - Evalúa señales de divergencia entre precio y osciladores
+
+5. HORIZONTE DE TIEMPO Y ESTRATEGIA (claro):
+   - Horizonte de tiempo sugerido para mantener la posición
+   - Escenarios optimista, neutral y pesimista
+   - Condiciones específicas que activarían un cierre anticipado
+
+SUGERENCIAS CONCRETAS por cada posición:
+- suggested_stop_loss: nuevo precio de SL (puede ser igual al actual si está bien)
+- suggested_take_profit: nuevo precio de TP
+- time_horizon: string como "2h-4h", "4h-8h", "1d-3d"
+- confidence: 0-1 de qué tan seguro estás de la sugerencia
+- reason: explicación técnica concreta referenciando RSI, MACD, ATR, volumen, y el perfil del usuario
+- detailed_analysis: análisis profundo y completo de esta posición (mínimo 3 párrafos cubriendo tendencia, volatilidad, niveles, momentum y estrategia)
+
+PERFIL: Usa el perfil del usuario para calibrar las sugerencias.
+- conservative: SL más ajustados, TP más conservadores
+- moderate: balance entre riesgo y recompensa
+- aggressive: SL más amplios, TP más ambiciosos
+
+DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
+- RSI > 70 = sobrecomprado, considera ajustar SL hacia arriba para proteger profit
+- RSI < 30 = sobrevendido, posible rebote, mantén SL actual
+- MACD bearish + precio cayendo = considera SL más ajustado
+- ATR_pct alto = mayor volatilidad, SL más amplio justificado
+- volume_relative > 1.5 = movimiento confirmado, TP puede ser más ambicioso
+
+⚠️ ENFOQUE TOTAL: Tómate tu tiempo. Cada posición merece un análisis completo y detallado. No escatimes en profundidad. El usuario depende de tu análisis para tomar decisiones financieras importantes. Sé meticuloso, preciso y exhaustivo.
+
+SOLO devuelve sugerencias para las posiciones recibidas. NO sugieras nuevas compras."""
 
 SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que SOLO COMPRA. Devuelves SOLO JSON con este schema exacto:
 {"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
@@ -386,8 +472,16 @@ class AITradingAgent:
                 stop_loss = pos.get("stop_loss")
                 take_profit = pos.get("take_profit")
                 entry_price = pos.get("entry_price")
+                auto_sell = pos.get("auto_sell_enabled", True)
 
-                if not symbol or not stop_loss or not take_profit or not entry_price:
+                if not symbol or not entry_price:
+                    continue
+
+                # Skip positions where user disabled auto-sell
+                if not auto_sell:
+                    continue
+
+                if not stop_loss or not take_profit:
                     continue
 
                 # Get current price from Binance (spot first, then futures)
@@ -473,8 +567,73 @@ class AITradingAgent:
                                 "phase": "trailing_update", "symbol": symbol, "price": current_price, "peak": peak, "trailing_sl": trail_sl,
                             })
 
+                    # Technical exit checks (RSI, MACD, time, volume)
+                    try:
+                        from app.risk.engine import AutoSellConfig
+                        tech_config = self._get_auto_sell_config()
+                        opened_at = pos.get("opened_at")
+                        if opened_at:
+                            from datetime import datetime as _dt
+                            if isinstance(opened_at, str):
+                                opened_at = _dt.fromisoformat(opened_at.replace("Z", "+00:00"))
+                            tech_result = self._risk_engine.evaluate_technical_exit(
+                                symbol=symbol,
+                                entry_price=Decimal(str(entry_price)),
+                                current_price=Decimal(str(current_price)),
+                                opened_at=opened_at,
+                                config=tech_config,
+                            )
+                            if tech_result.should_close:
+                                self._add_log("warn", f"TECHNICAL EXIT {symbol}: {tech_result.reason}", {
+                                    "phase": "auto_technical", "symbol": symbol,
+                                    "indicator": tech_result.indicator, "value": tech_result.value,
+                                    "price": current_price,
+                                })
+                                reason = f"Auto technical exit ({tech_result.indicator}): {tech_result.reason}"
+                                self._create_notif(
+                                    "technical_exit",
+                                    f"Venta técnica: {symbol} ({tech_result.indicator})",
+                                    tech_result.reason,
+                                    severity="warning",
+                                    asset=symbol.replace("USDT", ""),
+                                )
+                                sell_result = self._api_post("/api/ai-agent/execute", {
+                                    "action_type": "sell",
+                                    "symbol": symbol,
+                                    "confidence": 1.0,
+                                    "reason": reason,
+                                })
+                                if sell_result and sell_result.get("status") == "executed":
+                                    pnl_pct = ((current_price - entry) / entry) * 100
+                                    self._add_log("info", f"📊 Venta técnica {symbol} ejecutada @ ${current_price:.4f} (PnL: {pnl_pct:+.2f}%) — {tech_result.indicator}")
+                                    self._risk_engine.clear_position_peak(symbol)
+                                    self._position_peaks.pop(symbol, None)
+                                else:
+                                    self._add_log("error", f"Technical sell falló para {symbol}: {sell_result}")
+                    except Exception as tech_err:
+                        logger.debug(f"[AI Agent] Technical exit check error for {symbol}: {tech_err}")
+
         except Exception as exc:
             logger.error(f"[AI Agent] Error en auto-close: {exc}")
+
+    def _get_auto_sell_config(self):
+        """Fetch auto-sell config from the risk config endpoint, or use defaults."""
+        from app.risk.engine import AutoSellConfig
+        try:
+            cfg = self._api_get("/api/intelligence/risk/config")
+            if isinstance(cfg, dict):
+                return AutoSellConfig(
+                    rsi_overbought=float(cfg.get("auto_sell_rsi_overbought", 70.0)),
+                    max_position_hours=float(cfg.get("auto_sell_max_position_hours", 24.0)),
+                    min_volume_relative=float(cfg.get("auto_sell_min_volume_relative", 0.5)),
+                    macd_bearish_enabled=bool(cfg.get("auto_sell_macd_bearish", True)),
+                    rsi_enabled=bool(cfg.get("auto_sell_rsi_enabled", True)),
+                    time_enabled=bool(cfg.get("auto_sell_time_enabled", True)),
+                    volume_enabled=bool(cfg.get("auto_sell_volume_enabled", True)),
+                )
+        except Exception:
+            pass
+        return AutoSellConfig()
 
     def _request_grant(self) -> dict | None:
         """Request a signed grant from the Auth Server before each AI cycle.
@@ -1541,7 +1700,7 @@ class AITradingAgent:
         except Exception:
             pass
 
-    def _create_notif(self, type: str, title: str, message: str, severity: str = "info", asset: str | None = None) -> None:
+    def _create_notif(self, type: str, title: str, message: str, severity: str = "info", asset: str | None = None, action_url: str | None = None) -> None:
         """Create a user notification in the DB."""
         try:
             from app.database.session import SessionLocal
@@ -1549,11 +1708,286 @@ class AITradingAgent:
 
             session = SessionLocal()
             try:
-                create_notification(session, type=type, title=title, message=message, severity=severity, asset=asset)
+                create_notification(session, type=type, title=title, message=message, severity=severity, asset=asset, action_url=action_url)
             finally:
                 session.close()
         except Exception:
             pass
+
+    def analyze_positions(self, positions_data: list[dict], broker: str = "paper") -> None:
+        """Run a one-shot analysis cycle for specific open positions.
+
+        Gathers market context for the position symbols, sends to LLM with
+        POSITION_ANALYSIS_PROMPT, and saves suggestions as AIRecommendation
+        records with action_type='position_analysis'.
+        """
+        try:
+            symbols = [p.get("symbol", "") for p in positions_data if p.get("symbol")]
+            self._add_log("info", f"Análisis de posiciones iniciado para {len(positions_data)} posiciones: {', '.join(symbols)}", {
+                "phase": "position_analysis_start", "positions": positions_data,
+            })
+            self._create_notif(
+                "position_analysis_started",
+                "Análisis de posiciones iniciado",
+                f"Analizando {len(positions_data)} posiciones con IA. Te notificaremos al terminar.",
+                severity="info",
+            )
+
+            # 1. Build context: user profile + positions + technical analysis
+            ctx: dict[str, Any] = {}
+
+            profile = self._get_user_profile()
+            if profile:
+                ctx["user_profile"] = {
+                    "experience": profile.get("experience_level"),
+                    "risk_tolerance": profile.get("risk_tolerance"),
+                    "strategies": profile.get("preferred_strategies", []),
+                    "goal": profile.get("trading_goal"),
+                    "capital_range": profile.get("capital_range"),
+                }
+
+            ctx["open_positions"] = positions_data
+
+            # 2. Gather technical analysis for each position's symbol (multi-timeframe)
+            try:
+                from app.services.technical_analysis import analyze_symbol
+                tech_data = []
+                for p in positions_data:
+                    sym = p.get("symbol", "")
+                    if not sym:
+                        continue
+                    try:
+                        ta_1h = analyze_symbol(sym, interval="1h")
+                        entry = {
+                            "s": sym,
+                            "sig": ta_1h.signal,
+                            "trend": ta_1h.trend,
+                            "rsi": ta_1h.rsi,
+                            "macd": ta_1h.macd_signal,
+                            "atr_pct": ta_1h.atr_pct,
+                            "vol_rel": ta_1h.volume_relative,
+                            "sl": ta_1h.stop_loss,
+                            "tp": ta_1h.take_profit,
+                            "reasons": ta_1h.signal_reasons[:3],
+                        }
+                        # Add 4h timeframe for deeper analysis
+                        try:
+                            ta_4h = analyze_symbol(sym, interval="4h")
+                            entry["trend_4h"] = ta_4h.trend
+                            entry["rsi_4h"] = ta_4h.rsi
+                            entry["macd_4h"] = ta_4h.macd_signal
+                            entry["atr_pct_4h"] = ta_4h.atr_pct
+                        except Exception:
+                            pass
+                        tech_data.append(entry)
+                    except Exception:
+                        continue
+                if tech_data:
+                    ctx["technical"] = tech_data
+            except Exception:
+                pass
+
+            # 3. Ask LLM with position analysis prompt — per position for deeper analysis
+            self._add_log("info", f"Iniciando análisis profundo por posición ({len(positions_data)} posiciones)...", {
+                "phase": "position_analysis_llm",
+            })
+
+            all_suggestions: list[dict] = []
+            market_overview = ""
+            risk_assessment = ""
+            next_steps = ""
+
+            for idx, pos in enumerate(positions_data):
+                sym = pos.get("symbol", f"pos_{idx}")
+                pos_start = time.monotonic()
+                self._add_log("info", f"Analizando posición {idx+1}/{len(positions_data)}: {sym}...", {
+                    "phase": "position_analysis_per_pos", "symbol": sym,
+                })
+
+                # Build per-position context
+                pos_ctx: dict[str, Any] = {}
+                if profile:
+                    pos_ctx["user_profile"] = ctx.get("user_profile", {})
+                pos_ctx["open_positions"] = [pos]
+                # Include only this position's technical data
+                pos_tech = [t for t in tech_data if t.get("s", "").upper() == sym.upper()]
+                if pos_tech:
+                    pos_ctx["technical"] = pos_tech
+
+                pos_decision = self._ask_position_analysis_llm(pos_ctx)
+                pos_elapsed = time.monotonic() - pos_start
+                if pos_decision:
+                    if not market_overview and pos_decision.get("market_overview"):
+                        market_overview = pos_decision["market_overview"]
+                    if not risk_assessment and pos_decision.get("risk_assessment"):
+                        risk_assessment = pos_decision["risk_assessment"]
+                    if not next_steps and pos_decision.get("next_steps"):
+                        next_steps = pos_decision["next_steps"]
+                    all_suggestions.extend(pos_decision.get("suggestions", []))
+                    self._add_log("info", f"Análisis de {sym} completado en {pos_elapsed:.1f}s", {
+                        "phase": "position_analysis_per_pos_done", "symbol": sym,
+                        "suggestions": len(pos_decision.get("suggestions", [])),
+                        "elapsed_seconds": round(pos_elapsed, 1),
+                    })
+                else:
+                    self._add_log("warn", f"El LLM no respondió para {sym} tras {pos_elapsed:.1f}s", {
+                        "phase": "position_analysis_per_pos_failed", "symbol": sym,
+                        "elapsed_seconds": round(pos_elapsed, 1),
+                    })
+
+            if not all_suggestions:
+                self._add_log("error", "El LLM no respondió al análisis de posiciones", {"phase": "position_analysis_error"})
+                self._create_notif(
+                    "position_analysis_error",
+                    "Error en análisis de posiciones",
+                    "La IA no respondió. Verifica tu configuración de AI Agent.",
+                    severity="critical",
+                )
+                return
+
+            # 4. Log the decision
+            self._add_log("info", "Análisis de posiciones completado", {
+                "phase": "position_analysis_decision",
+                "market_overview": market_overview,
+                "suggestions_count": len(all_suggestions),
+                "risk_assessment": risk_assessment,
+                "next_steps": next_steps,
+            })
+
+            # 5. Save suggestions as AIRecommendation records
+            saved = self._save_position_analysis(all_suggestions, positions_data, broker)
+
+            self._add_log("info", f"Análisis completado. {saved} sugerencias guardadas en Reportes.", {
+                "phase": "position_analysis_done", "saved_count": saved,
+            })
+            self._create_notif(
+                "position_analysis_completed",
+                "Análisis de posiciones completado",
+                f"{saved} sugerencias generadas. Revisa las sugerencias en Reportes.",
+                severity="info",
+                action_url="/reports",
+            )
+
+        except Exception as exc:
+            self._add_log("error", f"Error en análisis de posiciones: {exc}", {"phase": "position_analysis_error"})
+            self._create_notif(
+                "position_analysis_error",
+                "Error en análisis de posiciones",
+                f"Error: {exc}",
+                severity="critical",
+            )
+
+    def _ask_position_analysis_llm(self, context: dict) -> dict | None:
+        """Send position context to LLM with POSITION_ANALYSIS_PROMPT and validate."""
+        prompt = POSITION_ANALYSIS_PROMPT
+
+        # Add profile-specific rules
+        profile = self._get_user_profile()
+        prompt += self._build_profile_prompt_block(profile)
+
+        user_msg = f"Datos:{json.dumps(context, default=str)}\nAnaliza las posiciones y sugiere ajustes. SOLO JSON.\n\n⚠️ MÁXIMA PRIORIDAD: Dedica tu máximo esfuerzo y enfoque a este análisis. Sé exhaustivo, meticuloso y detallado para cada posición."
+        try:
+            response: AIResponse = self._ai_provider.ask(prompt, user_msg, deep=True)
+        except TypeError:
+            response: AIResponse = self._ai_provider.ask(prompt, user_msg)
+        if not response.success:
+            self._log_provider_error(response)
+            return None
+        if isinstance(self._ai_provider, LocalAIProvider):
+            for log_entry in self._ai_provider.get_logs():
+                self._add_log("warn", log_entry)
+        try:
+            validated = PositionAnalysisDecision.model_validate(response.decision)
+            return validated.model_dump()
+        except ValidationError as exc:
+            self._add_log("warn", f"JSON del LLM no cumple schema de análisis de posiciones: {exc}")
+            # Try repair
+            repair_msg = user_msg + "\n\nTu respuesta anterior no cumplió el schema. Responde SOLO con el JSON corregido."
+            try:
+                response2: AIResponse = self._ai_provider.ask(prompt, repair_msg, deep=True)
+            except TypeError:
+                response2: AIResponse = self._ai_provider.ask(prompt, repair_msg)
+            if not response2.success:
+                self._log_provider_error(response2)
+                return None
+            try:
+                validated = PositionAnalysisDecision.model_validate(response2.decision)
+                return validated.model_dump()
+            except ValidationError:
+                return None
+
+    def _save_position_analysis(self, suggestions: list[dict], positions_data: list[dict], broker: str) -> int:
+        """Save position analysis suggestions as AIRecommendation records."""
+        from app.database.session import SessionLocal
+        from app.database.models.ai_recommendation import AIRecommendation
+
+        # Build lookup of position data by symbol
+        pos_map: dict[str, dict] = {}
+        for p in positions_data:
+            sym = p.get("symbol", "").upper()
+            pos_map[sym] = p
+
+        session = SessionLocal()
+        try:
+            saved_count = 0
+            for sug in suggestions:
+                symbol = sug.get("symbol", "").upper()
+                asset = symbol.replace("USDT", "").replace("USDC", "")
+                pos_data = pos_map.get(symbol, {})
+
+                # Normalize confidence
+                raw_conf = sug.get("confidence", 0)
+                conf_val = float(raw_conf)
+                if conf_val > 1:
+                    conf_val = conf_val / 100.0
+
+                current_sl = pos_data.get("stop_loss")
+                current_tp = pos_data.get("take_profit")
+
+                rec = AIRecommendation(
+                    asset=asset,
+                    action_type="position_analysis",
+                    confidence=conf_val,
+                    reason=sug.get("reason", ""),
+                    stop_loss_pct=None,
+                    take_profit_pct=None,
+                    status="pending",
+                    trading_mode="live",
+                    broker_name=broker,
+                    metadata_json={
+                        "position_id": sug.get("position_id") or pos_data.get("id"),
+                        "symbol": symbol,
+                        "current_sl": current_sl,
+                        "current_tp": current_tp,
+                        "suggested_sl": sug.get("suggested_stop_loss"),
+                        "suggested_tp": sug.get("suggested_take_profit"),
+                        "time_horizon": sug.get("time_horizon", ""),
+                        "entry_price": pos_data.get("entry_price"),
+                        "current_price": pos_data.get("current_price"),
+                        "quantity": pos_data.get("quantity"),
+                        "unrealized_pnl": pos_data.get("unrealized_pnl"),
+                        "detailed_analysis": sug.get("detailed_analysis", ""),
+                    },
+                )
+                session.add(rec)
+                saved_count += 1
+
+            session.commit()
+
+            # Clear reports cache
+            try:
+                from app.api.routes.intelligence import _clear_cache
+                _clear_cache("reports_")
+            except Exception:
+                pass
+
+            return saved_count
+        except Exception as exc:
+            session.rollback()
+            self._add_log("error", f"Error guardando sugerencias: {exc}")
+            return 0
+        finally:
+            session.close()
 
     def _api_get(self, path: str) -> Any:
         try:

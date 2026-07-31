@@ -9,6 +9,8 @@ import { BrokerStatusBadge } from "../components/brokers/BrokerStatusBadge";
 import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PriceChart } from "../components/charts/PriceChart";
+import { SlTpPanel } from "../components/SlTpPanel";
+import * as binanceProxy from "../lib/binanceProxy";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
 interface BrokerPageProps {
@@ -64,16 +66,16 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       try {
         const tasks: { key: string; fn: () => Promise<any> }[] = [];
         if (module === "overview" || module === "portfolio") {
-          tasks.push({ key: "balance", fn: () => api<any>("/api/binance/balance").catch(() => null) });
+          tasks.push({ key: "balance", fn: () => api<any>("/api/snapshots?limit=1").catch(() => null) });
         }
         if (module === "overview" || module === "positions") {
-          tasks.push({ key: "positions", fn: () => api<any>("/api/binance/positions").catch(() => null) });
+          tasks.push({ key: "positions", fn: () => api<any[]>("/api/positions").catch(() => []) });
         }
         if (module === "overview") {
-          tasks.push({ key: "open-orders", fn: () => api<any>("/api/binance/open-orders").catch(() => null) });
+          tasks.push({ key: "open-orders", fn: () => api<any[]>("/api/orders?status=open").catch(() => []) });
         }
         if (module === "orders") {
-          tasks.push({ key: "orders", fn: () => api<any>("/api/binance/all-orders?limit=50").catch(() => null) });
+          tasks.push({ key: "orders", fn: () => api<any[]>("/api/orders?limit=50").catch(() => []) });
         }
         if (module === "history") {
           tasks.push({ key: "trades", fn: () => api<any[]>("/api/trades?limit=20").catch(() => []) });
@@ -90,13 +92,13 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
         tasks.forEach((t, i) => {
           const data = results[i];
           if (t.key === "balance") setBalanceData(data);
-          else if (t.key === "positions") setPositions(data?.positions || []);
+          else if (t.key === "positions") setPositions(Array.isArray(data) ? data : (data?.positions || []));
           else if (t.key === "open-orders") {
-            setBinanceActiveOrders(data?.orders || []);
+            setBinanceActiveOrders(Array.isArray(data) ? data : (data?.orders || []));
           }
           else if (t.key === "orders") {
-            setBinanceActiveOrders(data?.active || []);
-            setBinanceFilledOrders(data?.filled || []);
+            setBinanceActiveOrders(Array.isArray(data) ? data.filter((o: any) => o.status === "open" || o.status === "pending") : (data?.active || []));
+            setBinanceFilledOrders(Array.isArray(data) ? data.filter((o: any) => o.status === "filled" || o.status === "closed") : (data?.filled || []));
           }
           else if (t.key === "trades") setTrades(data || []);
         });
@@ -160,7 +162,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       ) : module === "markets" ? (
         <MarketsModule />
       ) : module === "positions" ? (
-        <PositionsModule positions={positions} />
+        <PositionsModule positions={positions} brokerId={brokerId} />
       ) : module === "orders" ? (
         <OrdersModule activeOrders={binanceActiveOrders} filledOrders={binanceFilledOrders} />
       ) : module === "history" ? (
@@ -351,7 +353,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
       }
     }).catch(() => {});
     // Load open positions for P&L calculation
-    api<any[]>("/api/paper-trading/positions").then((positions) => {
+    api<any[]>("/api/intelligence/paper-positions").then((positions) => {
       setOpenPositions(positions || []);
     }).catch(() => {});
   }, []);
@@ -1046,15 +1048,73 @@ function HistoryModule({ trades }: { trades: any[] }) {
   );
 }
 
-function PositionsModule({ positions }: { positions: any[] }) {
+function PositionsModule({ positions: propPositions, brokerId }: { positions: any[]; brokerId: string | null }) {
   const [expandedCharts, setExpandedCharts] = useState<Set<string>>(new Set());
   const [paperStatus, setPaperStatus] = useState<any>(null);
   const [paperAction, setPaperAction] = useState("");
   const [depositAmount, setDepositAmount] = useState("1000");
   const [paperInterval, setPaperInterval] = useState("30");
+  const [activeTab, setActiveTab] = useState<"live" | "paper">("live");
+  const [paperPositions, setPaperPositions] = useState<any[]>([]);
+  const [selectedPositions, setSelectedPositions] = useState<Set<number>>(new Set());
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisPopup, setAnalysisPopup] = useState<{ type: "error" | "info" | "success"; title: string; message: string; link?: string } | null>(null);
+  const [aiProvider, setAiProvider] = useState<string | null>(null);
+  const [aiModel, setAiModel] = useState<string | null>(null);
+  const [livePositions, setLivePositions] = useState<any[]>(propPositions || []);
+  const [showSlTpPanel, setShowSlTpPanel] = useState<Set<number>>(new Set());
+  const [showPaperSlTpPanel, setShowPaperSlTpPanel] = useState<Set<number>>(new Set());
 
-  const openPositions = positions.filter((p) => p.status === "open");
+  // Fetch live positions directly (more reliable than parent props)
+  const loadLivePositions = useCallback(async () => {
+    try {
+      const data = await api<any[]>("/api/positions");
+      if (Array.isArray(data)) setLivePositions(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadLivePositions();
+    const id = setInterval(loadLivePositions, activeTab === "live" ? 5000 : 15000);
+    return () => clearInterval(id);
+  }, [activeTab, loadLivePositions]);
+
+  // Load saved AI provider and model so analyze-positions uses the correct config
+  useEffect(() => {
+    (async () => {
+      try {
+        const plan = await api<any>("/api/ai-agent/plan");
+        if (plan?.saved_provider) setAiProvider(plan.saved_provider);
+        if (plan?.saved_model) setAiModel(plan.saved_model);
+      } catch {}
+    })();
+  }, []);
+
+  const allPositions = livePositions.length > 0 ? livePositions : (propPositions || []);
+  const openPositions = allPositions.filter((p) => p.status === "open");
   const totalPnl = openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl || 0), 0);
+
+  const loadPaperPositions = useCallback(async () => {
+    try {
+      const pp = await api<any[]>("/api/intelligence/paper-positions");
+      setPaperPositions(pp || []);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadPaperPositions();
+    const id = setInterval(loadPaperPositions, activeTab === "paper" ? 5000 : 10000);
+    return () => clearInterval(id);
+  }, [activeTab, loadPaperPositions]);
+
+  const handlePaperSell = async (positionId: number) => {
+    try {
+      await api(`/api/intelligence/paper-positions/${positionId}/sell`, { method: "POST" });
+      await loadPaperPositions();
+    } catch (e) {
+      console.error("Paper sell failed:", e);
+    }
+  };
 
   const toggleChart = (symbol: string) => {
     setExpandedCharts((prev) => {
@@ -1063,6 +1123,59 @@ function PositionsModule({ positions }: { positions: any[] }) {
       else next.add(symbol);
       return next;
     });
+  };
+
+  const toggleSlTpPanel = (posId: number) => {
+    setShowSlTpPanel((prev) => {
+      const next = new Set(prev);
+      if (next.has(posId)) next.delete(posId);
+      else next.add(posId);
+      return next;
+    });
+  };
+
+  const togglePaperSlTpPanel = (posId: number) => {
+    setShowPaperSlTpPanel((prev) => {
+      const next = new Set(prev);
+      if (next.has(posId)) next.delete(posId);
+      else next.add(posId);
+      return next;
+    });
+  };
+
+  const handleCancelOco = async (positionId: number, symbol: string, ocoOrderId: string) => {
+    try {
+      const brokerSymbol = symbol.toUpperCase().replace(/[-_/]/g, "");
+      await binanceProxy.cancelOCO(brokerSymbol, ocoOrderId);
+      const res = await api<any>(`/api/intelligence/positions/${positionId}/clear-oco`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oco_order_id: ocoOrderId }),
+      });
+      if (res?.status === "cancelled") {
+        toast("OCO cancelado en Binance", true);
+        await loadLivePositions();
+      } else {
+        toast(res?.error || "Error al cancelar OCO", false);
+      }
+    } catch (e: any) {
+      toast(e?.message || "Error al cancelar OCO", false);
+    }
+  };
+
+  const handleStopMonitoring = async (positionId: number, isPaper: boolean) => {
+    try {
+      const res = await api<any>(`/api/intelligence/positions/${positionId}/stop-monitoring`, { method: "POST" });
+      if (res?.status === "monitoring_stopped") {
+        toast("Monitoreo detenido", true);
+        if (isPaper) await loadPaperPositions();
+        else await loadLivePositions();
+      } else {
+        toast(res?.error || "Error al detener monitoreo", false);
+      }
+    } catch (e) {
+      toast("Error al detener monitoreo", false);
+    }
   };
 
   const loadPaperStatus = useCallback(async () => {
@@ -1120,6 +1233,78 @@ function PositionsModule({ positions }: { positions: any[] }) {
       });
       await loadPaperStatus();
     } catch {}
+  };
+
+  const togglePositionSelection = (posId: number) => {
+    setSelectedPositions((prev) => {
+      const next = new Set(prev);
+      if (next.has(posId)) next.delete(posId);
+      else next.add(posId);
+      return next;
+    });
+  };
+
+  const handleAnalyze = async () => {
+    if (selectedPositions.size === 0) return;
+    setAnalyzing(true);
+
+    // Build positions payload from selected open positions
+    const selectedData = openPositions
+      .filter((p) => selectedPositions.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        symbol: p.symbol,
+        entry_price: Number(p.entry_price),
+        current_price: Number(p.current_price || 0),
+        stop_loss: p.stop_loss ? Number(p.stop_loss) : null,
+        take_profit: p.take_profit ? Number(p.take_profit) : null,
+        quantity: Number(p.quantity),
+        unrealized_pnl: Number(p.unrealized_pnl || 0),
+      }));
+
+    try {
+      const body: any = { positions: selectedData, broker: brokerId || "paper" };
+      if (aiProvider) body.provider = aiProvider;
+      if (aiModel) body.model = aiModel;
+      const res = await api<any>("/api/ai-agent/analyze-positions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res?.status === "started") {
+        setAnalysisPopup({
+          type: "info",
+          title: "Análisis iniciado",
+          message: `Analizando ${res.positions_count} posiciones con IA (${res.provider}). Te notificaremos al terminar. Revisa las sugerencias en Reportes.`,
+        });
+        toast(`Análisis iniciado para ${res.positions_count} posiciones`, true);
+        setSelectedPositions(new Set());
+      }
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("409") || msg.includes("activo") || msg.includes("detenerlo")) {
+        setAnalysisPopup({
+          type: "error",
+          title: "Agente IA activo",
+          message: "El agente IA está activo. Debes detenerlo primero para analizar posiciones.",
+        });
+      } else if (msg.includes("400") || msg.includes("API key") || msg.includes("configurada")) {
+        setAnalysisPopup({
+          type: "error",
+          title: "IA no configurada",
+          message: "No tienes una IA configurada en Trading Agent. Ve a AI Agent para configurar tu proveedor.",
+          link: "ai-agent",
+        });
+      } else {
+        setAnalysisPopup({
+          type: "error",
+          title: "Error",
+          message: msg || "Error al iniciar el análisis",
+        });
+      }
+    }
+    setAnalyzing(false);
   };
 
   const paperTradingPanel = (
@@ -1198,119 +1383,497 @@ function PositionsModule({ positions }: { positions: any[] }) {
     </div>
   );
 
-  if (openPositions.length === 0) {
-    return (
-      <div className="space-y-4">
-        {paperTradingPanel}
-        <div className="panel p-6 text-center">
-          <Layers size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
-          <p className="text-[13px] font-bold text-[var(--color-text)]">Sin posiciones abiertas</p>
-          <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
-            Las posiciones que abras — manualmente o vía IA — aparecerán aquí con su gráfico en tiempo real.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const paperTotalPnl = paperPositions.reduce((a, p) => a + (p.unrealized_pnl || 0), 0);
+  const paperTotalValue = paperPositions.reduce((a, p) => a + (p.usd_value || 0), 0);
 
   return (
     <div className="space-y-4">
-      {paperTradingPanel}
-      {/* Summary */}
-      <div className="panel p-4 flex items-center gap-4">
-        <div className="flex-1">
-          <h3 className="text-[13px] font-bold text-[var(--color-text)]">Posiciones Abiertas ({openPositions.length})</h3>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real · Click en una posición para ver su gráfico</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">PnL Total</p>
-          <p className={cn("text-[16px] font-extrabold", totalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
-            {totalPnl >= 0 ? "+" : ""}{fmtVol(totalPnl)} USD
-          </p>
-        </div>
+      {/* Tab selector */}
+      <div className="flex gap-2 border-b border-[var(--color-border)] pb-2">
+        <button
+          className={cn(
+            "px-3 h-8 rounded-[6px] text-[12px] font-bold transition-colors",
+            activeTab === "live"
+              ? "bg-[var(--color-primary)] text-white"
+              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+          )}
+          onClick={() => setActiveTab("live")}
+        >
+          Live ({openPositions.length})
+        </button>
+        <button
+          className={cn(
+            "px-3 h-8 rounded-[6px] text-[12px] font-bold transition-colors flex items-center gap-1.5",
+            activeTab === "paper"
+              ? "bg-[var(--color-info)] text-white"
+              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+          )}
+          onClick={() => setActiveTab("paper")}
+        >
+          Paper Money ({paperPositions.length})
+        </button>
       </div>
 
-      {/* Position cards with charts */}
-      {openPositions.map((p, i) => {
-        const pnl = Number(p.unrealized_pnl || 0);
-        const pnlPct = p.entry_price && p.current_price
-          ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
-          : 0;
-        const isExpanded = expandedCharts.has(p.symbol);
-        const chartSymbol = p.symbol.includes("USDT") || p.symbol.includes("BTC") || p.symbol.includes("ETH") || p.symbol.includes("BNB") || p.symbol.includes("FDUSD") || p.symbol.includes("TUSD")
-          ? p.symbol.replace("/", "")
-          : p.symbol.replace("/", "") + "USDT";
-
-        return (
-          <div key={i} className="panel overflow-hidden">
-            {/* Position header row */}
-            <button
-              onClick={() => toggleChart(p.symbol)}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
-            >
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <CryptoIcon symbol={p.symbol} size={24} />
-                <div className={cn(
-                  "w-7 h-7 rounded-[8px] flex items-center justify-center text-[10px] font-extrabold",
-                  p.side === "long" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
-                )}>
-                  {p.side === "long" ? "L" : "S"}
-                </div>
-                <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
-              </div>
-
-              <div className="flex items-center gap-4 flex-1 text-[11px]">
-                <div>
-                  <span className="text-[var(--color-text-muted)]">Qty </span>
-                  <span className="font-bold text-[var(--color-text)]">{fmt(p.quantity)}</span>
-                </div>
-                <div>
-                  <span className="text-[var(--color-text-muted)]">Entry </span>
-                  <span className="font-bold text-[var(--color-text)]">{fmt(p.entry_price)}</span>
-                </div>
-                <div>
-                  <span className="text-[var(--color-text-muted)]">Live </span>
-                  <span className="font-bold text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</span>
-                </div>
-                {(p.stop_loss || p.take_profit) && (
-                  <div className="text-[10px] text-[var(--color-text-muted)]">
-                    {p.stop_loss && <span className="text-[var(--color-danger)]">SL {fmt(p.stop_loss)}</span>}
-                    {p.stop_loss && p.take_profit && " · "}
-                    {p.take_profit && <span className="text-[var(--color-success)]">TP {fmt(p.take_profit)}</span>}
+      {/* Live Tab */}
+      {activeTab === "live" && (
+        <>
+          {openPositions.length === 0 ? (
+            <div className="panel p-6 text-center">
+              <Layers size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+              <p className="text-[13px] font-bold text-[var(--color-text)]">Sin posiciones abiertas</p>
+              <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
+                Las posiciones que abras — manualmente o vía IA — aparecerán aquí con su gráfico en tiempo real.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Summary */}
+              <div className="panel p-4 flex items-center gap-4">
+                <div className="flex-1 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPositions.size === openPositions.length && openPositions.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedPositions(new Set(openPositions.map((p) => p.id)));
+                      } else {
+                        setSelectedPositions(new Set());
+                      }
+                    }}
+                    className="w-4 h-4 rounded accent-[var(--color-primary)] cursor-pointer"
+                    title="Seleccionar todas"
+                  />
+                  <div>
+                    <h3 className="text-[13px] font-bold text-[var(--color-text)]">Posiciones Abiertas ({openPositions.length})</h3>
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real · Click en una posición para ver su gráfico</p>
                   </div>
-                )}
-                {p.strategy_name && (
-                  <div className="text-[10px] text-[var(--color-text-muted)] italic">{p.strategy_name}</div>
-                )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {selectedPositions.size > 0 && (
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={analyzing}
+                      className="h-8 px-3 rounded-[8px] text-[12px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5"
+                    >
+                      {analyzing ? "Analizando..." : `Analizar con IA (${selectedPositions.size})`}
+                    </button>
+                  )}
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">PnL Total</p>
+                    <p className={cn("text-[16px] font-extrabold", totalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                      {totalPnl >= 0 ? "+" : ""}{fmtVol(totalPnl)} USD
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {/* PnL */}
-              <div className="text-right flex-shrink-0">
-                <p className={cn("text-[13px] font-extrabold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
-                  {pnl >= 0 ? "+" : ""}{fmtVol(pnl)} USD
-                </p>
-                {pnlPct !== 0 && (
-                  <p className={cn("text-[10px] font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
-                    {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
-                  </p>
-                )}
-              </div>
+              {/* Position cards with charts */}
+              {openPositions.map((p, i) => {
+                const pnl = Number(p.unrealized_pnl || 0);
+                const pnlPct = p.entry_price && p.current_price
+                  ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
+                  : 0;
+                const isExpanded = expandedCharts.has(p.symbol);
+                const chartSymbol = p.symbol.includes("USDT") || p.symbol.includes("BTC") || p.symbol.includes("ETH") || p.symbol.includes("BNB") || p.symbol.includes("FDUSD") || p.symbol.includes("TUSD")
+                  ? p.symbol.replace("/", "")
+                  : p.symbol.replace("/", "") + "USDT";
 
-              {/* Expand icon */}
-              <div className="flex-shrink-0 text-[var(--color-text-muted)]">
-                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </div>
-            </button>
+                return (
+                  <div key={i} className="panel overflow-hidden">
+                    {/* Position header row */}
+                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedPositions.has(p.id)}
+                        onChange={(e) => { e.stopPropagation(); togglePositionSelection(p.id); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded accent-[var(--color-primary)] cursor-pointer flex-shrink-0"
+                      />
+                      <button
+                        onClick={() => toggleChart(p.symbol)}
+                        className="flex items-center gap-3 flex-1 text-left"
+                      >
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <CryptoIcon symbol={p.symbol} size={24} />
+                        <div className={cn(
+                          "w-7 h-7 rounded-[8px] flex items-center justify-center text-[10px] font-extrabold",
+                          p.side === "long" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+                        )}>
+                          {p.side === "long" ? "L" : "S"}
+                        </div>
+                        <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
+                      </div>
 
-            {/* Inline chart */}
-            {isExpanded && (
-              <div className="border-t border-[var(--color-border)] p-3">
-                <PriceChart symbol={chartSymbol} interval="1h" height={300} />
-              </div>
-            )}
+                      <div className="flex items-center gap-4 flex-1 text-[11px]">
+                        <div>
+                          <span className="text-[var(--color-text-muted)]">Qty </span>
+                          <span className="font-bold text-[var(--color-text)]">{fmt(p.quantity)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--color-text-muted)]">Entry </span>
+                          <span className="font-bold text-[var(--color-text)]">{fmt(p.entry_price)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--color-text-muted)]">Live </span>
+                          <span className="font-bold text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</span>
+                        </div>
+                        {(p.stop_loss || p.take_profit) && (
+                          <div className="text-[10px] text-[var(--color-text-muted)]">
+                            {p.stop_loss && <span className="text-[var(--color-danger)]">SL {fmt(p.stop_loss)}</span>}
+                            {p.stop_loss && p.take_profit && " · "}
+                            {p.take_profit && <span className="text-[var(--color-success)]">TP {fmt(p.take_profit)}</span>}
+                          </div>
+                        )}
+                        {p.strategy_name && (
+                          <div className="text-[10px] text-[var(--color-text-muted)] italic">{p.strategy_name}</div>
+                        )}
+                      </div>
+
+                      {/* PnL */}
+                      <div className="text-right flex-shrink-0">
+                        <p className={cn("text-[13px] font-extrabold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                          {pnl >= 0 ? "+" : ""}{fmtVol(pnl)} USD
+                        </p>
+                        {pnlPct !== 0 && (
+                          <p className={cn("text-[10px] font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                            {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Expand icon */}
+                      <div className="flex-shrink-0 text-[var(--color-text-muted)]">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </div>
+                    </button>
+                    </div>
+
+                    {/* Inline chart */}
+                    {isExpanded && (
+                      <div className="border-t border-[var(--color-border)] p-3">
+                        <PriceChart
+                          symbol={chartSymbol}
+                          interval="1h"
+                          height={300}
+                          stopLoss={p.stop_loss ? Number(p.stop_loss) : null}
+                          takeProfit={p.take_profit ? Number(p.take_profit) : null}
+                          entryPrice={p.entry_price ? Number(p.entry_price) : null}
+                        />
+
+                        {/* SL/TP action buttons */}
+                        <div className="flex items-center gap-2 mt-3 flex-wrap">
+                          {/* OCO active badge + cancel button */}
+                          {p.metadata_json?.oco_order_id && (
+                            <>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-success)]/15 text-[var(--color-success)] border border-[var(--color-success)]/40">
+                                OCO activo
+                              </span>
+                              <button
+                                onClick={() => handleCancelOco(p.id, p.symbol, p.metadata_json?.oco_order_id)}
+                                className="h-7 px-3 rounded-[6px] text-[11px] font-bold bg-[var(--color-danger)] text-white hover:opacity-90 transition-opacity"
+                              >
+                                Cancelar OCO
+                              </button>
+                            </>
+                          )}
+
+                          {/* Monitoring active badge + stop button */}
+                          {p.metadata_json?.monitoring_active && !p.metadata_json?.oco_order_id && (
+                            <>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-info)]/15 text-[var(--color-info)] border border-[var(--color-info)]/40">
+                                Monitoreando
+                              </span>
+                              <button
+                                onClick={() => handleStopMonitoring(p.id, false)}
+                                className="h-7 px-3 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                              >
+                                Detener monitoreo
+                              </button>
+                            </>
+                          )}
+
+                          {/* Place SL/TP button (only if no OCO active) */}
+                          {!p.metadata_json?.oco_order_id && (
+                            <button
+                              onClick={() => toggleSlTpPanel(p.id)}
+                              className={cn(
+                                "h-7 px-3 rounded-[6px] text-[11px] font-bold transition-opacity",
+                                showSlTpPanel.has(p.id)
+                                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+                                  : "bg-[var(--color-success)] text-white hover:opacity-90"
+                              )}
+                            >
+                              {showSlTpPanel.has(p.id) ? "✕ Cerrar" : "Colocar SL/TP"}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* SlTpPanel inline */}
+                        {showSlTpPanel.has(p.id) && !p.metadata_json?.oco_order_id && (
+                          <SlTpPanel
+                            positionId={p.id}
+                            symbol={p.symbol}
+                            currentPrice={Number(p.current_price || 0)}
+                            entryPrice={Number(p.entry_price || 0)}
+                            existingSl={p.stop_loss ? Number(p.stop_loss) : null}
+                            existingTp={p.take_profit ? Number(p.take_profit) : null}
+                            quantity={Number(p.quantity || 0)}
+                            isLive={true}
+                            onSuccess={() => { loadLivePositions(); setShowSlTpPanel(new Set()); }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </>
+      )}
+
+      {/* Paper Tab */}
+      {activeTab === "paper" && (
+        <>
+          {paperTradingPanel}
+
+          {/* Paper stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="panel p-3">
+              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Paper Posiciones</p>
+              <p className="text-[18px] font-extrabold text-[var(--color-info)]">{paperPositions.length}</p>
+            </div>
+            <div className="panel p-3">
+              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Valor Total</p>
+              <p className="text-[18px] font-extrabold">${fmtVol(paperTotalValue)}</p>
+            </div>
+            <div className="panel p-3">
+              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">PnL Total</p>
+              <p className={cn("text-[18px] font-extrabold", paperTotalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                {paperTotalPnl >= 0 ? "+" : ""}{fmtVol(paperTotalPnl)}
+              </p>
+            </div>
+            <div className="panel p-3">
+              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Estado</p>
+              <p className={cn("text-[14px] font-extrabold", paperStatus?.status === "running" ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]")}>
+                {paperStatus?.status === "running" ? "RUNNING" : "STOPPED"}
+              </p>
+            </div>
           </div>
-        );
-      })}
+
+          {paperPositions.length === 0 ? (
+            <div className="panel p-6 text-center">
+              <Layers size={28} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+              <p className="text-[13px] font-bold text-[var(--color-text)]">Sin paper positions activas</p>
+              <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
+                Acepta recomendaciones desde la pestaña Reportes para crear posiciones simuladas y trackear su profit en tiempo real.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {paperPositions.map((p) => {
+                const entry = Number(p.entry_price || 0);
+                const current = Number(p.current_price || 0);
+                const sl = Number(p.stop_loss || 0);
+                const tp = Number(p.take_profit || 0);
+                const pnl = Number(p.unrealized_pnl || 0);
+                const pnlPct = Number(p.pnl_pct || 0);
+                const isProfit = pnl >= 0;
+                const qty = Number(p.quantity || 0);
+                const invested = Number(p.invested || 0);
+                const meta = p.metadata_json || {};
+                return (
+                  <div key={p.id} className="panel p-4">
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon symbol={p.symbol} size={28} />
+                        <div>
+                          <span className="font-bold text-[14px]">{p.symbol}</span>
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-info)] text-white">PAPER</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-[var(--color-text-muted)]">{fmtDate(p.opened_at)}</div>
+                        <div className={cn("text-[16px] font-extrabold", isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                          {isProfit ? "+" : ""}${fmtVol(Math.abs(pnl))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Entry</div>
+                        <div className="num font-bold">{fmt(entry)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Actual</div>
+                        <div className={cn("num font-bold", isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                          {fmt(current)}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Cant.</div>
+                        <div className="num font-bold">{qty.toFixed(6)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-danger)] uppercase">SL</div>
+                        <div className="num font-bold text-[var(--color-danger)]">{fmt(sl)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-success)] uppercase">TP</div>
+                        <div className="num font-bold text-[var(--color-success)]">{fmt(tp)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Inversión</div>
+                        <div className="num font-bold">${fmtVol(invested)}</div>
+                      </div>
+                    </div>
+
+                    {/* PnL progress bar */}
+                    <div className="pt-3 border-t border-[var(--color-border)]">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[11px] text-[var(--color-text-muted)]">PnL {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%</span>
+                        <span className={cn("text-[12px] font-bold", isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                          {isProfit ? "+" : ""}${fmtVol(Math.abs(pnl))}
+                        </span>
+                      </div>
+                      <div className="relative h-2 rounded-full bg-[var(--color-surface-3)] overflow-hidden">
+                        {isProfit && tp > 0 ? (
+                          <div
+                            className="absolute left-1/2 h-full bg-[var(--color-success)] rounded-full"
+                            style={{ width: `${Math.min(Math.abs(pnlPct) / Math.abs(((tp - entry) / entry) * 100) * 50, 50)}%` }}
+                          />
+                        ) : !isProfit && sl > 0 ? (
+                          <div
+                            className="absolute right-1/2 h-full bg-[var(--color-danger)] rounded-full"
+                            style={{ width: `${Math.min(Math.abs(pnlPct) / Math.abs(((entry - sl) / entry) * 100) * 50, 50)}%` }}
+                          />
+                        ) : null}
+                        <div className="absolute top-0 left-1/2 w-px h-full bg-[var(--color-border)]" />
+                      </div>
+                      <div className="flex justify-between text-[9px] text-[var(--color-text-muted)] mt-1">
+                        <span>SL ${fmt(sl)}</span>
+                        <span>Entry ${fmt(entry)}</span>
+                        <span>TP ${fmt(tp)}</span>
+                      </div>
+                    </div>
+
+                    {/* Reason */}
+                    {meta.reason && (
+                      <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Razón IA</span>
+                        <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{meta.reason}</p>
+                      </div>
+                    )}
+
+                    {/* SL/TP + Sell buttons */}
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] space-y-2">
+                      {/* Monitoring badge */}
+                      {meta.monitoring_active && (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-info)]/15 text-[var(--color-info)] border border-[var(--color-info)]/40">
+                            Monitoreando
+                          </span>
+                          <button
+                            onClick={() => handleStopMonitoring(p.id, true)}
+                            className="h-6 px-2 rounded-[6px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                          >
+                            Detener
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => togglePaperSlTpPanel(p.id)}
+                          className={cn(
+                            "flex-1 h-8 rounded-[8px] text-[12px] font-bold transition-opacity",
+                            showPaperSlTpPanel.has(p.id)
+                              ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+                              : "bg-[var(--color-info)] text-white hover:opacity-90"
+                          )}
+                        >
+                          {showPaperSlTpPanel.has(p.id) ? "✕ Cerrar" : "Colocar SL/TP"}
+                        </button>
+                        <button
+                          onClick={() => handlePaperSell(p.id)}
+                          className="flex-1 h-8 rounded-[8px] text-[12px] font-bold bg-[var(--color-danger)] text-white hover:opacity-90 transition-opacity"
+                        >
+                          Vender
+                        </button>
+                      </div>
+
+                      {/* SlTpPanel inline for paper */}
+                      {showPaperSlTpPanel.has(p.id) && (
+                        <SlTpPanel
+                          positionId={p.id}
+                          symbol={p.symbol}
+                          currentPrice={current}
+                          entryPrice={entry}
+                          existingSl={sl > 0 ? sl : null}
+                          existingTp={tp > 0 ? tp : null}
+                          quantity={Number(p.quantity || 0)}
+                          isLive={false}
+                          onSuccess={() => { loadPaperPositions(); setShowPaperSlTpPanel(new Set()); }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Analysis Popup */}
+      {analysisPopup && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setAnalysisPopup(null)}
+        >
+          <div
+            className="w-[400px] panel p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "w-8 h-8 rounded-[8px] flex items-center justify-center text-[14px] font-extrabold",
+                analysisPopup.type === "error"
+                  ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+                  : analysisPopup.type === "success"
+                    ? "bg-[var(--color-success)]/15 text-[var(--color-success)]"
+                    : "bg-[var(--color-primary)]/15 text-[var(--color-primary)]"
+              )}>
+                {analysisPopup.type === "error" ? "!" : analysisPopup.type === "success" ? "✓" : "i"}
+              </div>
+              <h3 className="text-[14px] font-extrabold text-[var(--color-text)]">{analysisPopup.title}</h3>
+            </div>
+            <p className="text-[12px] text-[var(--color-text-muted)] leading-relaxed">{analysisPopup.message}</p>
+            <div className="flex justify-end gap-2 pt-2">
+              {analysisPopup.link && (
+                <button
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("navigate", { detail: { page: analysisPopup.link } }));
+                    setAnalysisPopup(null);
+                  }}
+                  className="h-8 px-3 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                >
+                  Ir a AI Agent
+                </button>
+              )}
+              <button
+                onClick={() => setAnalysisPopup(null)}
+                className="h-8 px-4 rounded-[8px] text-[12px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

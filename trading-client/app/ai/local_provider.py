@@ -43,36 +43,45 @@ class LocalAIProvider(AIProvider):
             return bool(self._config.openai_api_key)
         return self._provider == "ollama"
 
-    def ask(self, system_prompt: str, user_message: str) -> AIResponse:
-        """Envia el mensaje al proveedor configurado con cadena de fallback."""
+    def ask(self, system_prompt: str, user_message: str, deep: bool = False) -> AIResponse:
+        """Envia el mensaje al proveedor configurado con cadena de fallback.
+
+        Args:
+            deep: If True, uses higher max_tokens and longer timeout for deep analysis tasks.
+        """
         start = time.monotonic()
+        max_tokens = 4000 if deep else 1000
+        timeout = 120.0 if deep else 30.0
+        # Fallback timeouts are shorter to bound total time per position
+        fallback_timeout = 60.0 if deep else 20.0
+        ollama_timeout = 30.0 if deep else 15.0
 
         if self._provider == "groq":
-            result = self._ask_groq(system_prompt, user_message)
+            result = self._ask_groq(system_prompt, user_message, max_tokens=max_tokens, timeout=timeout)
             if result is None and self._config.gemini_api_key:
                 self._log.append("Groq no disponible, intentando con Gemini...")
-                result = self._ask_gemini(system_prompt, user_message)
+                result = self._ask_gemini(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
             if result is None:
                 self._log.append("Groq no disponible, intentando con Ollama local...")
-                result = self._ask_ollama(system_prompt, user_message)
+                result = self._ask_ollama(system_prompt, user_message, timeout=ollama_timeout)
         elif self._provider == "gemini":
-            result = self._ask_gemini(system_prompt, user_message)
+            result = self._ask_gemini(system_prompt, user_message, max_tokens=max_tokens, timeout=timeout)
             if result is None and self._config.groq_api_key:
                 self._log.append("Gemini no disponible, intentando con Groq...")
-                result = self._ask_groq(system_prompt, user_message)
+                result = self._ask_groq(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
             if result is None:
                 self._log.append("Gemini no disponible, intentando con Ollama local...")
-                result = self._ask_ollama(system_prompt, user_message)
+                result = self._ask_ollama(system_prompt, user_message, timeout=ollama_timeout)
         elif self._provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
-            result = self._ask_openai_compat(system_prompt, user_message)
+            result = self._ask_openai_compat(system_prompt, user_message, max_tokens=max_tokens, timeout=timeout)
             if result is None and self._config.groq_api_key:
                 self._log.append(f"{self._provider} no disponible, intentando con Groq...")
-                result = self._ask_groq(system_prompt, user_message)
+                result = self._ask_groq(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
             if result is None:
                 self._log.append(f"{self._provider} no disponible, intentando con Ollama local...")
-                result = self._ask_ollama(system_prompt, user_message)
+                result = self._ask_ollama(system_prompt, user_message, timeout=ollama_timeout)
         elif self._provider == "ollama":
-            result = self._ask_ollama(system_prompt, user_message)
+            result = self._ask_ollama(system_prompt, user_message, timeout=timeout)
         else:
             return AIResponse(
                 decision=None,
@@ -120,7 +129,7 @@ class LocalAIProvider(AIProvider):
             return self._config.openai_model
         return self._config.ollama_model
 
-    def _ask_groq(self, system_prompt: str, user_msg: str) -> dict | None:
+    def _ask_groq(self, system_prompt: str, user_msg: str, max_tokens: int = 1000, timeout: float = 30.0) -> dict | None:
         if not self._config.groq_api_key:
             self._last_http_error = "No hay Groq API key configurada"
             return None
@@ -137,11 +146,11 @@ class LocalAIProvider(AIProvider):
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_msg},
                     ],
-                    "temperature": 0.3,
-                    "max_tokens": 1000,
+                    "temperature": 0.4,
+                    "max_tokens": max_tokens,
                     "response_format": {"type": "json_object"},
                 },
-                timeout=30.0,
+                timeout=timeout,
             )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
@@ -157,7 +166,7 @@ class LocalAIProvider(AIProvider):
             logger.error(f"Error consultando Groq: {exc}")
             return None
 
-    def _ask_gemini(self, system_prompt: str, user_msg: str) -> dict | None:
+    def _ask_gemini(self, system_prompt: str, user_msg: str, max_tokens: int = 1000, timeout: float = 30.0) -> dict | None:
         if not self._config.gemini_api_key:
             self._last_http_error = "No hay Gemini API key configurada"
             return None
@@ -170,12 +179,12 @@ class LocalAIProvider(AIProvider):
                     "system_instruction": {"parts": [{"text": system_prompt}]},
                     "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
                     "generationConfig": {
-                        "temperature": 0.3,
-                        "maxOutputTokens": 1000,
+                        "temperature": 0.4,
+                        "maxOutputTokens": max_tokens,
                         "responseMimeType": "application/json",
                     },
                 },
-                timeout=30.0,
+                timeout=timeout,
             )
             resp.raise_for_status()
             content = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -191,7 +200,7 @@ class LocalAIProvider(AIProvider):
             logger.error(f"Error consultando Gemini: {exc}")
             return None
 
-    def _ask_openai_compat(self, system_prompt: str, user_msg: str) -> dict | None:
+    def _ask_openai_compat(self, system_prompt: str, user_msg: str, max_tokens: int = 1000, timeout: float = 45.0) -> dict | None:
         if not self._config.openai_api_key:
             self._last_http_error = f"No hay API key configurada para {self._provider}"
             return None
@@ -208,11 +217,11 @@ class LocalAIProvider(AIProvider):
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_msg},
                     ],
-                    "temperature": 0.3,
-                    "max_tokens": 1000,
+                    "temperature": 0.4,
+                    "max_tokens": max_tokens,
                     "response_format": {"type": "json_object"},
                 },
-                timeout=45.0,
+                timeout=timeout,
             )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
@@ -228,7 +237,7 @@ class LocalAIProvider(AIProvider):
             logger.error(f"Error consultando {self._provider}: {exc}")
             return None
 
-    def _ask_ollama(self, system_prompt: str, user_msg: str) -> dict | None:
+    def _ask_ollama(self, system_prompt: str, user_msg: str, timeout: float = 60.0) -> dict | None:
         try:
             resp = httpx.post(
                 f"{self._config.ollama_url.rstrip('/')}/api/chat",
@@ -240,9 +249,9 @@ class LocalAIProvider(AIProvider):
                     ],
                     "stream": False,
                     "format": "json",
-                    "options": {"temperature": 0.3},
+                    "options": {"temperature": 0.4},
                 },
-                timeout=60.0,
+                timeout=timeout,
             )
             resp.raise_for_status()
             content = resp.json()["message"]["content"]

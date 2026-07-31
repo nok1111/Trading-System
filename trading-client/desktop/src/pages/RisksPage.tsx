@@ -18,6 +18,13 @@ interface RiskConfig {
   max_open_positions: number;
   daily_loss_limit_pct: number;
   circuit_breaker_enabled: boolean;
+  auto_sell_rsi_overbought: number;
+  auto_sell_max_position_hours: number;
+  auto_sell_min_volume_relative: number;
+  auto_sell_macd_bearish: boolean;
+  auto_sell_rsi_enabled: boolean;
+  auto_sell_time_enabled: boolean;
+  auto_sell_volume_enabled: boolean;
 }
 
 interface RiskStatus {
@@ -222,6 +229,7 @@ export function RisksPage() {
 
         {/* Risk config inputs */}
         {riskConfig && (
+          <>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
             <RiskInput
               label="Trailing Stop %"
@@ -266,6 +274,64 @@ export function RisksPage() {
               saving={savingConfig}
             />
           </div>
+
+          {/* Auto-Sell Technical Thresholds */}
+          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <h4 className="text-[12px] font-bold text-[var(--color-primary)] uppercase mb-3 flex items-center gap-2">
+              <Zap size={12} />
+              Auto-Sell Technical Indicators
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <RiskInput
+                label="RSI Overbought"
+                value={riskConfig.auto_sell_rsi_overbought ?? 70}
+                step={1}
+                onSave={(v) => handleSaveConfig({ auto_sell_rsi_overbought: v })}
+                saving={savingConfig}
+              />
+              <RiskInput
+                label="Max Position Hours"
+                value={riskConfig.auto_sell_max_position_hours ?? 24}
+                step={1}
+                onSave={(v) => handleSaveConfig({ auto_sell_max_position_hours: v })}
+                saving={savingConfig}
+              />
+              <RiskInput
+                label="Min Volume Relative"
+                value={riskConfig.auto_sell_min_volume_relative ?? 0.5}
+                step={0.1}
+                onSave={(v) => handleSaveConfig({ auto_sell_min_volume_relative: v })}
+                saving={savingConfig}
+              />
+            </div>
+            <div className="flex flex-wrap gap-4 mt-3">
+              <RiskToggle
+                label="RSI Enabled"
+                value={riskConfig.auto_sell_rsi_enabled ?? true}
+                onSave={(v) => handleSaveConfig({ auto_sell_rsi_enabled: v })}
+                saving={savingConfig}
+              />
+              <RiskToggle
+                label="MACD Bearish"
+                value={riskConfig.auto_sell_macd_bearish ?? true}
+                onSave={(v) => handleSaveConfig({ auto_sell_macd_bearish: v })}
+                saving={savingConfig}
+              />
+              <RiskToggle
+                label="Time Exit"
+                value={riskConfig.auto_sell_time_enabled ?? true}
+                onSave={(v) => handleSaveConfig({ auto_sell_time_enabled: v })}
+                saving={savingConfig}
+              />
+              <RiskToggle
+                label="Volume Exit"
+                value={riskConfig.auto_sell_volume_enabled ?? true}
+                onSave={(v) => handleSaveConfig({ auto_sell_volume_enabled: v })}
+                saving={savingConfig}
+              />
+            </div>
+          </div>
+          </>
         )}
 
         {/* Position risk table */}
@@ -361,6 +427,31 @@ function RiskInput({ label, value, step, onSave, saving }: {
           OK
         </button>
       </div>
+    </div>
+  );
+}
+
+function RiskToggle({ label, value, onSave, saving }: {
+  label: string;
+  value: boolean;
+  onSave: (v: boolean) => void;
+  saving: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{label}</span>
+      <button
+        onClick={() => !saving && onSave(!value)}
+        disabled={saving}
+        className={cn(
+          "px-2 h-6 rounded-[6px] text-[10px] font-bold transition-colors",
+          value
+            ? "bg-[var(--color-success)] text-white"
+            : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+        )}
+      >
+        {value ? "ON" : "OFF"}
+      </button>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
 import { api } from "../../lib/api";
 
@@ -6,6 +6,9 @@ interface PriceChartProps {
   symbol: string;
   interval?: string;
   height?: number;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  entryPrice?: number | null;
 }
 
 const INTERVALS = [
@@ -17,7 +20,7 @@ const INTERVALS = [
   { value: "1d", label: "1D" },
 ];
 
-export function PriceChart({ symbol, interval: initialInterval = "1h", height = 400 }: PriceChartProps) {
+export function PriceChart({ symbol, interval: initialInterval = "1h", height = 400, stopLoss, takeProfit, entryPrice }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -25,6 +28,9 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
   const [interval, setIntervalState] = useState(initialInterval);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const slLineRef = useRef<any>(null);
+  const tpLineRef = useRef<any>(null);
+  const entryLineRef = useRef<any>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -74,6 +80,13 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
       borderDownColor: cDanger,
       wickUpColor: cSuccess,
       wickDownColor: cDanger,
+      priceFormat: {
+        type: "price",
+        precision: 8,
+        minMove: 0.00000001,
+      },
+      priceLineVisible: false,
+      lastValueVisible: false,
     });
     seriesRef.current = candleSeries;
 
@@ -139,6 +152,24 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
 
         seriesRef.current!.setData(candles);
         volumeRef.current!.setData(volumes);
+
+        // Set price scale range to include SL/TP/entry lines
+        if (chartRef.current && seriesRef.current) {
+          const dataMin = Math.min(...candles.map((c) => c.low));
+          const dataMax = Math.max(...candles.map((c) => c.high));
+          const allPrices = [dataMin, dataMax];
+          if (stopLoss != null && stopLoss > 0) allPrices.push(stopLoss);
+          if (takeProfit != null && takeProfit > 0) allPrices.push(takeProfit);
+          if (entryPrice != null && entryPrice > 0) allPrices.push(entryPrice);
+          const minPrice = Math.min(...allPrices);
+          const maxPrice = Math.max(...allPrices);
+          const range = maxPrice - minPrice;
+          const padding = range * 0.15;
+          const ps = seriesRef.current.priceScale();
+          ps.setAutoScale(false);
+          ps.setVisibleRange({ from: minPrice - padding, to: maxPrice + padding });
+        }
+
         chartRef.current!.timeScale().fitContent();
         setLoading(false);
       } catch (e: any) {
@@ -151,6 +182,63 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     load();
     return () => { alive = false; };
   }, [symbol, interval]);
+
+  // Function to draw SL/TP/entry price lines (used by multiple effects)
+  const drawPriceLines = useCallback(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    // Remove existing lines
+    if (slLineRef.current) { try { series.removePriceLine(slLineRef.current); } catch {} slLineRef.current = null; }
+    if (tpLineRef.current) { try { series.removePriceLine(tpLineRef.current); } catch {} tpLineRef.current = null; }
+    if (entryLineRef.current) { try { series.removePriceLine(entryLineRef.current); } catch {} entryLineRef.current = null; }
+
+    if (stopLoss != null && stopLoss > 0) {
+      slLineRef.current = series.createPriceLine({
+        price: stopLoss,
+        color: "#ff5f6d",
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `SL ${stopLoss}`,
+      });
+    }
+    if (takeProfit != null && takeProfit > 0) {
+      tpLineRef.current = series.createPriceLine({
+        price: takeProfit,
+        color: "#22d39a",
+        lineWidth: 3,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `TP ${takeProfit}`,
+        axisLabelColor: "#22d39a",
+      });
+    }
+    if (entryPrice != null && entryPrice > 0) {
+      entryLineRef.current = series.createPriceLine({
+        price: entryPrice,
+        color: "#888888",
+        lineWidth: 1,
+        lineStyle: 1,
+        axisLabelVisible: true,
+        title: `Entry ${entryPrice}`,
+      });
+    }
+  }, [stopLoss, takeProfit, entryPrice]);
+
+  // Redraw lines when SL/TP/entry values change
+  useEffect(() => {
+    drawPriceLines();
+  }, [drawPriceLines]);
+
+  // Also redraw lines after data loads (chart needs data for correct price scale)
+  useEffect(() => {
+    if (!loading) {
+      // Small delay to ensure chart has rendered the data
+      const timer = setTimeout(drawPriceLines, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, drawPriceLines]);
 
   return (
     <div className="panel p-4 relative">

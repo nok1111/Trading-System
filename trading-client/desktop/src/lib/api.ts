@@ -6,10 +6,9 @@ const _cache = new Map<string, { data: any; expires: number }>();
 // Per-endpoint TTL configuration (in ms)
 const TTL_RULES: { pattern: string; ttl: number }[] = [
   // Fast-changing data (balance, positions, orders)
-  { pattern: "/api/binance/balance", ttl: 15_000 },
-  { pattern: "/api/binance/positions", ttl: 15_000 },
-  { pattern: "/api/binance/open-orders", ttl: 15_000 },
-  { pattern: "/api/binance/all-orders", ttl: 30_000 },
+  { pattern: "/api/snapshots", ttl: 15_000 },
+  { pattern: "/api/positions", ttl: 15_000 },
+  { pattern: "/api/orders", ttl: 15_000 },
   // Market data
   { pattern: "/api/klines/", ttl: 60_000 },
   { pattern: "/api/market/movers", ttl: 60_000 },

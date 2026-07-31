@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
-import { api } from "../lib/api";
+import { api, cacheInvalidate } from "../lib/api";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { cn } from "../lib/utils";
+import { toast } from "../components/ui/Toast";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
 
 const ASSETS = ["ALL", "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
@@ -13,15 +14,17 @@ interface ReportItem extends IntelligenceReport {
   status?: string;
   trading_mode?: string | null;
   broker_name?: string | null;
+  metadata?: Record<string, any>;
 }
 
 export function ReportsPage() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [asset, setAsset] = useState("ALL");
-  const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "weekly" | "monthly" | "position_analysis">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [sltpModalRecId, setSltpModalRecId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,10 +47,55 @@ export function ReportsPage() {
     const id = `rec-${recId}`;
     setActionLoading(id);
     try {
-      await api(`/api/intelligence/reports/${recId}/accept`, { method: "POST" });
+      const res = await api<any>(`/api/intelligence/reports/${recId}/accept`, { method: "POST" });
       await load();
+      // Invalidate positions cache so BrokerPage shows updated SL/TP
+      cacheInvalidate("/api/positions");
+      cacheInvalidate("/api/intelligence/paper-positions");
+      if (res?.status === "applied") {
+        toast(`SL/TP actualizado para posición #${res.position_id}${res.broker_updated ? " (broker actualizado)" : ""}`, true);
+      } else {
+        toast("Paper trade creado. Míralo en Posiciones → Paper", true);
+      }
     } catch (err) {
       console.error("Accept failed:", err);
+      toast("Error al aceptar recomendación", false);
+    }
+    setActionLoading(null);
+  };
+
+  const handleApplyOco = async (recId: number) => {
+    setActionLoading(`rec-${recId}`);
+    setSltpModalRecId(null);
+    try {
+      const res = await api<any>(`/api/intelligence/reports/${recId}/apply-oco`, { method: "POST" });
+      await load();
+      cacheInvalidate("/api/positions");
+      if (res?.status === "placed") {
+        toast(`OCO colocado en Binance (ID: ${res.oco_order_id})`, true);
+      } else {
+        toast(res?.error || res?.reason || "Error al colocar OCO", false);
+      }
+    } catch (err) {
+      toast("Error al colocar OCO en Binance", false);
+    }
+    setActionLoading(null);
+  };
+
+  const handleMonitorOnly = async (recId: number) => {
+    setActionLoading(`rec-${recId}`);
+    setSltpModalRecId(null);
+    try {
+      const res = await api<any>(`/api/intelligence/reports/${recId}/monitor-only`, { method: "POST" });
+      await load();
+      cacheInvalidate("/api/positions");
+      if (res?.status === "monitoring") {
+        toast(`Monitoreo activado para posición #${res.position_id}`, true);
+      } else {
+        toast(res?.reason || "Error al activar monitoreo", false);
+      }
+    } catch (err) {
+      toast("Error al activar monitoreo", false);
     }
     setActionLoading(null);
   };
@@ -66,7 +114,9 @@ export function ReportsPage() {
   };
 
   const filtered = useMemo(() => {
-    return typeFilter === "all" ? reports : reports.filter((r) => r.type === typeFilter);
+    if (typeFilter === "position_analysis") return reports.filter((r) => r.action_type === "position_analysis");
+    if (typeFilter === "all") return reports;
+    return reports.filter((r) => r.type === typeFilter && r.action_type !== "position_analysis");
   }, [reports, typeFilter]);
 
   const typeBtn = (active: boolean) =>
@@ -93,7 +143,8 @@ export function ReportsPage() {
     return null;
   };
 
-  const cardStyle = (mode?: string | null) => {
+  const cardStyle = (mode?: string | null, actionType?: string) => {
+    if (actionType === "position_analysis") return "bg-cyan-500/5 border-cyan-500/30 border-l-[4px] border-l-cyan-500";
     if (mode === "paper") return "bg-blue-500/5 border-blue-500/30 border-l-[4px] border-l-blue-500";
     if (mode === "live") return "bg-green-500/5 border-green-500/30 border-l-[4px] border-l-green-500";
     return "bg-[var(--color-surface)] border-[var(--color-border)]";
@@ -126,6 +177,7 @@ export function ReportsPage() {
         <button className={typeBtn(typeFilter === "daily")} onClick={() => setTypeFilter("daily")}>Diarios</button>
         <button className={typeBtn(typeFilter === "weekly")} onClick={() => setTypeFilter("weekly")}>Semanales</button>
         <button className={typeBtn(typeFilter === "monthly")} onClick={() => setTypeFilter("monthly")}>Mensuales</button>
+        <button className={typeBtn(typeFilter === "position_analysis")} onClick={() => setTypeFilter("position_analysis")}>Análisis de Posiciones</button>
       </div>
 
       <div className="text-[11px] text-[var(--color-text-muted)]">
@@ -147,8 +199,8 @@ export function ReportsPage() {
                 key={r.id}
                 className={cn(
                   "rounded-[10px] border p-3 cursor-pointer transition-colors",
-                  cardStyle(r.trading_mode),
-                  r.trading_mode === "paper" ? "hover:border-blue-500/50" : r.trading_mode === "live" ? "hover:border-green-500/50" : "hover:border-[var(--color-border-strong)]"
+                  cardStyle(r.trading_mode, r.action_type),
+                  r.action_type === "position_analysis" ? "hover:border-cyan-500/50" : r.trading_mode === "paper" ? "hover:border-blue-500/50" : r.trading_mode === "live" ? "hover:border-green-500/50" : "hover:border-[var(--color-border-strong)]"
                 )}
                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
               >
@@ -156,9 +208,9 @@ export function ReportsPage() {
                   <div className="flex items-center gap-2">
                     <CryptoIcon symbol={r.asset + "USDT"} size={20} />
                     <span className="text-[13px] font-bold text-[var(--color-text)]">
-                      {r.type === "daily" ? "Daily" : r.type === "weekly" ? "Weekly" : "Monthly"} — {r.asset}
+                      {r.action_type === "position_analysis" ? "Análisis de Posición" : r.type === "daily" ? "Daily" : r.type === "weekly" ? "Weekly" : "Monthly"} — {r.asset}
                     </span>
-                    {actionBadge(r.action_type)}
+                    {r.action_type === "position_analysis" ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">⚙ ANÁLISIS</span> : actionBadge(r.action_type)}
                     {r.confidence != null && (
                       <span className="text-[10px] text-[var(--color-text-muted)]">
                         {Math.round(r.confidence * 100)}% confianza
@@ -174,6 +226,26 @@ export function ReportsPage() {
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{r.summary}</p>
                 {isExpanded && r.sections && (
                   <div className="mt-3 space-y-2 border-t border-[var(--color-border)] pt-3">
+                    {r.action_type === "position_analysis" && r.metadata && (
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="bg-red-500/10 rounded-[6px] p-2 border border-red-500/20">
+                          <div className="text-[9px] font-bold text-red-400 uppercase">Stop Loss</div>
+                          <div className="text-[12px] text-[var(--color-text)]">
+                            <span className="text-[var(--color-text-muted)] line-through">{r.metadata.current_sl ?? "N/A"}</span>
+                            {" → "}
+                            <span className="text-red-400 font-bold">{r.metadata.suggested_sl ?? "N/A"}</span>
+                          </div>
+                        </div>
+                        <div className="bg-green-500/10 rounded-[6px] p-2 border border-green-500/20">
+                          <div className="text-[9px] font-bold text-green-400 uppercase">Take Profit</div>
+                          <div className="text-[12px] text-[var(--color-text)]">
+                            <span className="text-[var(--color-text-muted)] line-through">{r.metadata.current_tp ?? "N/A"}</span>
+                            {" → "}
+                            <span className="text-green-400 font-bold">{r.metadata.suggested_tp ?? "N/A"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {r.sections.marketOverview && (
                       <div>
                         <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Market Overview</span>
@@ -182,25 +254,31 @@ export function ReportsPage() {
                     )}
                     {r.sections.keyEvents && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Recomendación</span>
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Ajuste SL" : "Recomendación"}</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.keyEvents}</p>
                       </div>
                     )}
                     {r.sections.performance && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Gestión de riesgo</span>
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Ajuste TP" : "Gestión de riesgo"}</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.performance}</p>
                       </div>
                     )}
                     {r.sections.outlook && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Razón</span>
+                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Razón y Horizonte" : "Razón"}</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.outlook}</p>
+                      </div>
+                    )}
+                    {r.sections.detailedAnalysis && (
+                      <div>
+                        <span className="text-[10px] font-bold text-cyan-400 uppercase">Análisis Detallado</span>
+                        <p className="text-[12px] text-[var(--color-text)] mt-0.5 whitespace-pre-wrap">{r.sections.detailedAnalysis}</p>
                       </div>
                     )}
 
                     {/* Accept / Decline buttons for pending recommendations */}
-                    {r.id?.startsWith("rec-") && r.status === "pending" && (
+                    {r.id?.startsWith("rec-") && r.status === "pending" && r.action_type !== "position_analysis" && (
                       <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
@@ -219,10 +297,37 @@ export function ReportsPage() {
                       </div>
                     )}
 
+                    {/* Apply / Decline buttons for position_analysis recommendations */}
+                    {r.id?.startsWith("rec-") && r.status === "pending" && r.action_type === "position_analysis" && (
+                      <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
+                        <button
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-cyan-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                          disabled={actionLoading === r.id}
+                          onClick={(e) => { e.stopPropagation(); setSltpModalRecId(parseInt(r.id.replace("rec-", ""))); }}
+                        >
+                          {actionLoading === r.id ? "Aplicando..." : "⚙ Aplicar Ajustes SL/TP"}
+                        </button>
+                        <button
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
+                          disabled={actionLoading === r.id}
+                          onClick={(e) => handleDecline(e, parseInt(r.id.replace("rec-", "")))}
+                        >
+                          ✕ Ignorar
+                        </button>
+                      </div>
+                    )}
+
                     {/* Status message for executed/dismissed */}
-                    {r.id?.startsWith("rec-") && r.status === "executed" && (
-                      <div className="text-[10px] text-[var(--color-success)] font-bold pt-1">
+                    {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type === "position_analysis" && (
+                      <div className="text-[10px] text-cyan-400 font-bold pt-1">
+                        ✓ Ajustes de SL/TP aplicados a la posición
+                      </div>
+                    )}
+                    {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type !== "position_analysis" && (
+                      <div className="text-[10px] text-[var(--color-success)] font-bold pt-1 flex items-center gap-1">
                         ✓ Recomendación aceptada y ejecutada como paper trade
+                        <span className="text-[var(--color-text-muted)]">→</span>
+                        <span className="text-[var(--color-info)]">Posiciones → Paper</span>
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "dismissed" && (
@@ -238,6 +343,53 @@ export function ReportsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* SL/TP Options Modal for position_analysis reports */}
+      {sltpModalRecId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setSltpModalRecId(null)}
+        >
+          <div
+            className="w-[380px] panel p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-[14px] font-bold text-[var(--color-text)]">Aplicar SL/TP</h3>
+              <button
+                onClick={() => setSltpModalRecId(null)}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-[16px]"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              Elige cómo ejecutar los niveles de Stop Loss y Take Profit:
+            </p>
+            <div className="space-y-2">
+              <button
+                disabled={actionLoading === `rec-${sltpModalRecId}`}
+                onClick={() => handleApplyOco(sltpModalRecId)}
+                className="w-full h-10 rounded-[8px] text-[12px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading === `rec-${sltpModalRecId}` ? "Procesando..." : "Colocar OCO en Binance"}
+              </button>
+              <p className="text-[10px] text-[var(--color-text-muted)] text-center -mt-1">
+                Orden real: se ejecuta automáticamente cuando se alcanza SL o TP
+              </p>
+              <button
+                disabled={actionLoading === `rec-${sltpModalRecId}`}
+                onClick={() => handleMonitorOnly(sltpModalRecId)}
+                className="w-full h-10 rounded-[8px] text-[12px] font-bold bg-[var(--color-info)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading === `rec-${sltpModalRecId}` ? "Procesando..." : "Solo Monitorear"}
+              </button>
+              <p className="text-[10px] text-[var(--color-text-muted)] text-center -mt-1">
+                Guarda SL/TP y te notifica cuando se alcancen los niveles
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

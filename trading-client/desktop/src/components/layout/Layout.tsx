@@ -126,6 +126,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
         setSelectedBrokerModule({ brokerId, moduleId: "trade" });
         setPresetTradeSymbol(symbol);
         onTabChange("broker");
+      } else if (detail?.page) {
+        onTabChange(detail.page as TabId);
       }
     };
     window.addEventListener("navigate", onNavigate);

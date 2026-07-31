@@ -404,3 +404,235 @@ FROM orders ORDER BY orders.id DESC
     at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
     at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
     at App (<anonymous>)
+[2026-07-29T12:51:09.797921] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 2)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T12:51:17.250128] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 2)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T12:54:32.258376] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 2)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:19:20.894359] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:19:47.653676] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:19:58.566213] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:20:18.458775] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:20:21.613722] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:21:23.107905] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:22:02.627718] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:22:05.652890] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:22:11.915819] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:22:57.513407] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:23:57.315015] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:24:00.670725] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:27:21.232193] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:27:46.245281] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:27:53.180134] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T13:28:01.580049] [ERROR] Unhandled: (sqlite3.OperationalError) no such column: positions.user_id
+[SQL: SELECT positions.id AS positions_id, positions.user_id AS positions_user_id, positions.symbol AS positions_symbol, positions.opened_at AS positions_opened_at, positions.closed_at AS positions_closed_at, positions.side AS positions_side, positions.quantity AS positions_quantity, positions.entry_price AS positions_entry_price, positions.current_price AS positions_current_price, positions.stop_loss AS positions_stop_loss, positions.take_profit AS positions_take_profit, positions.unrealized_pnl AS positions_unrealized_pnl, positions.realized_pnl AS positions_realized_pnl, positions.status AS positions_status, positions.strategy_name AS positions_strategy_name, positions.metadata_json AS positions_metadata_json, positions.created_at AS positions_created_at, positions.updated_at AS positions_updated_at 
+FROM positions 
+WHERE positions.status = ? AND positions.user_id = ?]
+[parameters: ('open', 1)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) | Path: /api/binance/positions
+[2026-07-29T22:09:50.955Z] [ERROR] React crash | loadBrokers is not defined | Stack: ReferenceError: loadBrokers is not defined
+    at AIAgentPage (http://localhost:1420/src/pages/AIAgentPage.tsx?t=1785362990630:122:49)
+    at Object.react_stack_bottom_frame (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:18509:20)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:5654:24)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:7475:21)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:8525:20)
+    at runWithFiberInDEV (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:997:72)
+    at performUnitOfWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12561:98)
+    at workLoopSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12424:43)
+    at renderRootSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12408:13)
+    at performWorkOnRoot (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:11827:37) | ComponentStack: 
+    at AIAgentPage (http://localhost:1420/src/pages/AIAgentPage.tsx?t=1785362990630:66:31)
+    at Suspense (<anonymous>)
+    at div (<anonymous>)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://localhost:1420/src/components/layout/Layout.tsx:128:26)
+    at BrokerAwareContent (http://localhost:1420/src/App.tsx?t=1785362241849:109:3)
+    at BrokerProvider (http://localhost:1420/src/context/BrokerContext.tsx:35:34)
+    at AppContent (http://localhost:1420/src/App.tsx?t=1785362241849:58:46)
+    at AuthProvider (http://localhost:1420/src/context/AuthContext.tsx:21:32)
+    at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)
+[2026-07-29T22:18:22.953Z] [ERROR] React crash | brokers is not defined | Stack: ReferenceError: brokers is not defined
+    at AIAgentPage (http://localhost:1420/src/pages/AIAgentPage.tsx?t=1785363501896:453:86)
+    at Object.react_stack_bottom_frame (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:18509:20)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:5654:24)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:7475:21)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:8525:20)
+    at runWithFiberInDEV (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:997:72)
+    at performUnitOfWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12561:98)
+    at workLoopSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12424:43)
+    at renderRootSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:12408:13)
+    at performWorkOnRoot (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=3e09b23c:11827:37) | ComponentStack: 
+    at AIAgentPage (http://localhost:1420/src/pages/AIAgentPage.tsx?t=1785363501896:66:31)
+    at Suspense (<anonymous>)
+    at div (<anonymous>)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://localhost:1420/src/components/layout/Layout.tsx:128:26)
+    at BrokerAwareContent (http://localhost:1420/src/App.tsx?t=1785362997719:109:3)
+    at BrokerProvider (http://localhost:1420/src/context/BrokerContext.tsx:35:34)
+    at AppContent (http://localhost:1420/src/App.tsx?t=1785362997719:58:46)
+    at AuthProvider (http://localhost:1420/src/context/AuthContext.tsx:21:32)
+    at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)
+[2026-07-29T19:41:31.002129] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-29T19:42:49.802998] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-29T20:16:20.404723] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-29T22:09:08.258634] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-29T22:10:51.604064] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-29T22:12:06.479205] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-29T22:16:00.507760] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T06:58:42.732898] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:15:32.409402] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:26:18.950988] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:26:21.798488] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:26:24.150487] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:46:26.618130] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:47:06.267249] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:52:00.596266] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:52:15.640095] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T10:52:40.351892] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T11:02:41.862789] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T11:03:10.345570] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T11:12:48.900614] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T11:15:12.820924] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T13:15:10.987971] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T13:15:21.997288] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T13:15:57.317475] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T17:05:55.022999] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T17:13:54.583371] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T17:14:11.011328] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T17:15:51.505387] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T17:27:39.141704] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T17:27:54.475412] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T22:51:53.500Z] [ERROR] React crash | useCallback is not defined | Stack: ReferenceError: useCallback is not defined
+    at PriceChart (http://localhost:1420/src/components/charts/PriceChart.tsx?t=1785451912285:155:26)
+    at Object.react_stack_bottom_frame (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:18509:20)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:5654:24)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:7475:21)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:8525:20)
+    at runWithFiberInDEV (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:997:72)
+    at performUnitOfWork (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:12561:98)
+    at workLoopSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:12424:43)
+    at renderRootSync (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:12408:13)
+    at performWorkOnRoot (http://localhost:1420/node_modules/.vite/deps/react-dom_client.js?v=01640ccd:11827:37) | ComponentStack: 
+    at PriceChart (http://localhost:1420/src/components/charts/PriceChart.tsx?t=1785451912285:29:30)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at PositionsModule (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785451636008:2160:39)
+    at div (<anonymous>)
+    at BrokerPage (http://localhost:1420/src/pages/BrokerPage.tsx?t=1785451636008:93:30)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at Layout (http://localhost:1420/src/components/layout/Layout.tsx?t=1785451636008:128:26)
+    at BrokerAwareContent (http://localhost:1420/src/App.tsx?t=1785451636008:109:3)
+    at BrokerProvider (http://localhost:1420/src/context/BrokerContext.tsx?t=1785449969232:35:34)
+    at AppContent (http://localhost:1420/src/App.tsx?t=1785451636008:58:46)
+    at AuthProvider (http://localhost:1420/src/context/AuthContext.tsx?t=1785449969232:21:32)
+    at ThemeProvider (http://localhost:1420/src/theme/ThemeContext.tsx:25:33)
+    at ErrorBoundary (http://localhost:1420/src/components/ErrorBoundary.tsx:8:5)
+    at App (<anonymous>)
+[2026-07-30T18:18:48.354535] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:19:08.444064] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:21:15.167497] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:22:20.981909] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:22:43.952868] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:23:17.067329] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:29:54.991998] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T18:31:36.439058] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode
+[2026-07-30T21:26:38.878878] [ERROR] Unhandled: name 'resolve_binance_keys' is not defined | Path: /api/trading-mode

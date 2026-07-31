@@ -154,132 +154,6 @@ def list_positions(
         Position.id.desc(),
     ).offset(skip).limit(limit).all()
 
-    # Auto-import from Binance if user has no local positions but has broker keys
-    if not positions:
-        from app.api.helpers import resolve_broker_credentials
-        creds = resolve_broker_credentials("binance", current_user)
-        if creds:
-            try:
-                from app.brokers.adapters.binance_adapter import BinanceAdapter
-                from app.database.models.position import Position as PositionModel
-
-                adapter = BinanceAdapter(creds)
-                broker = adapter._broker
-                imported = []
-
-                # Spot holdings
-                try:
-                    account = broker._signed_request("GET", "/api/v3/account", {})
-                    balances = account.get("balances", [])
-                    import httpx as _httpx
-                    price_map: dict[str, float] = {}
-                    try:
-                        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
-                        for t in tickers:
-                            price_map[t["symbol"]] = float(t["price"])
-                    except Exception:
-                        pass
-
-                    stablecoins = {"USDT", "BUSD", "USDC", "UST", "TUSD", "FDUSD"}
-                    for b in balances:
-                        asset = b["asset"]
-                        total = float(b["free"]) + float(b["locked"])
-                        if total <= 0 or asset in stablecoins:
-                            continue
-                        symbol = f"{asset}USDT"
-                        price = price_map.get(symbol, 0.0)
-                        if price <= 0:
-                            continue
-                        pos = PositionModel(
-                            user_id=current_user.id,
-                            symbol=symbol,
-                            opened_at=datetime.now(tz=UTC),
-                            side="long",
-                            quantity=Decimal(str(total)),
-                            entry_price=Decimal(str(price)),
-                            current_price=Decimal(str(price)),
-                            unrealized_pnl=Decimal("0"),
-                            status="open",
-                            strategy_name="imported_binance",
-                            metadata_json={"source": "binance_spot_import", "asset": asset},
-                        )
-                        db.add(pos)
-                        imported.append(symbol)
-                except Exception:
-                    pass
-
-                # Futures positions
-                try:
-                    fapi_resp = broker._signed_request("GET", "/fapi/v2/positionRisk", {})
-                    for p in fapi_resp:
-                        amt = float(p.get("positionAmt", 0))
-                        if amt == 0:
-                            continue
-                        symbol = p.get("symbol", "")
-                        entry = float(p.get("entryPrice", 0))
-                        mark = float(p.get("markPrice", 0))
-                        side = "long" if amt > 0 else "short"
-                        qty = abs(amt)
-                        pos = PositionModel(
-                            user_id=current_user.id,
-                            symbol=symbol,
-                            opened_at=datetime.now(tz=UTC),
-                            side=side,
-                            quantity=Decimal(str(qty)),
-                            entry_price=Decimal(str(entry)),
-                            current_price=Decimal(str(mark)),
-                            unrealized_pnl=Decimal(str((mark - entry) * qty if side == "long" else (entry - mark) * qty)),
-                            status="open",
-                            strategy_name="imported_binance",
-                            metadata_json={"source": "binance_futures_import"},
-                        )
-                        db.add(pos)
-                        imported.append(symbol)
-                except Exception:
-                    pass
-
-                if imported:
-                    db.commit()
-                    # Re-query with the new positions
-                    positions = query.order_by(
-                        case((Position.status == "open", 0), else_=1),
-                        Position.id.desc(),
-                    ).offset(skip).limit(limit).all()
-            except Exception:
-                db.rollback()
-
-    # Update current_price and unrealized_pnl for open positions
-    open_positions = [p for p in positions if p.status == "open"]
-    if open_positions:
-        from decimal import Decimal as Dec
-
-        from app.brokers.adapters.binance_adapter import BinanceAdapter
-        from app.brokers.models import BrokerCredentials, normalize_symbol
-        from app.config import get_settings
-
-        from app.api.helpers import resolve_broker_credentials
-        creds = resolve_broker_credentials("binance", current_user)
-
-        updated = False
-        for pos in open_positions:
-            try:
-                live = None
-                if creds:
-                    adapter = BinanceAdapter(creds)
-                    try:
-                        ticker = adapter.get_ticker(normalize_symbol(pos.symbol))
-                        live = ticker.price
-                    except Exception:
-                        pass
-                if live and live > 0:
-                    pos.current_price = Dec(str(live))
-                    pos.unrealized_pnl = (Dec(str(live)) - pos.entry_price) * pos.quantity
-                    updated = True
-            except Exception:
-                pass
-        if updated:
-            db.commit()
-
     return positions
 
 
@@ -325,3 +199,22 @@ def list_snapshots(
     if strategy_run_id is not None:
         query = query.filter(AccountSnapshot.strategy_run_id == strategy_run_id)
     return query.order_by(AccountSnapshot.id.desc()).offset(skip).limit(limit).all()
+
+
+@router.patch("/positions/{position_id}/auto-sell")
+def toggle_auto_sell(
+    position_id: int,
+    enabled: bool = Query(True),
+    db: DbSession = None,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Toggle auto-sell for a specific position."""
+    pos = db.query(Position).filter(
+        Position.id == position_id,
+        Position.user_id == current_user.id,
+    ).first()
+    if pos is None:
+        raise HTTPException(status_code=404, detail="Position not found")
+    pos.auto_sell_enabled = enabled
+    db.commit()
+    return {"id": pos.id, "auto_sell_enabled": pos.auto_sell_enabled}
