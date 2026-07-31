@@ -68,7 +68,7 @@ def cleanup_old_data(db, user_id: int | None = None) -> dict:
         (Signal, "signals", Signal.created_at),
         (RiskEvent, "risk_events", RiskEvent.created_at),
         (IntelligenceEvent, "intelligence_events", IntelligenceEvent.created_at),
-        (IntelligenceNews, "intelligence_news", IntelligenceNews.created_at),
+        (IntelligenceNews, "intelligence_news", IntelligenceNews.published_at),
         (PredictionRecord, "prediction_records", PredictionRecord.created_at),
         (AccountSnapshot, "account_snapshots", AccountSnapshot.created_at),
         (SystemEvent, "system_events", SystemEvent.created_at),
