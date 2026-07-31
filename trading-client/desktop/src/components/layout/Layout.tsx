@@ -62,7 +62,7 @@ interface NavItem {
 const generalItems: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} />, group: "general" },
   { id: "intelligence", label: "Market Intelligence", icon: <Brain size={17} />, group: "general" },
-  { id: "risks", label: "Alertas", icon: <ShieldAlert size={17} />, group: "general" },
+  { id: "risks", label: "Alertas y Riesgos", icon: <ShieldAlert size={17} />, group: "general" },
   { id: "news", label: "Noticias", icon: <Newspaper size={17} />, group: "general" },
   { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
   { id: "backtest", label: "Backtest", icon: <FlaskConical size={17} />, group: "general" },
@@ -79,11 +79,11 @@ const sistemaItems: NavItem[] = [
 const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   dashboard: { title: "Dashboard", subtitle: "Vista general del mercado e inteligencia" },
   intelligence: { title: "Market Intelligence", subtitle: "Análisis profundo de mercado" },
-  risks: { title: "Alertas", subtitle: "Crash risk, whale alerts y eventos de alto impacto" },
+  risks: { title: "Alertas y Riesgos", subtitle: "Crash risk, whale alerts, alertas de precio y gestión de riesgo" },
   news: { title: "Noticias", subtitle: "Feed de noticias con sentiment" },
   reports: { title: "Reportes", subtitle: "Reportes periódicos generados por IA" },
   backtest: { title: "Backtest", subtitle: "Prueba estrategias con datos históricos" },
-  alerts: { title: "Notificaciones", subtitle: "Centro de notificaciones" },
+  alerts: { title: "Notificaciones", subtitle: "Centro de notificaciones del sistema" },
   connections: { title: "Conexiones", subtitle: "Gestión de brokers" },
   security: { title: "Seguridad", subtitle: "Configuración de seguridad" },
   preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
@@ -469,6 +469,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                 open={notifOpen}
                 onClose={() => setNotifOpen(false)}
                 onNavigate={(page) => onTabChange(page as TabId)}
+                onUnreadCountChange={setUnreadCount}
               />
             </div>
 

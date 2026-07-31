@@ -16,7 +16,7 @@ const NewsPage = lazy(() => import("./pages/NewsPage").then(m => ({ default: m.N
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then(m => ({ default: m.ReportsPage })));
 const BacktestPage = lazy(() => import("./pages/BacktestPage").then(m => ({ default: m.BacktestPage })));
 const AIAgentPage = lazy(() => import("./pages/AIAgentPage").then(m => ({ default: m.AIAgentPage })));
-const AlertsPage = lazy(() => import("./pages/AlertsPage").then(m => ({ default: m.AlertsPage })));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage").then(m => ({ default: m.NotificationsPage })));
 const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then(m => ({ default: m.ConnectionsPage })));
 const SecurityPage = lazy(() => import("./pages/SecurityPage").then(m => ({ default: m.SecurityPage })));
 const PreferencesPage = lazy(() => import("./pages/PreferencesPage").then(m => ({ default: m.PreferencesPage })));
@@ -111,7 +111,7 @@ function BrokerAwareContent({
     reports: <ReportsPage />,
     backtest: <BacktestPage />,
     "ai-agent": <AIAgentPage />,
-    alerts: <AlertsPage />,
+    alerts: <NotificationsPage onNavigate={(page) => onTabChange(page as TabId)} />,
     connections: <ConnectionsPage />,
     security: <SecurityPage />,
     preferences: <PreferencesPage />,

@@ -2604,6 +2604,7 @@ def record_trade(
                 message=f"Precio: {price} | Orden: {req.broker_order_id or 'N/A'}",
                 severity="info",
                 asset=symbol,
+                action_url="/broker",
             )
             db.commit()
         except Exception:

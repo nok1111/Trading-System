@@ -583,25 +583,25 @@ class AITradingAgent:
                             "phase": "auto_breakeven", "symbol": symbol, "price": current_price, "entry": entry, "peak": peak,
                         })
                         reason = f"Auto breakeven-stop: protegía profit, precio volvió a ${current_price}"
-                        self._create_notif("stop_loss_hit", f"Breakeven stop: {symbol}", f"Precio volvió a entry. Vendiendo para proteger capital.", severity="warning", asset=symbol.replace("USDT", ""))
+                        self._create_notif("stop_loss_hit", f"Breakeven stop: {symbol}", f"Precio volvió a entry. Vendiendo para proteger capital.", severity="warning", asset=symbol.replace("USDT", ""), action_url="/broker")
                     elif result.close_type == "trailing":
                         self._add_log("info", f"TRAILING STOP {symbol}: precio ${current_price:.4f} bajó del peak ${peak:.4f}. Vendiendo con profit asegurado.", {
                             "phase": "auto_trailing", "symbol": symbol, "price": current_price, "entry": entry, "peak": peak,
                         })
                         reason = f"Auto trailing-stop: peak fue ${peak:.4f}, vendiendo a ${current_price}"
-                        self._create_notif("trailing_stop_update", f"Trailing stop: {symbol}", f"Peak fue ${peak:.4f}, vendiendo a ${current_price:.4f}", severity="info", asset=symbol.replace("USDT", ""))
+                        self._create_notif("trailing_stop_update", f"Trailing stop: {symbol}", f"Peak fue ${peak:.4f}, vendiendo a ${current_price:.4f}", severity="info", asset=symbol.replace("USDT", ""), action_url="/broker")
                     elif result.close_type == "take_profit":
                         self._add_log("info", f"TAKE-PROFIT {symbol}: precio ${current_price:.4f} >= TP ${float(take_profit):.4f}. Vendiendo.", {
                             "phase": "auto_take_profit", "symbol": symbol, "price": current_price, "take_profit": float(take_profit),
                         })
                         reason = f"Auto take-profit: precio subió a ${current_price}"
-                        self._create_notif("take_profit_hit", f"Take-profit: {symbol}", f"Precio alcanzó TP. Vendiendo con profit.", severity="info", asset=symbol.replace("USDT", ""))
+                        self._create_notif("take_profit_hit", f"Take-profit: {symbol}", f"Precio alcanzó TP. Vendiendo con profit.", severity="info", asset=symbol.replace("USDT", ""), action_url="/broker")
                     else:
                         self._add_log("warn", f"STOP-LOSS {symbol}: precio ${current_price:.4f} <= SL ${float(result.effective_sl):.4f}. Vendiendo.", {
                             "phase": "auto_stop_loss", "symbol": symbol, "price": current_price, "stop_loss": float(result.effective_sl),
                         })
                         reason = f"Auto stop-loss: precio bajó a ${current_price}"
-                        self._create_notif("stop_loss_hit", f"Stop-loss: {symbol}", f"Precio bajó a ${current_price:.4f} (SL: ${float(result.effective_sl):.4f})", severity="critical", asset=symbol.replace("USDT", ""))
+                        self._create_notif("stop_loss_hit", f"Stop-loss: {symbol}", f"Precio bajó a ${current_price:.4f} (SL: ${float(result.effective_sl):.4f})", severity="critical", asset=symbol.replace("USDT", ""), action_url="/broker")
 
                     sell_result = self._api_post("/api/ai-agent/execute", {
                         "action_type": "sell",
@@ -657,6 +657,7 @@ class AITradingAgent:
                                     tech_result.reason,
                                     severity="warning",
                                     asset=symbol.replace("USDT", ""),
+                                    action_url="/broker",
                                 )
                                 sell_result = self._api_post("/api/ai-agent/execute", {
                                     "action_type": "sell",
@@ -853,7 +854,7 @@ class AITradingAgent:
                 "cycle": self._cycle, "phase": "alert", "alert_type": alert.alert_type,
             })
             sev = "critical" if alert.severity in ("critical", "high") else "warning" if alert.severity == "medium" else "info"
-            self._create_notif("news_high_impact", f"Alerta: {alert.asset}", alert.message, severity=sev, asset=alert.asset)
+            self._create_notif("news_high_impact", f"Alerta: {alert.asset}", alert.message, severity=sev, asset=alert.asset, action_url="/news")
 
         # 2. Get global signals
         signals = provider.get_signals(limit=10)
@@ -1567,6 +1568,7 @@ class AITradingAgent:
                 "AI Agent detenido",
                 f"{reason}. Ve a Config e ingresa una API key válida para {self.provider}.",
                 severity="critical",
+                action_url="/ai-agent",
             )
             self._stop_event.set()
             return True
@@ -1725,13 +1727,13 @@ class AITradingAgent:
             if isinstance(result, dict) and result.get("status") == "executed":
                 self._add_log("info", f"Compra {symbol} ejecutada: {result.get('quantity')} @ ${result.get('price')}")
                 self._notify_telegram("buy", symbol, result.get("quantity", 0), result.get("price", 0), reason)
-                self._create_notif("trade_executed", f"Compra ejecutada: {symbol}", f"Qty: {result.get('quantity')} @ ${result.get('price')} — {reason}", severity="info", asset=symbol.replace("USDT", ""))
+                self._create_notif("trade_executed", f"Compra ejecutada: {symbol}", f"Qty: {result.get('quantity')} @ ${result.get('price')} — {reason}", severity="info", asset=symbol.replace("USDT", ""), action_url="/broker")
             elif isinstance(result, dict) and result.get("status") == "rejected":
                 self._add_log("warn", f"Compra {symbol} rechazada: {result.get('reason', 'risk manager')}")
-                self._create_notif("risk_warning", f"Compra rechazada: {symbol}", result.get("reason", "Risk manager"), severity="warning", asset=symbol.replace("USDT", ""))
+                self._create_notif("risk_warning", f"Compra rechazada: {symbol}", result.get("reason", "Risk manager"), severity="warning", asset=symbol.replace("USDT", ""), action_url="/risks")
             elif isinstance(result, dict) and result.get("status") == "error":
                 self._add_log("error", f"Error comprando {symbol}: {result.get('reason')}")
-                self._create_notif("system_event", f"Error en compra: {symbol}", result.get("reason", "Error desconocido"), severity="critical", asset=symbol.replace("USDT", ""))
+                self._create_notif("system_event", f"Error en compra: {symbol}", result.get("reason", "Error desconocido"), severity="critical", asset=symbol.replace("USDT", ""), action_url="/ai-agent")
             else:
                 self._add_log("warn", f"Respuesta inesperada: {result}")
 
@@ -1793,6 +1795,7 @@ class AITradingAgent:
                 "Análisis de posiciones iniciado",
                 f"Analizando {len(positions_data)} posiciones con IA. Te notificaremos al terminar.",
                 severity="info",
+                action_url="/ai-agent",
             )
 
             # 1. Build context: user profile + positions + technical analysis
@@ -1904,6 +1907,7 @@ class AITradingAgent:
                     "Error en análisis de posiciones",
                     "La IA no respondió. Verifica tu configuración de AI Agent.",
                     severity="critical",
+                    action_url="/ai-agent",
                 )
                 return
 
@@ -1937,6 +1941,7 @@ class AITradingAgent:
                 "Error en análisis de posiciones",
                 f"Error: {exc}",
                 severity="critical",
+                action_url="/ai-agent",
             )
 
     def _ask_position_analysis_llm(self, context: dict) -> dict | None:

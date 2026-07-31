@@ -173,6 +173,7 @@ def check_sltp_prices() -> list[dict]:
                         severity="critical" if triggered == "sl" else "info",
                         asset=pos.symbol,
                         user_id=pos.user_id,
+                        action_url="/broker",
                     )
                 except Exception:
                     pass

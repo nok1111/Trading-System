@@ -34,9 +34,10 @@ interface NotificationDropdownProps {
   open: boolean;
   onClose: () => void;
   onNavigate?: (page: string) => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
-export function NotificationDropdown({ open, onClose, onNavigate }: NotificationDropdownProps) {
+export function NotificationDropdown({ open, onClose, onNavigate, onUnreadCountChange }: NotificationDropdownProps) {
   const [notifications, setNotifications] = useState<PendingNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -65,24 +66,39 @@ export function NotificationDropdown({ open, onClose, onNavigate }: Notification
     return () => clearInterval(id);
   }, [open, loadNotifications]);
 
+  // Mark all as read after 2s of viewing the dropdown
+  useEffect(() => {
+    if (!open || unreadCount === 0) return;
+    const timer = setTimeout(() => {
+      handleMarkAllRead();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [open, unreadCount]);
+
   const handleMarkRead = async (id: number) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
-    setUnreadCount((c) => Math.max(0, c - 1));
+    setUnreadCount((c) => {
+      const next = Math.max(0, c - 1);
+      onUnreadCountChange?.(next);
+      return next;
+    });
     await markNotificationRead(id);
   };
 
   const handleMarkAllRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
+    onUnreadCountChange?.(0);
     await markAllNotificationsRead();
   };
 
   const handleClick = (n: PendingNotification) => {
     if (!n.read) handleMarkRead(n.id);
-    if (n.action_url && onNavigate) {
-      onNavigate(n.action_url);
+    const target = n.action_url || "/alerts";
+    if (onNavigate) {
+      onNavigate(target.replace("/", ""));
       onClose();
     }
   };

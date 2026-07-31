@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { TrendingDown, Waves, AlertTriangle, Zap, Shield } from "lucide-react";
+import { TrendingDown, Waves, AlertTriangle, Zap, Shield, ShieldAlert, Bell } from "lucide-react";
 import { CrashRiskGauge } from "../components/intelligence/CrashRiskGauge";
 import { WhaleFeed } from "../components/intelligence/WhaleFeed";
 import { AlertList } from "../components/intelligence/AlertList";
@@ -9,6 +9,7 @@ import { api } from "../lib/api";
 import type { IntelligenceAlert, WhaleActivity, NewsItem } from "../lib/intelligenceTypes";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
+import { PriceAlertsContent } from "./AlertsPage";
 
 interface RiskConfig {
   trailing_stop_pct: number;
@@ -47,6 +48,44 @@ interface RiskStatus {
 }
 
 export function RisksPage() {
+  const [innerTab, setInnerTab] = useState<"risk" | "price-alerts">("risk");
+
+  return (
+    <div className="p-5 space-y-4 max-w-[900px] mx-auto">
+      {/* Inner Tabs */}
+      <div className="flex gap-1 border-b border-[var(--color-border)]">
+        <button
+          onClick={() => setInnerTab("risk")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+            innerTab === "risk"
+              ? "border-[var(--color-primary)] text-[var(--color-text)]"
+              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <ShieldAlert size={14} />
+          Riesgos de Mercado
+        </button>
+        <button
+          onClick={() => setInnerTab("price-alerts")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+            innerTab === "price-alerts"
+              ? "border-[var(--color-primary)] text-[var(--color-text)]"
+              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <Bell size={14} />
+          Alertas de Precio
+        </button>
+      </div>
+
+      {innerTab === "risk" ? <RisksPageContent /> : <PriceAlertsContent />}
+    </div>
+  );
+}
+
+function RisksPageContent() {
   const [alerts, setAlerts] = useState<IntelligenceAlert[]>([]);
   const [whales, setWhales] = useState<WhaleActivity[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -105,7 +144,7 @@ export function RisksPage() {
   const largeWhales = whales.filter((w) => w.amountUsd >= 500000);
 
   return (
-    <div className="p-5 space-y-4 max-w-[900px] mx-auto">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
         <Zap size={18} className="text-[var(--color-warning)]" />

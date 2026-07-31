@@ -19,7 +19,7 @@ interface PriceAlert {
 
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"];
 
-export function AlertsPage() {
+export function PriceAlertsContent() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -229,4 +229,8 @@ export function AlertsPage() {
       </div>
     </div>
   );
+}
+
+export function AlertsPage() {
+  return <PriceAlertsContent />;
 }

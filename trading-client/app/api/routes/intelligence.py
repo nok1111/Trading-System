@@ -1733,6 +1733,7 @@ def _create_notification(
     message: str = "",
     severity: str = "info",
     asset: str | None = None,
+    action_url: str | None = None,
     user_id: int = 0,
 ) -> None:
     """Create an in-app notification (shown in the bell dropdown)."""
@@ -1748,6 +1749,7 @@ def _create_notification(
             message=message,
             severity=severity,
             asset=asset,
+            action_url=action_url,
             user_id=user_id,
         )
         db.close()
@@ -1791,6 +1793,7 @@ def update_oco_on_position(
             message=f"SL: {sl_price} | TP: {tp_price} | Qty: {pos.quantity} | Order ID: {req.oco_order_id}",
             severity="info",
             asset=pos.symbol,
+            action_url="/broker",
             user_id=current_user.id if current_user else 0,
         )
 
@@ -1838,6 +1841,7 @@ def clear_oco_on_position(
             message=f"Orden OCO {oco_order_id} cancelada en Binance para {pos.symbol}",
             severity="info",
             asset=pos.symbol,
+            action_url="/broker",
             user_id=current_user.id if current_user else 0,
         )
 
