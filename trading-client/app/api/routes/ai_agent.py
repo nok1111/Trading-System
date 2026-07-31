@@ -495,10 +495,15 @@ def ai_agent_analyze_positions(
             detail=f"No tienes una API key configurada para {provider}. Ve a AI Agent para configurar tu proveedor.",
         )
 
-    # 3. Capture JWT token for the agent (needed for profile lookup)
+    # 3. Capture JWT token and user_id for the agent (needed for profile lookup and saving recommendations)
     jwt_token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if jwt_token:
         agent._jwt_token = jwt_token
+    agent._user_id = current_user.id if current_user else 0
+    try:
+        agent._auth_server_url = get_settings().AUTH_SERVER_URL
+    except Exception:
+        pass
 
     # 4. Rebuild provider with current settings (in case keys were updated since last start)
     agent._rebuild_provider()
