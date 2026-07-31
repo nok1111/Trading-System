@@ -67,12 +67,13 @@ def migrate():
         sqlite_cur.execute(f"PRAGMA table_info({table})")
         sqlite_cols = [row["name"] for row in sqlite_cur.fetchall()]
 
-        # Get PostgreSQL columns
+        # Get PostgreSQL columns with their data types
         pg_cur.execute("""
-            SELECT column_name FROM information_schema.columns
+            SELECT column_name, data_type FROM information_schema.columns
             WHERE table_name = %s
         """, (table,))
-        pg_cols = {row[0] for row in pg_cur.fetchall()}
+        pg_col_types = {row[0]: row[1] for row in pg_cur.fetchall()}
+        pg_cols = set(pg_col_types.keys())
 
         if not pg_cols:
             print(f"  SKIP: {table} (not in PostgreSQL)")
@@ -80,6 +81,9 @@ def migrate():
 
         # Only migrate columns that exist in BOTH databases
         common_cols = [c for c in sqlite_cols if c in pg_cols]
+
+        # Identify boolean columns for type conversion
+        bool_cols = {c for c in common_cols if pg_col_types[c] == "boolean"}
 
         # Read all rows from SQLite
         col_list = ", ".join(common_cols)
@@ -90,7 +94,7 @@ def migrate():
             print(f"  SKIP: {table} (empty)")
             continue
 
-        print(f"  Migrating {table}: {len(rows)} rows (cols: {len(common_cols)})...")
+        print(f"  Migrating {table}: {len(rows)} rows (cols: {len(common_cols)}, bools: {len(bool_cols)})...")
 
         # Build INSERT with ON CONFLICT DO NOTHING (preserve existing IDs)
         placeholders = ", ".join(["%s"] * len(common_cols))
@@ -101,7 +105,13 @@ def migrate():
         """
 
         for row in rows:
-            values = [row[col] for col in common_cols]
+            values = []
+            for col in common_cols:
+                val = row[col]
+                # Convert integer 0/1 to boolean for boolean columns
+                if col in bool_cols and val is not None:
+                    val = bool(val)
+                values.append(val)
             pg_cur.execute(insert_sql, values)
 
         pg_conn.commit()
