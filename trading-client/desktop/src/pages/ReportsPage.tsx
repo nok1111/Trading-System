@@ -133,9 +133,15 @@ export function ReportsPage() {
         return result;
       };
 
-      const formattedQty = roundToStep(quantity, stepSize);
+      let formattedQty = roundToStep(quantity, stepSize);
       const formattedTp = roundToStep(take_profit, tickSize);
       const formattedSl = roundToStep(stop_loss, tickSize);
+
+      // If rounding to step makes qty 0 but original qty > 0, use original qty
+      // (Binance allows fractional qty for existing positions even if LOT_SIZE step changed)
+      if (parseFloat(formattedQty) === 0 && quantity > 0) {
+        formattedQty = String(quantity);
+      }
 
       // Validate quantity
       const qtyNum = parseFloat(formattedQty);

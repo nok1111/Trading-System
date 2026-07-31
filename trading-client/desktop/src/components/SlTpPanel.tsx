@@ -168,9 +168,15 @@ export function SlTpPanel({
           return result;
         };
 
-        const formattedQty = roundToStep(quantity, stepSize);
+        let formattedQty = roundToStep(quantity, stepSize);
         const formattedTp = roundToStep(tp, tickSize);
         const formattedSl = roundToStep(sl, tickSize);
+
+        // If rounding to step makes qty 0 but original qty > 0, use original qty
+        // (Binance allows fractional qty for existing positions even if LOT_SIZE step changed)
+        if (parseFloat(formattedQty) === 0 && quantity > 0) {
+          formattedQty = String(quantity);
+        }
 
         // Validate quantity against minQty
         const minQtyNum = parseFloat(minQty);
