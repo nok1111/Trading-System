@@ -693,7 +693,7 @@ def get_binance_balance(
         "total_usd": round(total_usd, 2),
         "total_mxn": round(total_usd * mxn_rate, 2),
         "mxn_rate": round(mxn_rate, 4),
-        "testnet": settings.BINANCE_TESTNET,
+        "testnet": creds.testnet,
         "usdt_free": round(usdt_free, 4),
         "usdt_total": round(usdt_total, 4),
         "usdt_mxn": round(usdt_total * mxn_rate, 2),
