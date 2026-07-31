@@ -1254,6 +1254,7 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
       .map((p) => ({
         id: p.id,
         symbol: p.symbol,
+        side: p.side || "long",
         entry_price: Number(p.entry_price),
         current_price: Number(p.current_price || 0),
         stop_loss: p.stop_loss ? Number(p.stop_loss) : null,

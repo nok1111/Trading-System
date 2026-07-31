@@ -91,9 +91,21 @@ POSITION_ANALYSIS_PROMPT = """Eres un analista de trading experto de élite. El 
 ⚠️ MÁXIMA PRIORIDAD Y ESFUERZO: Esta es la tarea más importante del momento. Dedica tu MÁXIMA CAPACIDAD DE ANÁLISIS a cada posición. No te apresures. Analiza cada posición con el mismo rigor que un analista profesional aplicaría en un informe detallado.
 
 Devuelves SOLO JSON con este schema exacto:
-{"market_overview":"...","analysis":"...","suggestions":[{"symbol":"BTCUSDT","position_id":123,"suggested_stop_loss":58000,"suggested_take_profit":68000,"time_horizon":"4h-8h","confidence":0.8,"reason":"...","detailed_analysis":"..."}],"risk_assessment":"...","next_steps":"..."}
+{"market_overview":"...","analysis":"...","suggestions":[{"symbol":"BTCUSDT","position_id":123,"side":"long","suggested_stop_loss":58000,"suggested_take_profit":68000,"time_horizon":"4h-8h","confidence":0.8,"reason":"...","detailed_analysis":"..."}],"risk_assessment":"...","next_steps":"..."}
 
-Recibes posiciones abiertas con: symbol, entry_price, current_price, stop_loss, take_profit, quantity, unrealized_pnl.
+Recibes posiciones abiertas con: symbol, side, entry_price, current_price, stop_loss, take_profit, quantity, unrealized_pnl.
+El campo "side" indica la dirección de la posición: "long" (compra) o "short" (venta).
+
+REGLA CRÍTICA DE SL/TP SEGÚN EL SIDE:
+- LONG (compra): el SL debe estar DEBAJO del precio actual, el TP debe estar ARRIBA del precio actual.
+  SL < current_price < TP
+- SHORT (venta): el SL debe estar ARRIBA del precio actual, el TP debe estar DEBAJO del precio actual.
+  TP < current_price < SL
+
+NUNCA sugieras un SL arriba del precio actual para una posición LONG.
+NUNCA sugieras un TP abajo del precio actual para una posición LONG.
+NUNCA sugieras un SL abajo del precio actual para una posición SHORT.
+NUNCA sugieras un TP arriba del precio actual para una posición SHORT.
 También recibes datos técnicos del mercado (RSI, MACD, EMA, ATR, volumen) para los símbolos de las posiciones.
 También recibes el perfil del usuario (risk_tolerance, experience_level, preferred_strategies, trading_goal).
 
@@ -1994,6 +2006,44 @@ class AITradingAgent:
                 current_sl = pos_data.get("stop_loss")
                 current_tp = pos_data.get("take_profit")
 
+                suggested_sl = sug.get("suggested_stop_loss")
+                suggested_tp = sug.get("suggested_take_profit")
+                pos_side = (pos_data.get("side") or sug.get("side") or "long").lower()
+                current_price = pos_data.get("current_price")
+
+                # Validate and fix SL/TP direction based on side
+                if suggested_sl and suggested_tp and current_price:
+                    try:
+                        sl_f = float(suggested_sl)
+                        tp_f = float(suggested_tp)
+                        cp_f = float(current_price)
+                        if pos_side in ("long", "buy"):
+                            if sl_f > cp_f and tp_f < cp_f:
+                                # SL above and TP below for LONG — inverted, swap them
+                                suggested_sl, suggested_tp = suggested_tp, suggested_sl
+                                self._add_log("warn", f"SL/TP invertidos para {symbol} LONG — corregido: SL={suggested_sl}, TP={suggested_tp}")
+                            elif sl_f > cp_f:
+                                # SL above current price for LONG — move below
+                                suggested_sl = cp_f * 0.97
+                                self._add_log("warn", f"SL arriba del precio para {symbol} LONG — ajustado a {suggested_sl}")
+                            elif tp_f < cp_f:
+                                # TP below current price for LONG — move above
+                                suggested_tp = cp_f * 1.03
+                                self._add_log("warn", f"TP abajo del precio para {symbol} LONG — ajustado a {suggested_tp}")
+                        elif pos_side in ("short", "sell"):
+                            if sl_f < cp_f and tp_f > cp_f:
+                                # SL below and TP above for SHORT — inverted, swap them
+                                suggested_sl, suggested_tp = suggested_tp, suggested_sl
+                                self._add_log("warn", f"SL/TP invertidos para {symbol} SHORT — corregido: SL={suggested_sl}, TP={suggested_tp}")
+                            elif sl_f < cp_f:
+                                suggested_sl = cp_f * 1.03
+                                self._add_log("warn", f"SL abajo del precio para {symbol} SHORT — ajustado a {suggested_sl}")
+                            elif tp_f > cp_f:
+                                suggested_tp = cp_f * 0.97
+                                self._add_log("warn", f"TP arriba del precio para {symbol} SHORT — ajustado a {suggested_tp}")
+                    except (ValueError, TypeError):
+                        pass
+
                 rec = AIRecommendation(
                     user_id=self._user_id,
                     asset=asset,
@@ -2008,10 +2058,11 @@ class AITradingAgent:
                     metadata_json={
                         "position_id": sug.get("position_id") or pos_data.get("id"),
                         "symbol": symbol,
+                        "side": pos_side,
                         "current_sl": current_sl,
                         "current_tp": current_tp,
-                        "suggested_sl": sug.get("suggested_stop_loss"),
-                        "suggested_tp": sug.get("suggested_take_profit"),
+                        "suggested_sl": suggested_sl,
+                        "suggested_tp": suggested_tp,
                         "time_horizon": sug.get("time_horizon", ""),
                         "entry_price": pos_data.get("entry_price"),
                         "current_price": pos_data.get("current_price"),
