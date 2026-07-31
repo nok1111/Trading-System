@@ -110,6 +110,8 @@ export function SlTpPanel({
         let stepSize = "0.00000001";
         let tickSize = "0.00000001";
         let minQty = "0";
+        let minNotional = "0";
+        let exchangeInfoOk = false;
         try {
           const exInfo = await binanceProxy.getExchangeInfo(brokerSymbol);
           const filters = exInfo?.symbols?.[0]?.filters || [];
@@ -119,24 +121,80 @@ export function SlTpPanel({
               minQty = f.minQty || minQty;
             } else if (f.filterType === "PRICE_FILTER") {
               tickSize = f.tickSize || tickSize;
+            } else if (f.filterType === "MIN_NOTIONAL") {
+              minNotional = f.minNotional || minNotional;
             }
           }
+          exchangeInfoOk = true;
         } catch (err) {
-          console.warn("Could not fetch exchangeInfo, using defaults", err);
+          console.warn("Could not fetch exchangeInfo via proxy, trying direct", err);
+          // Fallback: fetch exchangeInfo directly from Binance (public endpoint, no auth needed)
+          try {
+            const directResp = await fetch(`https://api.binance.com/api/v3/exchangeInfo?symbol=${brokerSymbol}`);
+            if (directResp.ok) {
+              const exInfo = await directResp.json();
+              const filters = exInfo?.symbols?.[0]?.filters || [];
+              for (const f of filters) {
+                if (f.filterType === "LOT_SIZE") {
+                  stepSize = f.stepSize || stepSize;
+                  minQty = f.minQty || minQty;
+                } else if (f.filterType === "PRICE_FILTER") {
+                  tickSize = f.tickSize || tickSize;
+                } else if (f.filterType === "MIN_NOTIONAL") {
+                  minNotional = f.minNotional || minNotional;
+                }
+              }
+              exchangeInfoOk = true;
+            }
+          } catch (err2) {
+            console.warn("Direct exchangeInfo also failed", err2);
+          }
         }
 
-        // Helper: round to step size
+        // Helper: round to step size (robust against floating point errors)
         const roundToStep = (value: number, step: string): string => {
           const stepNum = parseFloat(step);
-          if (stepNum <= 0) return String(value);
-          const decimals = (step.split(".")[1] || "").length;
-          const rounded = Math.floor(value / stepNum) * stepNum;
-          return rounded.toFixed(decimals).replace(/0+$/, "").replace(/\.$/, "");
+          if (stepNum <= 0 || isNaN(stepNum)) return String(value);
+          // Count decimals from step string (e.g. "0.00010000" → 4 meaningful decimals)
+          const stepStr = step.replace(/0+$/, "").replace(/\.$/, "");
+          const decimals = (stepStr.split(".")[1] || "").length;
+          // Use string-based rounding to avoid floating point errors
+          const quotient = Math.floor(value / stepNum);
+          const rounded = quotient * stepNum;
+          let result = rounded.toFixed(Math.max(decimals, 0));
+          // Strip trailing zeros but keep at least one digit
+          result = result.replace(/0+$/, "").replace(/\.$/, "");
+          if (result === "" || result === "-0" || parseFloat(result) === 0) return "0";
+          return result;
         };
 
         const formattedQty = roundToStep(quantity, stepSize);
         const formattedTp = roundToStep(tp, tickSize);
         const formattedSl = roundToStep(sl, tickSize);
+
+        // Validate quantity against minQty
+        const minQtyNum = parseFloat(minQty);
+        const qtyNum = parseFloat(formattedQty);
+        if (qtyNum <= 0) {
+          toast(`Cantidad inválida (${formattedQty}) para ${symbol}. Verifica la posición.`, false);
+          setLoading(false);
+          return;
+        }
+        if (minQtyNum > 0 && qtyNum < minQtyNum) {
+          toast(`Cantidad ${formattedQty} es menor al mínimo de Binance (${minQty}) para ${symbol}.`, false);
+          setLoading(false);
+          return;
+        }
+        // Validate minNotional (qty * price >= minNotional)
+        const minNotionalNum = parseFloat(minNotional);
+        if (minNotionalNum > 0 && qtyNum * tp < minNotionalNum) {
+          toast(`Valor de la orden (${(qtyNum * tp).toFixed(2)} USDT) es menor al mínimo de Binance (${minNotional} USDT) para ${symbol}.`, false);
+          setLoading(false);
+          return;
+        }
+        if (!exchangeInfoOk) {
+          toast(`Aviso: No se pudo obtener exchangeInfo. Usando step size por defecto.`, false);
+        }
 
         // First, cancel existing SL/TP orders for this symbol
         try {
