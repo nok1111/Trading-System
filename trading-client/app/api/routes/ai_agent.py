@@ -282,6 +282,26 @@ def ai_agent_start(
     agent._rebuild_provider()
 
     agent.start()
+    # Create AgentSession record
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.agent_session import AgentSession
+        db = SessionLocal()
+        session = AgentSession(
+            user_id=current_user.id if current_user else 0,
+            mode="live" if (current_user and get_settings().LIVE_TRADING_ENABLED) else "paper",
+            broker_name=get_settings().BROKER_PROVIDER,
+            interval_seconds=agent.interval,
+            auto_trade=agent.auto_trade,
+            status="running",
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        state.current_agent_session_id = session.id
+        db.close()
+    except Exception:
+        pass
     # Create initial snapshot so overview tab shows data
     try:
         keys = resolve_binancekeys(current_user)
@@ -293,14 +313,65 @@ def ai_agent_start(
 
 
 @router.post("/ai-agent/stop")
-def ai_agent_stop() -> dict:
+def ai_agent_stop(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
     """Detiene el agente de IA."""
     agent = get_or_create_agent()
     agent.stop()
     agent._jwt_token = None
     agent._grant_fail_streak = 0
     state.ai_jwt_token = None
+    # Close AgentSession record
+    try:
+        session_id = getattr(state, "current_agent_session_id", None)
+        if session_id:
+            from app.database.session import SessionLocal
+            from app.database.models.agent_session import AgentSession
+            db = SessionLocal()
+            sess = db.query(AgentSession).filter(AgentSession.id == session_id).first()
+            if sess:
+                from datetime import datetime, UTC
+                sess.ended_at = datetime.now(UTC)
+                sess.status = "stopped"
+                sess.cycle_count = agent._cycle
+                db.commit()
+            db.close()
+            state.current_agent_session_id = None
+    except Exception:
+        pass
     return agent.get_status()
+
+
+@router.get("/ai-agent/sessions")
+def ai_agent_sessions(
+    limit: int = 20,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> list[dict]:
+    """List AI agent sessions for the current user."""
+    uid = current_user.id if current_user else 0
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.agent_session import AgentSession
+        db = SessionLocal()
+        sessions = db.query(AgentSession).filter(
+            AgentSession.user_id == uid
+        ).order_by(AgentSession.started_at.desc()).limit(limit).all()
+        db.close()
+        return [{
+            "id": s.id,
+            "started_at": s.started_at.isoformat() if s.started_at else "",
+            "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+            "mode": s.mode,
+            "broker_name": s.broker_name,
+            "interval_seconds": s.interval_seconds,
+            "auto_trade": s.auto_trade,
+            "cycle_count": s.cycle_count,
+            "trades_executed": s.trades_executed,
+            "status": s.status,
+        } for s in sessions]
+    except Exception:
+        return []
 
 
 class AnalyzePositionsRequest(BaseModel):

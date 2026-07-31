@@ -727,8 +727,8 @@ def check_price_alerts() -> dict:
 # Risk Management Endpoints
 # ---------------------------------------------------------------------------
 
-# In-memory risk config (persisted via settings in production)
-_risk_config: dict = {
+# Default risk config values (used when no DB row exists for user)
+_DEFAULT_RISK_CONFIG = {
     "trailing_stop_pct": 2.0,
     "hard_stop_loss_pct": 3.0,
     "take_profit_pct": 6.0,
@@ -744,6 +744,33 @@ _risk_config: dict = {
     "auto_sell_time_enabled": True,
     "auto_sell_volume_enabled": True,
 }
+
+# Fallback in-memory for unauthenticated requests
+_risk_config: dict = dict(_DEFAULT_RISK_CONFIG)
+
+
+def _get_risk_config_db(db, user_id: int) -> dict:
+    """Load risk config from DB for a user, or return defaults."""
+    from app.database.models.risk_config import RiskConfig
+    rc = db.query(RiskConfig).filter(RiskConfig.user_id == user_id).first()
+    if rc:
+        return {
+            "trailing_stop_pct": rc.trailing_stop_pct,
+            "hard_stop_loss_pct": rc.hard_stop_loss_pct,
+            "take_profit_pct": rc.take_profit_pct,
+            "max_position_size_pct": rc.max_position_size_pct,
+            "max_open_positions": rc.max_open_positions,
+            "daily_loss_limit_pct": rc.daily_loss_limit_pct,
+            "circuit_breaker_enabled": rc.circuit_breaker_enabled,
+            "auto_sell_rsi_overbought": rc.auto_sell_rsi_overbought,
+            "auto_sell_max_position_hours": rc.auto_sell_max_position_hours,
+            "auto_sell_min_volume_relative": rc.auto_sell_min_volume_relative,
+            "auto_sell_macd_bearish": rc.auto_sell_macd_bearish,
+            "auto_sell_rsi_enabled": rc.auto_sell_rsi_enabled,
+            "auto_sell_time_enabled": rc.auto_sell_time_enabled,
+            "auto_sell_volume_enabled": rc.auto_sell_volume_enabled,
+        }
+    return dict(_DEFAULT_RISK_CONFIG)
 
 
 class RiskConfigRequest(_BaseModel):
@@ -764,21 +791,55 @@ class RiskConfigRequest(_BaseModel):
 
 
 @router.get("/risk/config")
-def get_risk_config() -> dict:
-    """Get current risk management configuration."""
-    return dict(_risk_config)
+def get_risk_config(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Get current risk management configuration (per-user from DB)."""
+    if not current_user:
+        return dict(_risk_config)
+    from app.database.session import SessionLocal
+    from app.database.models.risk_config import RiskConfig
+    db = SessionLocal()
+    try:
+        return _get_risk_config_db(db, current_user.id)
+    finally:
+        db.close()
 
 
 @router.post("/risk/config")
-def update_risk_config(req: RiskConfigRequest) -> dict:
-    """Update risk management configuration."""
-    changes = []
-    for field, value in req.model_dump(exclude_none=True).items():
-        old = _risk_config.get(field)
-        _risk_config[field] = value
-        changes.append(f"{field}: {old} -> {value}")
-    logger.info("Risk config updated: %s", "; ".join(changes))
-    return {"status": "ok", "config": dict(_risk_config)}
+def update_risk_config(
+    req: RiskConfigRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Update risk management configuration (per-user in DB)."""
+    if not current_user:
+        # Fallback to in-memory for unauthenticated
+        changes = []
+        for field, value in req.model_dump(exclude_none=True).items():
+            old = _risk_config.get(field)
+            _risk_config[field] = value
+            changes.append(f"{field}: {old} -> {value}")
+        logger.info("Risk config updated (in-memory): %s", "; ".join(changes))
+        return {"status": "ok", "config": dict(_risk_config)}
+
+    from app.database.session import SessionLocal
+    from app.database.models.risk_config import RiskConfig
+    db = SessionLocal()
+    try:
+        rc = db.query(RiskConfig).filter(RiskConfig.user_id == current_user.id).first()
+        if not rc:
+            rc = RiskConfig(user_id=current_user.id)
+            db.add(rc)
+        changes = []
+        for field, value in req.model_dump(exclude_none=True).items():
+            old = getattr(rc, field)
+            setattr(rc, field, value)
+            changes.append(f"{field}: {old} -> {value}")
+        db.commit()
+        logger.info("Risk config updated (DB, user=%s): %s", current_user.id, "; ".join(changes))
+        return {"status": "ok", "config": _get_risk_config_db(db, current_user.id)}
+    finally:
+        db.close()
 
 
 @router.get("/risk/status")
@@ -792,6 +853,7 @@ def get_risk_status(
         from app.database.models.position import Position
         db = SessionLocal()
         try:
+            rc = _get_risk_config_db(db, uid) if current_user else dict(_risk_config)
             positions = db.query(Position).filter(Position.status == "open", Position.user_id == uid).all()
             total_exposure = sum(
                 abs(float(p.quantity or 0)) * float(p.current_price or p.entry_price or 0)
@@ -803,22 +865,22 @@ def get_risk_status(
             daily_loss = abs(min(total_pnl, 0))
             daily_loss_pct = (daily_loss / total_exposure * 100) if total_exposure > 0 else 0
             circuit_triggered = (
-                _risk_config.get("circuit_breaker_enabled", True)
-                and daily_loss_pct >= _risk_config.get("daily_loss_limit_pct", 5.0)
+                rc.get("circuit_breaker_enabled", True)
+                and daily_loss_pct >= rc.get("daily_loss_limit_pct", 5.0)
             )
 
             return {
                 "open_positions": len(positions),
-                "max_open_positions": _risk_config.get("max_open_positions", 5),
+                "max_open_positions": rc.get("max_open_positions", 5),
                 "total_exposure": round(total_exposure, 2),
                 "total_unrealized_pnl": round(total_pnl, 2),
                 "daily_loss_pct": round(daily_loss_pct, 2),
-                "daily_loss_limit_pct": _risk_config.get("daily_loss_limit_pct", 5.0),
-                "circuit_breaker_enabled": _risk_config.get("circuit_breaker_enabled", True),
+                "daily_loss_limit_pct": rc.get("daily_loss_limit_pct", 5.0),
+                "circuit_breaker_enabled": rc.get("circuit_breaker_enabled", True),
                 "circuit_breaker_triggered": circuit_triggered,
-                "trailing_stop_pct": _risk_config.get("trailing_stop_pct", 2.0),
-                "hard_stop_loss_pct": _risk_config.get("hard_stop_loss_pct", 3.0),
-                "take_profit_pct": _risk_config.get("take_profit_pct", 6.0),
+                "trailing_stop_pct": rc.get("trailing_stop_pct", 2.0),
+                "hard_stop_loss_pct": rc.get("hard_stop_loss_pct", 3.0),
+                "take_profit_pct": rc.get("take_profit_pct", 6.0),
                 "positions": [
                     {
                         "symbol": p.symbol,

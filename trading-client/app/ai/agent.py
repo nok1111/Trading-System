@@ -356,6 +356,25 @@ class AITradingAgent:
         return self._thread is not None and self._thread.is_alive()
 
     def get_log(self, limit: int = 50) -> list[dict]:
+        # Try DB first, fallback to in-memory
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.agent_log import AgentLog
+            db = SessionLocal()
+            logs = db.query(AgentLog).filter(
+                AgentLog.user_id == self._user_id
+            ).order_by(AgentLog.id.desc()).limit(limit).all()
+            db.close()
+            if logs:
+                return [{
+                    "timestamp": log.timestamp.isoformat() if log.timestamp else "",
+                    "level": log.level,
+                    "message": log.message,
+                    "cycle": log.cycle,
+                    **(log.metadata_json or {}),
+                } for log in logs]
+        except Exception:
+            pass
         return list(reversed(self._log[-limit:]))
 
     def get_status(self) -> dict:
@@ -412,6 +431,34 @@ class AITradingAgent:
             logger.error(f"[AI Agent] {message}")
         else:
             logger.info(f"[AI Agent] {message}")
+
+        # Persist to DB
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.agent_log import AgentLog
+            db = SessionLocal()
+            db.add(AgentLog(
+                user_id=self._user_id,
+                level=level,
+                message=message,
+                cycle=self._cycle if hasattr(self, "_cycle") else None,
+                metadata_json=extra or {},
+            ))
+            db.commit()
+            # Cleanup old logs (keep last 500 per user)
+            db.query(AgentLog).filter(
+                AgentLog.user_id == self._user_id,
+                AgentLog.id.notin_(
+                    db.query(AgentLog.id)
+                    .filter(AgentLog.user_id == self._user_id)
+                    .order_by(AgentLog.id.desc())
+                    .limit(500)
+                )
+            ).delete(synchronize_session=False)
+            db.commit()
+            db.close()
+        except Exception:
+            pass
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():

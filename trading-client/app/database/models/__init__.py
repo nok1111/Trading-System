@@ -1,6 +1,8 @@
 """Modelos de datos del sistema de trading (Trading Client — sin User)."""
 
 from app.database.models.account_snapshot import AccountSnapshot
+from app.database.models.agent_log import AgentLog
+from app.database.models.agent_session import AgentSession
 from app.database.models.ai_recommendation import AIRecommendation
 from app.database.models.backtest_run import BacktestRun
 from app.database.models.broker_account import BrokerAccount
@@ -15,6 +17,7 @@ from app.database.models.order_reconciliation import OrderReconciliation
 from app.database.models.position import Position
 from app.database.models.price_alert import PriceAlert
 from app.database.models.prediction_record import PredictionRecord
+from app.database.models.risk_config import RiskConfig
 from app.database.models.risk_event import RiskEvent
 from app.database.models.signal import Signal
 from app.database.models.strategy_run import StrategyRun
@@ -25,6 +28,8 @@ from app.database.models.user_profile import UserProfile
 
 __all__ = [
     "AccountSnapshot",
+    "AgentLog",
+    "AgentSession",
     "AIRecommendation",
     "BacktestRun",
     "BrokerAccount",
@@ -39,6 +44,7 @@ __all__ = [
     "Position",
     "PriceAlert",
     "PredictionRecord",
+    "RiskConfig",
     "RiskEvent",
     "Signal",
     "StrategyRun",
