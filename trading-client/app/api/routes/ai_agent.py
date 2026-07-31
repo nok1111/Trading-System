@@ -283,7 +283,7 @@ def ai_agent_start(
     agent.start()
     # Create initial snapshot so overview tab shows data
     try:
-        keys = resolve_binance_keys(current_user)
+        keys = resolve_binancekeys(current_user)
         broker = get_shared_broker(keys)
         create_ai_snapshot(broker)
     except Exception:
@@ -1509,7 +1509,7 @@ def get_trading_mode(
     """Retorna el modo de trading actual y configuración de safety."""
     settings = get_settings()
     is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
-    keys = resolve_binance_keys(current_user)
+    keys = resolve_binancekeys(current_user)
     is_binance = bool(keys)
     # Use runtime override if set, otherwise use config value
     allocated = state.ai_allocated_capital if state.ai_allocated_capital > 0 else settings.AI_ALLOCATED_CAPITAL
@@ -1594,7 +1594,7 @@ def ai_agent_execute(
 
     # Determinar si estamos en modo live
     is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
-    keys = resolve_binance_keys(current_user)
+    keys = resolve_binancekeys(current_user)
     is_binance_broker = bool(keys)
 
     # Safety: Kill switch (blocks buys, allows sells to close positions)
