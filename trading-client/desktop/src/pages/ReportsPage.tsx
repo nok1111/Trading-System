@@ -145,7 +145,11 @@ export function ReportsPage() {
         return;
       }
       if (minQtyNum > 0 && qtyNum < minQtyNum) {
-        toast(`Cantidad ${formattedQty} menor al mínimo de Binance (${minQty}) para ${symbol}.`, false);
+        const marketLabel = is_futures ? "Futuros" : "Spot";
+        const suggestion = is_futures
+          ? "Verifica la cantidad de tu posición en futuros."
+          : `Binance Spot requiere mínimo ${minQty} ${symbol.replace("USDT", "")}. Tienes ${formattedQty}. Considera comprar más o mover la posición a Futuros (mínimo 0.001).`;
+        toast(`Cantidad insuficiente para ${marketLabel}: ${formattedQty} < mínimo ${minQty}. ${suggestion}`, false);
         setActionLoading(null);
         return;
       }

@@ -1386,15 +1386,22 @@ def import_binance_positions(
             if price <= 0:
                 continue
 
-            # Check if already exists as open position
+            # Check if spot position already exists (futures can coexist separately)
             existing = db.query(PositionModel).filter(
                 PositionModel.symbol == symbol,
                 PositionModel.status == "open",
                 PositionModel.user_id == current_user.id,
-            ).first()
-            if existing:
-                existing.current_price = Decimal(str(price))
-                existing.unrealized_pnl = (Decimal(str(price)) - existing.entry_price) * existing.quantity
+            ).all()
+            spot_existing = None
+            for ex in existing:
+                ex_meta = ex.metadata_json or {}
+                ex_source = ex_meta.get("source") or ""
+                if "futures" not in ex_source:
+                    spot_existing = ex
+                    break
+            if spot_existing:
+                spot_existing.current_price = Decimal(str(price))
+                spot_existing.unrealized_pnl = (Decimal(str(price)) - spot_existing.entry_price) * spot_existing.quantity
                 skipped += 1
                 continue
 
@@ -1431,10 +1438,17 @@ def import_binance_positions(
                     PositionModel.symbol == symbol,
                     PositionModel.status == "open",
                     PositionModel.user_id == current_user.id,
-                ).first()
-                if existing:
-                    existing.current_price = Decimal(str(mark))
-                    existing.unrealized_pnl = (Decimal(str(mark)) - existing.entry_price) * existing.quantity
+                ).all()
+                # Update existing futures position if found, skip if only spot exists
+                futures_existing = None
+                for ex in existing:
+                    ex_meta = ex.metadata_json or {}
+                    if "futures" in (ex_meta.get("source") or ""):
+                        futures_existing = ex
+                        break
+                if futures_existing:
+                    futures_existing.current_price = Decimal(str(mark))
+                    futures_existing.unrealized_pnl = (Decimal(str(mark)) - futures_existing.entry_price) * futures_existing.quantity
                     skipped += 1
                     continue
 

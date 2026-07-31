@@ -1971,6 +1971,23 @@ def apply_oco_from_report(
         pos_meta = pos.metadata_json or {}
         is_futures = "futures" in (pos_meta.get("source") or "")
 
+        # If spot position, check if there's also a futures position for the same symbol
+        # (import may have created spot first and skipped futures). Use futures if available.
+        if not is_futures:
+            futures_pos = db.query(Position).filter(
+                Position.symbol == pos.symbol,
+                Position.status == "open",
+                Position.user_id == pos.user_id,
+            ).all()
+            for fp in futures_pos:
+                fp_meta = fp.metadata_json or {}
+                if "futures" in (fp_meta.get("source") or ""):
+                    pos = fp
+                    pos_meta = fp_meta
+                    is_futures = True
+                    position_id = fp.id
+                    break
+
         return {
             "status": "ready",
             "position_id": position_id,
