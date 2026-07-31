@@ -25,6 +25,8 @@ from app.database.models.system_event import SystemEvent
 from app.database.models.trade import Trade
 from app.database.models.user_settings import UserSettings
 from app.database.models.user_profile import UserProfile
+from app.database.models.user_preference import UserPreference
+from app.database.models.watchlist import Watchlist
 
 __all__ = [
     "AccountSnapshot",
@@ -52,4 +54,6 @@ __all__ = [
     "Trade",
     "UserSettings",
     "UserProfile",
+    "UserPreference",
+    "Watchlist",
 ]

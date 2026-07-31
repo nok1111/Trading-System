@@ -104,5 +104,14 @@ def run_cleanup() -> dict[str, int]:
         "analysis_deleted": cleanup_old_analysis(),
         "events_deleted": cleanup_old_events(),
     }
+    # Also run broader cleanup (notifications, signals, agent logs, etc.)
+    try:
+        from app.services.cleanup_service import cleanup_old_data
+        session = SessionLocal()
+        broad = cleanup_old_data(session)
+        session.close()
+        results.update(broad)
+    except Exception as exc:
+        logger.error("[Cleanup] Broad cleanup failed: %s", exc)
     logger.info("[Cleanup] Complete: %s", results)
     return results

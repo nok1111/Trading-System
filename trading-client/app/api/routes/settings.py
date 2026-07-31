@@ -159,3 +159,150 @@ def _mask(enc_value: str | None) -> str:
         return val[:4] + "****" + val[-4:]
     except Exception:
         return "****"
+
+
+# ---------------------------------------------------------------------------
+# User Preferences (theme, risk profile, dashboard layout)
+# ---------------------------------------------------------------------------
+
+class PreferencesRequest(BaseModel):
+    theme: str | None = None
+    risk_profile: str | None = None
+    dashboard_layout: dict | None = None
+
+
+@router.get("/preferences")
+def get_preferences(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Get user's UI preferences (theme, risk profile, dashboard layout)."""
+    from app.database.models.user_preference import UserPreference
+    pref = db.query(UserPreference).filter(UserPreference.user_id == current_user.id).first()
+    if not pref:
+        return {"theme": "dark", "risk_profile": "moderate", "dashboard_layout": {}}
+    return {
+        "theme": pref.theme,
+        "risk_profile": pref.risk_profile,
+        "dashboard_layout": pref.dashboard_layout or {},
+    }
+
+
+@router.post("/preferences")
+def save_preferences(
+    req: PreferencesRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Save user's UI preferences (partial update)."""
+    from app.database.models.user_preference import UserPreference
+    pref = db.query(UserPreference).filter(UserPreference.user_id == current_user.id).first()
+    if not pref:
+        pref = UserPreference(user_id=current_user.id)
+        db.add(pref)
+    if req.theme is not None:
+        pref.theme = req.theme
+    if req.risk_profile is not None:
+        pref.risk_profile = req.risk_profile
+    if req.dashboard_layout is not None:
+        pref.dashboard_layout = req.dashboard_layout
+    db.commit()
+    return {"saved": True, "theme": pref.theme, "risk_profile": pref.risk_profile}
+
+
+# ---------------------------------------------------------------------------
+# Watchlist (favorite trading symbols)
+# ---------------------------------------------------------------------------
+
+class WatchlistAddRequest(BaseModel):
+    symbol: str
+    display_name: str | None = None
+
+
+class WatchlistReorderRequest(BaseModel):
+    symbols: list[str] = []
+
+
+@router.get("/watchlist")
+def get_watchlist(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict]:
+    """Get user's watchlist (favorite symbols)."""
+    from app.database.models.watchlist import Watchlist
+    items = db.query(Watchlist).filter(
+        Watchlist.user_id == current_user.id
+    ).order_by(Watchlist.sort_order).all()
+    return [{
+        "id": w.id,
+        "symbol": w.symbol,
+        "display_name": w.display_name,
+        "sort_order": w.sort_order,
+    } for w in items]
+
+
+@router.post("/watchlist")
+def add_to_watchlist(
+    req: WatchlistAddRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Add a symbol to the user's watchlist."""
+    from app.database.models.watchlist import Watchlist
+    existing = db.query(Watchlist).filter(
+        Watchlist.user_id == current_user.id,
+        Watchlist.symbol == req.symbol,
+    ).first()
+    if existing:
+        return {"status": "exists", "id": existing.id}
+    max_order = db.query(Watchlist).filter(
+        Watchlist.user_id == current_user.id
+    ).count()
+    w = Watchlist(
+        user_id=current_user.id,
+        symbol=req.symbol,
+        display_name=req.display_name,
+        sort_order=max_order,
+    )
+    db.add(w)
+    db.commit()
+    db.refresh(w)
+    return {"status": "added", "id": w.id}
+
+
+@router.delete("/watchlist/{symbol}")
+def remove_from_watchlist(
+    symbol: str,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Remove a symbol from the user's watchlist."""
+    from app.database.models.watchlist import Watchlist
+    w = db.query(Watchlist).filter(
+        Watchlist.user_id == current_user.id,
+        Watchlist.symbol == symbol,
+    ).first()
+    if w:
+        db.delete(w)
+        db.commit()
+        return {"status": "removed"}
+    return {"status": "not_found"}
+
+
+@router.patch("/watchlist/reorder")
+def reorder_watchlist(
+    req: WatchlistReorderRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Reorder the user's watchlist."""
+    from app.database.models.watchlist import Watchlist
+    for idx, symbol in enumerate(req.symbols):
+        w = db.query(Watchlist).filter(
+            Watchlist.user_id == current_user.id,
+            Watchlist.symbol == symbol,
+        ).first()
+        if w:
+            w.sort_order = idx
+    db.commit()
+    return {"status": "reordered"}
