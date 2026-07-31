@@ -66,7 +66,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       try {
         const tasks: { key: string; fn: () => Promise<any> }[] = [];
         if (module === "overview" || module === "portfolio") {
-          tasks.push({ key: "balance", fn: () => api<any>("/api/snapshots?limit=1").catch(() => null) });
+          tasks.push({ key: "balance", fn: () => api<any>("/api/binance/balance").catch(() => null) });
         }
         if (module === "overview" || module === "positions") {
           tasks.push({ key: "positions", fn: () => api<any[]>("/api/positions").catch(() => []) });
