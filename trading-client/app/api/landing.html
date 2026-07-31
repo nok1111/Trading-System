@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Alvora — Sistema de trading algorítmico potenciado por IA. Analiza el mercado 24/7 y ejecuta trades automáticamente en Binance.">
+<meta name="keywords" content="trading, crypto, IA, AI, binance, algorítmico, automatizado, bitcoin, USDT">
+<title>Alvora — AI Trading System</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;overflow-x:hidden;scroll-behavior:smooth}
+a{text-decoration:none;color:inherit}
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(15,23,42,.95);backdrop-filter:blur(10px);border-bottom:1px solid #1e293b;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center}
+.nav .logo{font-size:1.5rem;font-weight:800;color:#38bdf8;letter-spacing:-.5px}
+.nav .links{display:flex;gap:1.5rem;align-items:center}
+.nav .links a{color:#94a3b8;font-size:.85rem;transition:color .2s}
+.nav .links a:hover{color:#38bdf8}
+.nav .btn-login{padding:.5rem 1.2rem;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;font-size:.85rem;border:none;cursor:pointer;transition:background .2s}
+.nav .btn-login:hover{background:#1d4ed8}
+.hero{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:6rem 2rem 4rem;position:relative}
+.hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse at 50% 0%,rgba(56,189,248,.15),transparent 60%);pointer-events:none}
+.hero h1{font-size:3.5rem;font-weight:800;letter-spacing:-1px;margin-bottom:1rem;background:linear-gradient(135deg,#38bdf8,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{font-size:1.2rem;color:#94a3b8;max-width:600px;margin:0 auto 2rem;line-height:1.6}
+.hero .cta{display:flex;gap:1rem;justify-content:center}
+.hero .btn-primary{padding:.8rem 2rem;border-radius:10px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-weight:700;font-size:1rem;border:none;cursor:pointer;transition:transform .2s,box-shadow .2s}
+.hero .btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(37,99,235,.4)}
+.hero .btn-secondary{padding:.8rem 2rem;border-radius:10px;background:#1e293b;color:#e2e8f0;font-weight:600;font-size:1rem;border:1px solid #334155;cursor:pointer;transition:border-color .2s}
+.hero .btn-secondary:hover{border-color:#38bdf8}
+.hero .stats{display:flex;gap:3rem;justify-content:center;margin-top:3rem}
+.hero .stat{text-align:center}
+.hero .stat .num{font-size:2rem;font-weight:800;color:#38bdf8}
+.hero .stat .label{font-size:.8rem;color:#64748b;text-transform:uppercase}
+.section{padding:5rem 2rem;max-width:1100px;margin:0 auto}
+.section h2{text-align:center;font-size:2rem;font-weight:700;margin-bottom:.5rem}
+.section .subtitle{text-align:center;color:#94a3b8;font-size:1rem;margin-bottom:3rem}
+.how-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem}
+.how-step{background:#1e293b;padding:2rem;border-radius:1rem;border:1px solid #334155;text-align:center}
+.how-step .num{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-weight:800;font-size:1.1rem;margin-bottom:1rem}
+.how-step h3{font-size:1rem;font-weight:700;margin-bottom:.5rem;color:#38bdf8}
+.how-step p{color:#94a3b8;font-size:.85rem;line-height:1.6}
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem}
+.feature{background:#1e293b;padding:2rem;border-radius:1rem;border:1px solid #334155;transition:border-color .2s,transform .2s}
+.feature:hover{border-color:#38bdf8;transform:translateY(-4px)}
+.feature .icon{font-size:2rem;margin-bottom:1rem}
+.feature h3{font-size:1.1rem;font-weight:700;margin-bottom:.5rem;color:#38bdf8}
+.feature p{color:#94a3b8;font-size:.9rem;line-height:1.6}
+.pricing{background:#1e293b;padding:5rem 2rem;border-top:1px solid #334155;border-bottom:1px solid #334155}
+.pricing h2{text-align:center;font-size:2rem;font-weight:700;margin-bottom:.5rem}
+.pricing .subtitle{text-align:center;color:#94a3b8;margin-bottom:3rem}
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;max-width:1000px;margin:0 auto}
+.plan{background:#0f172a;padding:2.5rem;border-radius:1rem;border:1px solid #334155;text-align:center;position:relative;transition:transform .2s}
+.plan:hover{transform:translateY(-4px)}
+.plan.popular{border-color:#38bdf8;box-shadow:0 0 30px rgba(56,189,248,.15)}
+.plan .badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);padding:.3rem 1rem;border-radius:999px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-size:.75rem;font-weight:700}
+.plan h3{font-size:1.3rem;font-weight:700;margin-bottom:.5rem}
+.plan .price{font-size:3rem;font-weight:800;margin:1rem 0}
+.plan .price .period{font-size:1rem;color:#64748b;font-weight:400}
+.plan .price .currency{font-size:1rem;color:#f0b90b;font-weight:600}
+.plan .desc{color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem}
+.plan ul{list-style:none;text-align:left;margin-bottom:2rem}
+.plan ul li{padding:.5rem 0;color:#cbd5e1;font-size:.9rem;display:flex;align-items:center;gap:.5rem}
+.plan ul li::before{content:'✓';color:#34d399;font-weight:700}
+.plan ul li.disabled{color:#475569}
+.plan ul li.disabled::before{content:'✗';color:#475569}
+.plan .btn{width:100%;padding:.8rem;border-radius:8px;font-weight:700;font-size:.95rem;border:none;cursor:pointer;transition:background .2s}
+.plan .btn-free{background:#334155;color:#e2e8f0}
+.plan .btn-free:hover{background:#475569}
+.plan .btn-pro{background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff}
+.plan .btn-pro:hover{opacity:.9}
+.plan .btn-premium{background:linear-gradient(135deg,#f59e0b,#dc2626);color:#fff}
+.plan .btn-premium:hover{opacity:.9}
+.plan .pay-badge{margin-top:.8rem;font-size:.7rem;color:#f0b90b;font-weight:600}
+.faq-item{background:#1e293b;border:1px solid #334155;border-radius:.5rem;margin-bottom:.8rem;overflow:hidden}
+.faq-item summary{padding:1rem 1.2rem;cursor:pointer;font-weight:600;color:#cbd5e1;font-size:.9rem;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.faq-item summary::after{content:'+';color:#38bdf8;font-size:1.2rem}
+.faq-item[open] summary::after{content:'−'}
+.faq-item p{padding:0 1.2rem 1rem;color:#94a3b8;font-size:.85rem;line-height:1.6}
+.legal{max-width:800px;margin:0 auto;padding:4rem 2rem;color:#94a3b8;font-size:.85rem;line-height:1.8}
+.legal h2{color:#38bdf8;font-size:1.5rem;margin-bottom:1.5rem;text-align:left}
+.legal h3{color:#cbd5e1;font-size:1rem;margin:1.5rem 0 .5rem}
+.legal p{margin-bottom:1rem}
+.legal ul{margin-bottom:1rem;padding-left:1.5rem}
+.legal ul li{margin-bottom:.3rem}
+.contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1.5rem;max-width:800px;margin:0 auto}
+.contact-card{background:#1e293b;padding:2rem;border-radius:1rem;border:1px solid #334155;text-align:center}
+.contact-card .icon{font-size:2rem;margin-bottom:.8rem}
+.contact-card h3{color:#38bdf8;font-size:1rem;margin-bottom:.5rem}
+.contact-card p{color:#94a3b8;font-size:.85rem}
+.contact-card a{color:#38bdf8}
+.footer{background:#1e293b;padding:3rem 2rem;border-top:1px solid #334155}
+.footer-content{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:2rem}
+.footer-col h4{color:#38bdf8;font-size:.9rem;font-weight:700;margin-bottom:.8rem}
+.footer-col a{display:block;color:#64748b;font-size:.8rem;padding:.3rem 0;transition:color .2s}
+.footer-col a:hover{color:#38bdf8}
+.footer-bottom{text-align:center;padding:1.5rem 2rem;border-top:1px solid #334155;color:#475569;font-size:.8rem}
+.footer-bottom a{color:#38bdf8}
+@media(max-width:768px){
+.hero h1{font-size:2.2rem}
+.hero .stats{flex-direction:column;gap:1.5rem}
+.nav .links a:not(.btn-login){display:none}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+<div class="logo"><img src="/images/alvora_100px.png" alt="Alvora" style="width:32px;height:32px;vertical-align:middle;margin-right:.4rem;border-radius:6px">Alvora</div>
+<div class="links">
+<a href="#how">Cómo funciona</a>
+<a href="#features">Funciones</a>
+<a href="#pricing">Precios</a>
+<a href="#faq">FAQ</a>
+<a href="#contact">Contacto</a>
+<a href="/dashboard">Dashboard</a>
+<button class="btn-login" onclick="window.location.href='/dashboard'">Iniciar Sesión</button>
+</div>
+</nav>
+
+<section class="hero">
+<div>
+<img src="/images/alvora_256px.png" alt="Alvora" style="width:120px;height:120px;border-radius:1.5rem;margin-bottom:1.5rem;box-shadow:0 0 40px rgba(56,189,248,.2)">
+<h1>Trading algorítmico potenciado por IA</h1>
+<p>Alvora analiza el mercado en tiempo real, toma decisiones con modelos de lenguaje avanzados y ejecuta trades automáticamente en Binance.</p>
+<div class="cta">
+<button class="btn-primary" onclick="window.location.href='/dashboard'">Comenzar Gratis</button>
+<button class="btn-secondary" onclick="document.getElementById('how').scrollIntoView({behavior:'smooth'})">Cómo funciona</button>
+</div>
+<div class="stats">
+<div class="stat"><div class="num">24/7</div><div class="label">Trading automático</div></div>
+<div class="stat"><div class="num">3</div><div class="label">Proveedores de IA</div></div>
+<div class="stat"><div class="num">Free</div><div class="label">Para empezar</div></div>
+</div>
+</div>
+</section>
+
+<section class="section" id="how">
+<h2>Cómo funciona</h2>
+<p class="subtitle">Configura tu cuenta en pasos simples y deja que la IA opere por ti</p>
+<div class="how-grid">
+<div class="how-step">
+<div class="num">1</div>
+<h3>Regístrate gratis</h3>
+<p>Crea tu cuenta en segundos. Sin tarjeta de crédito. El plan Free incluye paper trading y análisis de IA.</p>
+</div>
+<div class="how-step">
+<div class="num">2</div>
+<h3>Conecta Binance</h3>
+<p>Agrega tus API keys de Binance de forma segura (encriptadas). O usa paper trading sin conectar nada.</p>
+</div>
+<div class="how-step">
+<div class="num">3</div>
+<h3>Activa la IA</h3>
+<p>Elige tu proveedor de IA (Gemini, Groq o Ollama), configura tu perfil de riesgo y activa el auto-trading.</p>
+</div>
+<div class="how-step">
+<div class="num">4</div>
+<h3>Monitorea 24/7</h3>
+<p>La IA analiza el mercado continuamente y ejecuta trades. Recibe notificaciones por Telegram de cada operación.</p>
+</div>
+</div>
+</section>
+
+<section class="section" id="features">
+<h2>Funciones principales</h2>
+<p class="subtitle">Todo lo que necesitas para trading automatizado</p>
+<div class="features-grid">
+<div class="feature">
+<div class="icon">🤖</div>
+<h3>IA Autónoma</h3>
+<p>Agente de IA que analiza mercado, noticias y datos técnicos en tiempo real. Soporta Gemini, Groq y Ollama como proveedores.</p>
+</div>
+<div class="feature">
+<div class="icon">📊</div>
+<h3>Paper Trading</h3>
+<p>Practica estrategias sin riesgo. Simulación completa con datos reales del mercado y métricas de performance.</p>
+</div>
+<div class="feature">
+<div class="icon">🧠</div>
+<h3>Machine Learning</h3>
+<p>Entrena modelos predictivos personalizados. Backtesting con métricas detalladas y accuracy en vivo.</p>
+</div>
+<div class="feature">
+<div class="icon">⚡</div>
+<h3>Tiempo Real</h3>
+<p>WebSocket conectado a Binance. Precios en vivo, posiciones actualizadas y notificaciones instantáneas.</p>
+</div>
+<div class="feature">
+<div class="icon">🛡️</div>
+<h3>Gestión de Riesgo</h3>
+<p>Stop-loss, take-profit y trailing stop automáticos. Kill switch de emergencia. Límites configurables por perfil.</p>
+</div>
+<div class="feature">
+<div class="icon">📱</div>
+<h3>Notificaciones</h3>
+<p>Alertas por Telegram de cada operación. Mantente informado de todas las decisiones del agente de IA.</p>
+</div>
+</div>
+</section>
+
+<section class="pricing" id="pricing">
+<h2>Planes y precios</h2>
+<p class="subtitle">Empieza gratis, mejora cuando lo necesites · Pago vía Binance Pay (USDT)</p>
+<div class="pricing-grid">
+<div class="plan">
+<h3>Free</h3>
+<div class="price">$0<span class="period">/mes</span></div>
+<p class="desc">Perfecto para probar la plataforma</p>
+<ul>
+<li>3 pares de trading</li>
+<li>3 posiciones simultáneas</li>
+<li>50 IA requests/día</li>
+<li>Paper trading</li>
+<li>Análisis de IA</li>
+<li class="disabled">Auto-trade</li>
+<li class="disabled">Entrenamiento ML</li>
+<li class="disabled">Notificaciones Telegram</li>
+</ul>
+<button class="btn btn-free" onclick="window.location.href='/dashboard'">Comenzar Gratis</button>
+<div class="pay-badge">Sin tarjeta requerida</div>
+</div>
+
+<div class="plan popular">
+<div class="badge">MÁS POPULAR</div>
+<h3>Pro</h3>
+<div class="price">29<span class="currency"> USDT</span><span class="period">/mes</span></div>
+<p class="desc">Para traders activos</p>
+<ul>
+<li>10 pares de trading</li>
+<li>10 posiciones simultáneas</li>
+<li>500 IA requests/día</li>
+<li>Paper trading</li>
+<li>Análisis de IA</li>
+<li>Auto-trade con IA</li>
+<li>Entrenamiento ML</li>
+<li>Notificaciones Telegram</li>
+</ul>
+<button class="btn btn-pro" onclick="showPayment('pro')">Suscribirse</button>
+<div class="pay-badge">Pago vía Binance Pay</div>
+</div>
+
+<div class="plan">
+<h3>Premium</h3>
+<div class="price">99<span class="currency"> USDT</span><span class="period">/mes</span></div>
+<p class="desc">Sin límites, máxima potencia</p>
+<ul>
+<li>Pares ilimitados</li>
+<li>Posiciones ilimitadas</li>
+<li>IA requests ilimitados</li>
+<li>Paper trading</li>
+<li>Análisis de IA</li>
+<li>Auto-trade con IA</li>
+<li>Entrenamiento ML</li>
+<li>Soporte prioritario</li>
+<li>Estrategias personalizadas</li>
+</ul>
+<button class="btn btn-premium" onclick="showPayment('premium')">Suscribirse</button>
+<div class="pay-badge">Pago vía Binance Pay</div>
+</div>
+</div>
+</section>
+
+<section class="section" id="faq">
+<h2>Preguntas frecuentes</h2>
+<p class="subtitle">Todo lo que necesitas saber antes de empezar</p>
+<div style="max-width:750px;margin:0 auto">
+<details class="faq-item">
+<summary>¿Es seguro conectar mis API keys de Binance?</summary>
+<p>Sí. Tus API keys se almacenan encriptadas usando Fernet (AES-128 CBC). Nunca se muestran después de guardarlas y solo se usan para ejecutar trades. Te recomendamos crear API keys con permisos de trading únicamente (sin retiros).</p>
+</details>
+<details class="faq-item">
+<summary>¿Qué proveedores de IA soporta Alvora?</summary>
+<p>Soportamos tres proveedores: Gemini (Google), Groq (Llama 3.1) y Ollama (modelos locales). Puedes cambiar entre ellos en cualquier momento. Si un proveedor falla, el sistema intenta automáticamente con otro.</p>
+</details>
+<details class="faq-item">
+<summary>¿Puedo usar Alvora sin conectar Binance?</summary>
+<p>Sí. El plan Free incluye paper trading con datos reales del mercado. Puedes probar todas las estrategias sin arriesgar dinero real.</p>
+</details>
+<details class="faq-item">
+<summary>¿Cómo funciona el pago de la suscripción?</summary>
+<p>Los pagos se procesan mediante Binance Pay en USDT. Recibirás un QR o link de pago que puedes completar desde tu app de Binance. Una vez confirmado el pago, tu plan se actualiza automáticamente.</p>
+</details>
+<details class="faq-item">
+<summary>¿Puedo cancelar mi suscripción en cualquier momento?</summary>
+<p>Sí. Puedes cancelar cuando quieras desde el dashboard. Tu plan seguirá activo hasta el final del período pagado y luego volverá al plan Free.</p>
+</details>
+<details class="faq-item">
+<summary>¿Qué riesgos implica el trading automatizado?</summary>
+<p>El trading de criptomonedas implica riesgo significativo. Alvora incluye gestión de riesgo automática (stop-loss, take-profit, kill switch), pero no garantiza ganancias. Nunca inviertas más de lo que puedes permitirte perder. No somos asesores financieros.</p>
+</details>
+<details class="faq-item">
+<summary>¿Necesito conocimientos técnicos para usar Alvora?</summary>
+<p>No. El onboarding wizard te guía paso a paso. Solo necesitas una cuenta de Binance (opcional) y elegir tu proveedor de IA. La IA se encarga del análisis y ejecución.</p>
+</details>
+</div>
+</section>
+
+<section class="section" id="contact">
+<h2>Contacto</h2>
+<p class="subtitle">¿Tienes preguntas? Estamos aquí para ayudarte</p>
+<div class="contact-grid">
+<div class="contact-card">
+<div class="icon">📧</div>
+<h3>Email</h3>
+<p><a href="mailto:support@alvora.io">support@alvora.io</a></p>
+</div>
+<div class="contact-card">
+<div class="icon">📱</div>
+<h3>Telegram</h3>
+<p><a href="https://t.me/alvora_support" target="_blank">@alvora_support</a></p>
+</div>
+<div class="contact-card">
+<div class="icon">🕐</div>
+<h3>Horario de soporte</h3>
+<p>Lunes a Viernes<br>9:00 - 18:00 UTC<br>Premium: 24/7</p>
+</div>
+</div>
+</section>
+
+<section class="legal" id="terms">
+<h2>Términos de Servicio</h2>
+<p>Última actualización: 25 de julio, 2026</p>
+<h3>1. Aceptación de los términos</h3>
+<p>Al registrarse y utilizar Alvora ("el Servicio"), usted acepta estos Términos de Servicio en su totalidad. Si no está de acuerdo con alguno de estos términos, no debe usar el Servicio.</p>
+<h3>2. Descripción del servicio</h3>
+<p>Alvora es una plataforma de trading algorítmico que utiliza inteligencia artificial para analizar mercados de criptomonedas y ejecutar operaciones de forma automatizada en Binance. El Servicio incluye análisis de mercado, ejecución de trades, paper trading, y notificaciones.</p>
+<h3>3. Suscripciones y pagos</h3>
+<p>Ofrecemos tres planes: Free (gratis), Pro (29 USDT/mes) y Premium (99 USDT/mes). Los pagos se procesan mediante Binance Pay en USDT. Las suscripciones son mensuales y se renuevan manualmente. Puede cancelar en cualquier momento desde el dashboard.</p>
+<h3>4. Política de reembolsos</h3>
+<p>Debido a la naturaleza digital del Servicio, los pagos de suscripción no son reembolsables. Sin embargo, puede cancelar su suscripción en cualquier momento y seguirá teniendo acceso hasta el final del período pagado.</p>
+<h3>5. Riesgo de trading</h3>
+<p>El trading de criptomonedas implica un riesgo significativo de pérdida. El Servicio es una herramienta de análisis y ejecución automatizada, no constituye asesoría financiera. No garantizamos ganancias. Usted es el único responsable de sus decisiones de inversión. Nunca invierta más de lo que puede permitirse perder.</p>
+<h3>6. Seguridad</h3>
+<p>Las API keys de Binance se almacenan encriptadas. Implementamos medidas de seguridad razonables para proteger sus datos. Sin embargo, ningún sistema es 100% seguro y no podemos garantizar la seguridad absoluta de su información.</p>
+<h3>7. Uso aceptable</h3>
+<p>Usted se compromete a: no usar el Servicio para actividades ilegales, no intentar acceder a sistemas no autorizados, no compartir su cuenta con terceros, y no manipular el Servicio de forma que afecte a otros usuarios.</p>
+<h3>8. Limitación de responsabilidad</h3>
+<p>Alvora no será responsable por pérdidas financieras, daños indirectos, incidentales o consecuentes derivados del uso del Servicio. Nuestra responsabilidad total está limitada al monto pagado por el usuario en los últimos 30 días.</p>
+<h3>9. Modificaciones</h3>
+<p>Nos reservamos el derecho de modificar estos términos, precios o características del Servicio en cualquier momento. Los cambios se notificarán a los usuarios activos por email o Telegram.</p>
+<h3>10. Cancelación de cuenta</h3>
+<p>Podemos suspender o cancelar cuentas que violen estos términos, que muestren actividad sospechosa, o que permanezcan inactivas por más de 90 días.</p>
+<h3>11. Jurisdicción</h3>
+<p>Estos términos se rigen por las leyes aplicables en la jurisdicción del operador del Servicio. Cualquier disputa se resolverá mediante arbitraje.</p>
+</section>
+
+<section class="legal" id="privacy">
+<h2>Política de Privacidad</h2>
+<p>Última actualización: 25 de julio, 2026</p>
+<h3>1. Información que recopilamos</h3>
+<p>Recopilamos la siguiente información:</p>
+<ul>
+<li><strong>Datos de cuenta:</strong> Email, nombre de usuario, contraseña (hash).</li>
+<li><strong>API keys de Binance:</strong> Almacenadas encriptadas con Fernet (AES-128). Solo se usan para ejecutar trades.</li>
+<li><strong>Configuración:</strong> Perfil de riesgo, símbolos preferidos, preferencias de notificaciones.</li>
+<li><strong>Datos de trading:</strong> Posiciones, órdenes, señales, resultados de backtesting.</li>
+<li><strong>Chat ID de Telegram:</strong> Si activas notificaciones por Telegram.</li>
+</ul>
+<h3>2. Cómo usamos su información</h3>
+<p>Usamos su información para: proporcionar el Servicio, ejecutar trades automatizados, enviar notificaciones, mejorar nuestros algoritmos de IA, y procesar pagos de suscripción.</p>
+<h3>3. Compartir información</h3>
+<p>No vendemos ni alquilamos sus datos a terceros. Compartimos información mínima con: Binance (para ejecutar trades), proveedores de IA (datos de mercado anonimizados), y Telegram (para enviar notificaciones, solo si lo activas).</p>
+<h3>4. Seguridad de datos</h3>
+<p>Implementamos: encriptación de API keys (Fernet), hashes de contraseñas (bcrypt), JWT para autenticación, y conexiones HTTPS. Las API keys nunca se muestran en texto plano después de ser guardadas.</p>
+<h3>5. Retención de datos</h3>
+<p>Mantenemos sus datos mientras su cuenta esté activa. Puede solicitar la eliminación de su cuenta y todos sus datos escribiendo a support@alvora.io. Los datos de trading se conservan por razones regulatorias por un mínimo de 2 años.</p>
+<h3>6. Cookies y almacenamiento local</h3>
+<p>Usamos localStorage del navegador para almacenar el token JWT de autenticación. No usamos cookies de tracking ni publicidad.</p>
+<h3>7. Derechos del usuario</h3>
+<p>Usted tiene derecho a: acceder a sus datos, solicitar su corrección, solicitar eliminación, y exportar sus datos de trading. Contacte a support@alvora.io para ejercer estos derechos.</p>
+<h3>8. Menores</h3>
+<p>El Servicio está dirigido a personas mayores de 18 años. No aceptamos usuarios menores de edad.</p>
+<h3>9. Cambios a esta política</h3>
+<p>Podemos actualizar esta política en cualquier momento. Los cambios significativos se notificarán a los usuarios activos.</p>
+</section>
+
+<footer class="footer">
+<div class="footer-content">
+<div class="footer-col">
+<h4><img src="/images/alvora_small.png" alt="Alvora" style="width:20px;height:20px;vertical-align:middle;margin-right:.3rem;border-radius:3px">Alvora</h4>
+<a href="#how">Cómo funciona</a>
+<a href="#features">Funciones</a>
+<a href="#pricing">Precios</a>
+<a href="#faq">FAQ</a>
+</div>
+<div class="footer-col">
+<h4>Legal</h4>
+<a href="#terms">Términos de Servicio</a>
+<a href="#privacy">Política de Privacidad</a>
+</div>
+<div class="footer-col">
+<h4>Soporte</h4>
+<a href="#contact">Contacto</a>
+<a href="mailto:support@alvora.io">support@alvora.io</a>
+<a href="https://t.me/alvora_support" target="_blank">Telegram</a>
+</div>
+<div class="footer-col">
+<h4>Cuenta</h4>
+<a href="/dashboard">Iniciar Sesión</a>
+<a href="/dashboard">Registrarse</a>
+<a href="/dashboard">Dashboard</a>
+</div>
+</div>
+<div class="footer-bottom">
+<p>Alvora — AI Trading System &copy; 2026. Todos los derechos reservados.</p>
+<p style="margin-top:.5rem">El trading de criptomonedas implica riesgo. Alvora no constituye asesoría financiera.</p>
+<p style="margin-top:.5rem">Pagos procesados vía <span style="color:#f0b90b">Binance Pay</span></p>
+</div>
+</footer>
+
+<script>
+function showPayment(plan){
+  window.location.href='/dashboard?upgrade='+plan;
+}
+</script>
+</body>
+</html>
