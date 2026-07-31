@@ -29,6 +29,8 @@ class UserSettings(Base):
     ai_premium_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ai_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ai_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_ai_provider_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     telegram_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     telegram_alerts: Mapped[bool] = mapped_column(default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

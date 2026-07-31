@@ -29,6 +29,16 @@ class SaveAIKeysRequest(BaseModel):
     premium_model: str | None = None
 
 
+class SaveAIConfigRequest(BaseModel):
+    """Save full AI config: provider + model + key in one shot."""
+    provider: str
+    model: str
+    groq_api_key: str | None = None
+    gemini_api_key: str | None = None
+    premium_api_key: str | None = None
+    premium_base_url: str | None = None
+
+
 class SaveTelegramRequest(BaseModel):
     telegram_chat_id: str | None = None
     telegram_alerts: bool = False
@@ -61,6 +71,10 @@ def get_keys(
         "premium_api_key_set": s.ai_premium_key_enc is not None,
         "premium_provider": s.ai_premium_provider,
         "premium_model": s.ai_premium_model,
+        "ai_provider": s.ai_provider,
+        "ai_model": s.ai_model,
+        "last_model_used": s.last_model_used,
+        "last_ai_provider_used": s.last_ai_provider_used,
         "telegram_chat_id": s.telegram_chat_id,
         "telegram_alerts": s.telegram_alerts,
     }
@@ -115,6 +129,50 @@ def save_ai_keys(
         s.ai_premium_model = req.premium_model or None
     db.commit()
     return {"saved": True, "message": "AI keys guardadas"}
+
+
+@router.post("/ai-config")
+def save_ai_config(
+    req: SaveAIConfigRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Save full AI config: provider + model + key in one shot.
+
+    This persists the selected provider, model, and optional API key
+    so they are loaded automatically on next session start.
+    """
+    s = _get_or_create(db, current_user.id)
+
+    # Save provider and model
+    s.ai_provider = req.provider
+    s.ai_model = req.model
+    s.last_ai_provider_used = req.provider
+    s.last_model_used = req.model
+
+    # Save premium provider info if applicable
+    PREMIUM_PROVIDERS = {"openai", "deepseek", "mistral", "together", "perplexity", "grok"}
+    if req.provider in PREMIUM_PROVIDERS:
+        s.ai_premium_provider = req.provider
+        if req.premium_base_url:
+            s.ai_premium_base_url = req.premium_base_url
+        s.ai_premium_model = req.model
+
+    # Save keys if provided (don't overwrite existing if not provided)
+    if req.groq_api_key is not None:
+        s.ai_groq_key_enc = encrypt(req.groq_api_key) if req.groq_api_key else None
+    if req.gemini_api_key is not None:
+        s.ai_gemini_key_enc = encrypt(req.gemini_api_key) if req.gemini_api_key else None
+    if req.premium_api_key is not None:
+        s.ai_premium_key_enc = encrypt(req.premium_api_key) if req.premium_api_key else None
+
+    db.commit()
+    return {
+        "saved": True,
+        "provider": req.provider,
+        "model": req.model,
+        "message": f"Config guardada: {req.provider} / {req.model}",
+    }
 
 
 @router.delete("/ai-keys")

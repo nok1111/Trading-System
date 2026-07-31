@@ -168,14 +168,63 @@ def get_or_create_agent():
     with state.ai_lock:
         if state.ai_agent is None:
             settings = get_settings()
+
+            # Defaults from .env
+            provider = getattr(settings, "AI_PROVIDER", "groq")
+            groq_api_key = getattr(settings, "GROQ_API_KEY", None)
+            groq_model = getattr(settings, "AI_MODEL", "llama-3.1-8b-instant")
+            gemini_api_key = getattr(settings, "GEMINI_API_KEY", None)
+            gemini_model = getattr(settings, "AI_MODEL", "gemini-2.0-flash")
+            ollama_url = getattr(settings, "OLLAMA_URL", "http://localhost:11434")
+            ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:14b")
+
+            # Try to load saved user config from DB
+            try:
+                from app.database.session import SessionLocal
+                from app.database.models.user_settings import UserSettings
+                from app.services.crypto import decrypt
+                db = SessionLocal()
+                s = db.query(UserSettings).filter(UserSettings.user_id == getattr(state, 'current_user_id', 0)).first()
+                if s:
+                    if s.ai_provider:
+                        provider = s.ai_provider
+                    if s.ai_model:
+                        if provider == "groq":
+                            groq_model = s.ai_model
+                        elif provider == "gemini":
+                            gemini_model = s.ai_model
+                    if s.ai_groq_key_enc:
+                        try:
+                            groq_api_key = decrypt(s.ai_groq_key_enc)
+                        except Exception:
+                            pass
+                    if s.ai_gemini_key_enc:
+                        try:
+                            gemini_api_key = decrypt(s.ai_gemini_key_enc)
+                        except Exception:
+                            pass
+                    if s.ai_premium_key_enc:
+                        # Premium key will be applied on start
+                        try:
+                            state.ai_premium_key = decrypt(s.ai_premium_key_enc)
+                        except Exception:
+                            pass
+                    if s.ai_premium_provider:
+                        state.ai_premium_provider = s.ai_premium_provider
+                    if s.ai_premium_model:
+                        state.ai_premium_model = s.ai_premium_model
+                db.close()
+            except Exception:
+                pass
+
             state.ai_agent = AITradingAgent(
-                provider=getattr(settings, "AI_PROVIDER", "groq"),
-                groq_api_key=getattr(settings, "GROQ_API_KEY", None),
-                groq_model=getattr(settings, "AI_MODEL", "llama-3.1-8b-instant"),
-                gemini_api_key=getattr(settings, "GEMINI_API_KEY", None),
-                gemini_model=getattr(settings, "AI_MODEL", "gemini-2.0-flash"),
-                ollama_url=getattr(settings, "OLLAMA_URL", "http://localhost:11434"),
-                ollama_model=getattr(settings, "OLLAMA_MODEL", "qwen2.5:14b"),
+                provider=provider,
+                groq_api_key=groq_api_key,
+                groq_model=groq_model,
+                gemini_api_key=gemini_api_key,
+                gemini_model=gemini_model,
+                ollama_url=ollama_url,
+                ollama_model=ollama_model,
                 interval_seconds=getattr(settings, "AI_INTERVAL_SECONDS", 30),
                 auto_trade=getattr(settings, "AI_AUTO_TRADE", True),
                 auth_server_url=getattr(settings, "AUTH_SERVER_URL", None),

@@ -480,6 +480,7 @@ input,select{padding:.5rem .8rem;background:#1e293b;border:1px solid #334155;bor
 </div>
 <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;margin-top:1.4rem"><input type="checkbox" id="aiAutoTrade" checked style="width:18px;height:18px;accent-color:#a78bfa;cursor:pointer"><span style="color:#a78bfa">Auto-trade (ejecutar compras/ventas)</span></label>
 <button class="btn" id="aiTestKeyBtn" onclick="testAiKey()" style="margin-top:1.4rem;padding:.4rem .8rem;font-size:.8rem;background:#1e293b;border:1px solid #a78bfa;color:#a78bfa;border-radius:.5rem;cursor:pointer">🔑 Probar API Key</button>
+<button class="btn" id="aiSaveConfigBtn" onclick="saveAiConfig()" style="margin-top:1.4rem;padding:.4rem .8rem;font-size:.8rem;background:#1e293b;border:1px solid #34d399;color:#34d399;border-radius:.5rem;cursor:pointer">💾 Guardar Config</button>
 </div>
 <div id="aiTestKeyResult" style="display:none;margin-bottom:1rem;padding:.6rem .8rem;border-radius:.5rem;font-size:.8rem"></div>
 <div id="aiLiveWarning" style="display:none;margin-bottom:1rem;padding:.6rem .8rem;background:#7f1d1d;border-radius:.5rem;border:1px solid #fca5a5">
@@ -2562,16 +2563,96 @@ function aiModelChanged(){
   try{localStorage.setItem('ai_model_'+provider,model)}catch{}
 }
 
-function initAIPreferences(){
+async function initAIPreferences(){
+  // First try to load from DB (per-user, persists across devices)
   try{
-    const savedProvider=localStorage.getItem('ai_provider');
-    if(savedProvider){
+    const r=await api('/api/settings/keys');
+    if(r.ai_provider){
       const select=document.getElementById('aiProvider');
-      const opt=select.querySelector('option[value="'+savedProvider+'"]');
+      const opt=select.querySelector('option[value="'+r.ai_provider+'"]');
       if(opt){opt.selected=true}
+      // Also save to localStorage as cache
+      try{localStorage.setItem('ai_provider',r.ai_provider)}catch{}
     }
-  }catch{}
-  aiProviderChanged();
+    // Call aiProviderChanged to show/hide key fields
+    aiProviderChanged();
+    // Restore saved model
+    if(r.ai_model||r.last_model_used){
+      const savedModel=r.ai_model||r.last_model_used;
+      const modelSelect=document.getElementById('aiModelSelect');
+      const modelInput=document.getElementById('aiModel');
+      const opt=modelSelect.querySelector('option[value="'+savedModel+'"]');
+      if(opt){opt.selected=true;modelInput.value=savedModel}
+      try{localStorage.setItem('ai_model_'+r.ai_provider,savedModel)}catch{}
+    }
+    // Show key status indicators
+    if(r.groq_api_key_set){
+      const groqInput=document.getElementById('aiGroqKey');
+      if(groqInput)groqInput.placeholder='Configurada (ingresa nueva para reemplazar)';
+    }
+    if(r.gemini_api_key_set){
+      const geminiInput=document.getElementById('aiGeminiKey');
+      if(geminiInput)geminiInput.placeholder='Configurada (ingresa nueva para reemplazar)';
+    }
+    if(r.premium_api_key_set){
+      const premiumInput=document.getElementById('aiPremiumKey');
+      if(premiumInput)premiumInput.placeholder='Configurada (ingresa nueva para reemplazar)';
+    }
+  }catch(e){
+    // Fallback to localStorage if API fails
+    try{
+      const savedProvider=localStorage.getItem('ai_provider');
+      if(savedProvider){
+        const select=document.getElementById('aiProvider');
+        const opt=select.querySelector('option[value="'+savedProvider+'"]');
+        if(opt){opt.selected=true}
+      }
+    }catch{}
+    aiProviderChanged();
+  }
+}
+
+async function saveAiConfig(){
+  const provider=document.getElementById('aiProvider').value;
+  const model=document.getElementById('aiModel').value;
+  const groqKey=document.getElementById('aiGroqKey').value.trim();
+  const geminiKey=document.getElementById('aiGeminiKey').value.trim();
+  const premiumKey=document.getElementById('aiPremiumKey').value.trim();
+
+  const body={provider,model};
+  if(groqKey)body.groq_api_key=groqKey;
+  if(geminiKey)body.gemini_api_key=geminiKey;
+  if(premiumKey)body.premium_api_key=premiumKey;
+
+  // Add premium base URL if applicable
+  const PREMIUM_BASE_URLS={
+    openai:'https://api.openai.com/v1',
+    deepseek:'https://api.deepseek.com/v1',
+    mistral:'https://api.mistral.ai/v1',
+    together:'https://api.together.xyz/v1',
+    perplexity:'https://api.perplexity.ai',
+    grok:'https://api.x.ai/v1'
+  };
+  if(PREMIUM_BASE_URLS[provider])body.premium_base_url=PREMIUM_BASE_URLS[provider];
+
+  try{
+    const r=await api('/api/settings/ai-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.saved){
+      toast('Config guardada: '+r.provider+' / '+r.model);
+      // Clear key inputs after save
+      document.getElementById('aiGroqKey').value='';
+      document.getElementById('aiGeminiKey').value='';
+      document.getElementById('aiPremiumKey').value='';
+      // Update placeholders
+      if(body.groq_api_key)document.getElementById('aiGroqKey').placeholder='Configurada (ingresa nueva para reemplazar)';
+      if(body.gemini_api_key)document.getElementById('aiGeminiKey').placeholder='Configurada (ingresa nueva para reemplazar)';
+      if(body.premium_api_key)document.getElementById('aiPremiumKey').placeholder='Configurada (ingresa nueva para reemplazar)';
+    }else{
+      toast(r.message||'Error al guardar',false);
+    }
+  }catch(e){
+    toast(e.message||'Error al guardar config',false);
+  }
 }
 
 function aiTradeModeChanged(){

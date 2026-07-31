@@ -122,6 +122,8 @@ _MIGRATIONS = {
     "user_settings": [
         ("ai_provider", "VARCHAR(50)"),
         ("ai_model", "VARCHAR(100)"),
+        ("last_model_used", "VARCHAR(100)"),
+        ("last_ai_provider_used", "VARCHAR(50)"),
     ],
     "signals": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),

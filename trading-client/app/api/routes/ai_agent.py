@@ -64,6 +64,10 @@ def _load_user_keys(user_id: int) -> dict:
                 keys["ai_provider"] = s.ai_provider
             if s.ai_model:
                 keys["ai_model"] = s.ai_model
+            if s.last_model_used:
+                keys["last_model_used"] = s.last_model_used
+            if s.last_ai_provider_used:
+                keys["last_ai_provider_used"] = s.last_ai_provider_used
         except Exception:
             pass
         return keys
@@ -73,7 +77,7 @@ def _load_user_keys(user_id: int) -> dict:
         db.close()
 
 
-def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str | None = None, premium_key: str | None = None, premium_provider: str | None = None, premium_base_url: str | None = None, premium_model: str | None = None, ai_provider: str | None = None, ai_model: str | None = None) -> None:
+def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str | None = None, premium_key: str | None = None, premium_provider: str | None = None, premium_base_url: str | None = None, premium_model: str | None = None, ai_provider: str | None = None, ai_model: str | None = None, last_model_used: str | None = None, last_ai_provider_used: str | None = None) -> None:
     """Persist AI provider keys to DB (encrypted) so they survive agent restarts."""
     db = SessionLocal()
     try:
@@ -97,6 +101,10 @@ def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str |
             s.ai_provider = ai_provider or None
         if ai_model is not None:
             s.ai_model = ai_model or None
+        if last_model_used is not None:
+            s.last_model_used = last_model_used or None
+        if last_ai_provider_used is not None:
+            s.last_ai_provider_used = last_ai_provider_used or None
         db.commit()
     finally:
         db.close()
@@ -242,16 +250,22 @@ def ai_agent_start(
             save_kwargs["premium_model"] = agent.openai_model
         # Always save selected provider and model so they persist across sessions
         save_kwargs["ai_provider"] = provider
+        save_kwargs["last_ai_provider_used"] = provider
         if req.model:
             save_kwargs["ai_model"] = req.model
+            save_kwargs["last_model_used"] = req.model
         elif provider == "groq":
             save_kwargs["ai_model"] = agent.groq_model
+            save_kwargs["last_model_used"] = agent.groq_model
         elif provider == "gemini":
             save_kwargs["ai_model"] = agent.gemini_model
+            save_kwargs["last_model_used"] = agent.gemini_model
         elif provider in PREMIUM_BASE_URLS:
             save_kwargs["ai_model"] = agent.openai_model
+            save_kwargs["last_model_used"] = agent.openai_model
         elif provider == "ollama":
             save_kwargs["ai_model"] = agent.ollama_model
+            save_kwargs["last_model_used"] = agent.ollama_model
         _save_user_keys(current_user.id, **save_kwargs)
 
     # Enforce plan-based interval minimum
@@ -415,12 +429,12 @@ def ai_agent_analyze_positions(
     logger.info("analyze_positions: user_id=%s, user_keys=%s, agent.provider=%s", current_user.id if current_user else None, list(user_keys.keys()), agent.provider)
 
     # Use request provider/model first, then user's last saved, then agent or .env
-    provider = req.provider or user_keys.get("ai_provider") or agent.provider or getattr(settings, "AI_PROVIDER", "groq")
-    saved_model = req.model or user_keys.get("ai_model")
+    provider = req.provider or user_keys.get("ai_provider") or user_keys.get("last_ai_provider_used") or agent.provider or getattr(settings, "AI_PROVIDER", "groq")
+    saved_model = req.model or user_keys.get("ai_model") or user_keys.get("last_model_used")
     logger.info("analyze_positions: resolved provider=%s, saved_model=%s", provider, saved_model)
 
     # If provider has no key, try to infer the provider from whichever key the user has saved
-    if not req.provider and not saved_model and not user_keys.get("ai_provider"):
+    if not req.provider and not saved_model and not user_keys.get("ai_provider") and not user_keys.get("last_ai_provider_used"):
         if user_keys.get("gemini"):
             provider = "gemini"
         elif user_keys.get("groq"):
