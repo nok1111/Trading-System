@@ -4,6 +4,7 @@ import { api, cacheInvalidate } from "../lib/api";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { cn } from "../lib/utils";
 import { toast } from "../components/ui/Toast";
+import * as binanceProxy from "../lib/binanceProxy";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
 
 const ASSETS = ["ALL", "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
@@ -68,16 +69,142 @@ export function ReportsPage() {
     setActionLoading(`rec-${recId}`);
     setSltpModalRecId(null);
     try {
+      // Step 1: Get SL/TP and position data from backend
       const res = await api<any>(`/api/intelligence/reports/${recId}/apply-oco`, { method: "POST" });
+      if (res?.status !== "ready") {
+        toast(res?.error || res?.reason || "Error al obtener datos del OCO", false);
+        setActionLoading(null);
+        return;
+      }
+
+      const { position_id, symbol, quantity, stop_loss, take_profit } = res;
+      const brokerSymbol = symbol.toUpperCase().replace(/[-_/]/g, "");
+
+      // Step 2: Fetch exchange info for LOT_SIZE and PRICE filters
+      let stepSize = "0.00000001";
+      let tickSize = "0.00000001";
+      let minQty = "0";
+      let minNotional = "0";
+      try {
+        const exInfo = await binanceProxy.getExchangeInfo(brokerSymbol);
+        const filters = exInfo?.symbols?.[0]?.filters || [];
+        for (const f of filters) {
+          if (f.filterType === "LOT_SIZE") {
+            stepSize = f.stepSize || stepSize;
+            minQty = f.minQty || minQty;
+          } else if (f.filterType === "PRICE_FILTER") {
+            tickSize = f.tickSize || tickSize;
+          } else if (f.filterType === "MIN_NOTIONAL") {
+            minNotional = f.minNotional || minNotional;
+          }
+        }
+      } catch {
+        // Fallback: direct from Binance (public endpoint)
+        try {
+          const directResp = await fetch(`https://api.binance.com/api/v3/exchangeInfo?symbol=${brokerSymbol}`);
+          if (directResp.ok) {
+            const exInfo = await directResp.json();
+            const filters = exInfo?.symbols?.[0]?.filters || [];
+            for (const f of filters) {
+              if (f.filterType === "LOT_SIZE") {
+                stepSize = f.stepSize || stepSize;
+                minQty = f.minQty || minQty;
+              } else if (f.filterType === "PRICE_FILTER") {
+                tickSize = f.tickSize || tickSize;
+              } else if (f.filterType === "MIN_NOTIONAL") {
+                minNotional = f.minNotional || minNotional;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Helper: round to step size
+      const roundToStep = (value: number, step: string): string => {
+        const stepNum = parseFloat(step);
+        if (stepNum <= 0 || isNaN(stepNum)) return String(value);
+        const stepStr = step.replace(/0+$/, "").replace(/\.$/, "");
+        const decimals = (stepStr.split(".")[1] || "").length;
+        const quotient = Math.floor(value / stepNum);
+        const rounded = quotient * stepNum;
+        let result = rounded.toFixed(Math.max(decimals, 0));
+        result = result.replace(/0+$/, "").replace(/\.$/, "");
+        if (result === "" || result === "-0" || parseFloat(result) === 0) return "0";
+        return result;
+      };
+
+      const formattedQty = roundToStep(quantity, stepSize);
+      const formattedTp = roundToStep(take_profit, tickSize);
+      const formattedSl = roundToStep(stop_loss, tickSize);
+
+      // Validate quantity
+      const qtyNum = parseFloat(formattedQty);
+      const minQtyNum = parseFloat(minQty);
+      if (qtyNum <= 0) {
+        toast(`Cantidad inválida (${formattedQty}) para ${symbol}.`, false);
+        setActionLoading(null);
+        return;
+      }
+      if (minQtyNum > 0 && qtyNum < minQtyNum) {
+        toast(`Cantidad ${formattedQty} menor al mínimo de Binance (${minQty}) para ${symbol}.`, false);
+        setActionLoading(null);
+        return;
+      }
+      const minNotionalNum = parseFloat(minNotional);
+      if (minNotionalNum > 0 && qtyNum * take_profit < minNotionalNum) {
+        toast(`Valor de la orden (${(qtyNum * take_profit).toFixed(2)} USDT) menor al mínimo de Binance (${minNotional} USDT).`, false);
+        setActionLoading(null);
+        return;
+      }
+
+      // Step 3: Cancel existing SL/TP orders for this symbol
+      try {
+        const openOrders = await binanceProxy.getOpenOrders(brokerSymbol);
+        for (const o of openOrders) {
+          const otype = o.type || "";
+          if (["STOP_LOSS", "STOP_LOSS_LIMIT", "TAKE_PROFIT", "TAKE_PROFIT_LIMIT", "STOP_MARKET", "TAKE_PROFIT_MARKET"].includes(otype)) {
+            try { await binanceProxy.cancelOrder(brokerSymbol, String(o.orderId)); } catch {}
+          }
+        }
+      } catch {}
+
+      // Step 4: Place OCO via Binance proxy
+      const ocoResp = await binanceProxy.placeOCO({
+        symbol: brokerSymbol,
+        side: "SELL",
+        quantity: formattedQty,
+        price: formattedTp,
+        stopPrice: formattedSl,
+        stopLimitPrice: formattedSl,
+        stopLimitTimeInForce: "GTC",
+      });
+
+      const ocoOrderId = ocoResp.orderListId;
+
+      // Step 5: Confirm in DB via backend
+      const confirmRes = await api<any>(`/api/intelligence/positions/${position_id}/update-oco`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oco_order_id: ocoOrderId, stop_loss, take_profit }),
+      });
+
+      // Step 6: Mark recommendation as executed
+      try {
+        await api(`/api/intelligence/reports/${recId}/accept`, { method: "POST" });
+      } catch {}
+
       await load();
       cacheInvalidate("/api/positions");
-      if (res?.status === "placed") {
-        toast(`OCO colocado en Binance (ID: ${res.oco_order_id})`, true);
+
+      if (confirmRes?.status === "placed") {
+        toast(`OCO colocado en Binance para ${symbol} (ID: ${ocoOrderId})`, true);
       } else {
-        toast(res?.error || res?.reason || "Error al colocar OCO", false);
+        toast(`OCO colocado pero error al actualizar DB: ${confirmRes?.error || "desconocido"}`, false);
       }
-    } catch (err) {
-      toast("Error al colocar OCO en Binance", false);
+    } catch (err: any) {
+      const msg = err?.message || err?.error || JSON.stringify(err);
+      toast(`Error al colocar OCO: ${msg}`, false);
+      console.error("ReportsPage OCO error:", err);
     }
     setActionLoading(null);
   };
