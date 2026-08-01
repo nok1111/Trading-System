@@ -56,6 +56,7 @@ class TradeAction(BaseModel):
     confidence: float = Field(ge=0, le=1)
     stop_loss_pct: float
     take_profit_pct: float
+    time_horizon: str = ""
     reason: str = ""
 
 class AgentDecision(BaseModel):
@@ -198,6 +199,7 @@ DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, 
 CADA COMPRA debe incluir:
 - stop_loss_pct: % de pérdida máxima (según ATR_pct y perfil del usuario)
 - take_profit_pct: % de ganancia objetivo (según potencial y perfil del usuario)
+- time_horizon: string como "2h-4h", "4h-8h", "1d-3d" indicando cuándo veríamos frutos de la compra
 - reason: explicación técnica concreta que referencia el perfil (ej: "RSI 32 + volume 2.1x + EMA bullish — adecuado para tu perfil moderate")
 
 DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, COMPRA algo — no quedes en HOLD con el capital parado.
@@ -208,7 +210,7 @@ SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o tech
 
 FEW_SHOT_EXAMPLE = """
 EJEMPLO de respuesta válida:
-{"market_overview":"BTC en rango 60k-65k, volumen estable. ETH con momentum alcista.","portfolio_status":"2 posiciones abiertas (SOL, ADA), cash $3200","analysis":"ETH muestra RSI 35 + volume_relative 1.8 + EMA bullish. Alineado con perfil moderate.","actions":[{"type":"buy","symbol":"ETHUSDT","confidence":0.75,"stop_loss_pct":3.5,"take_profit_pct":8,"reason":"RSI 35 (oversold) + volume 1.8x + EMA bullish — adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 3.5% protege contra caída brusca. ATR_pct 2.1% justifica el SL elegido.","next_steps":"Monitorear ETH. Si sube 4%, trailing stop activará."}"""
+{"market_overview":"BTC en rango 60k-65k, volumen estable. ETH con momentum alcista.","portfolio_status":"2 posiciones abiertas (SOL, ADA), cash $3200","analysis":"ETH muestra RSI 35 + volume_relative 1.8 + EMA bullish. Alineado con perfil moderate.","actions":[{"type":"buy","symbol":"ETHUSDT","confidence":0.75,"stop_loss_pct":3.5,"take_profit_pct":8,"time_horizon":"4h-8h","reason":"RSI 35 (oversold) + volume 1.8x + EMA bullish — adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 3.5% protege contra caída brusca. ATR_pct 2.1% justifica el SL elegido.","next_steps":"Monitorear ETH. Si sube 4%, trailing stop activará."}"""
 
 
 class AITradingAgent:
@@ -1160,6 +1162,7 @@ class AITradingAgent:
                             "signal_id": sig.id if sig else None,
                             "main_reasons": sig.main_reasons if sig else [],
                             "main_risks": sig.main_risks if sig else [],
+                            "time_horizon": action.get("time_horizon", ""),
                         },
                     )
                     session.add(rec)

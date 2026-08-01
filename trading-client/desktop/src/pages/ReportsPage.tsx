@@ -6,6 +6,7 @@ import { cn } from "../lib/utils";
 import { toast } from "../components/ui/Toast";
 import * as binanceProxy from "../lib/binanceProxy";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
+import { MarketPreviewModal } from "../components/reports/MarketPreviewModal";
 
 const ASSETS = ["ALL", "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
 
@@ -26,6 +27,7 @@ export function ReportsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [sltpModalRecId, setSltpModalRecId] = useState<number | null>(null);
+  const [previewReport, setPreviewReport] = useState<ReportItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -449,11 +451,18 @@ export function ReportsPage() {
                     {r.id?.startsWith("rec-") && r.status === "pending" && r.action_type !== "position_analysis" && (
                       <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
                         <button
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          disabled={actionLoading === r.id}
+                          onClick={(e) => { e.stopPropagation(); setPreviewReport(r); }}
+                        >
+                          📊 Ver en Market
+                        </button>
+                        <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
                           disabled={actionLoading === r.id}
                           onClick={(e) => handleAccept(e, parseInt(r.id.replace("rec-", "")))}
                         >
-                          {actionLoading === r.id ? "Procesando..." : "✓ Aceptar y ejecutar"}
+                          {actionLoading === r.id ? "Procesando..." : "✓ Aceptar"}
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
@@ -469,11 +478,18 @@ export function ReportsPage() {
                     {r.id?.startsWith("rec-") && r.status === "pending" && r.action_type === "position_analysis" && (
                       <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
                         <button
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          disabled={actionLoading === r.id}
+                          onClick={(e) => { e.stopPropagation(); setPreviewReport(r); }}
+                        >
+                          📊 Ver en Market
+                        </button>
+                        <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-cyan-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
                           disabled={actionLoading === r.id}
                           onClick={(e) => { e.stopPropagation(); setSltpModalRecId(parseInt(r.id.replace("rec-", ""))); }}
                         >
-                          {actionLoading === r.id ? "Aplicando..." : "⚙ Aplicar Ajustes SL/TP"}
+                          {actionLoading === r.id ? "Aplicando..." : "⚙ Aplicar SL/TP"}
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
@@ -559,6 +575,15 @@ export function ReportsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Market Preview Modal */}
+      {previewReport && (
+        <MarketPreviewModal
+          report={previewReport}
+          onClose={() => setPreviewReport(null)}
+          onAction={() => load()}
+        />
       )}
     </div>
   );

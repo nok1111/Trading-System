@@ -1101,6 +1101,7 @@ def get_all_reports(
                     })
                 else:
                     action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
+                    meta = r.metadata_json or {}
                     result.append({
                         "id": f"rec-{r.id}",
                         "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
@@ -1118,6 +1119,11 @@ def get_all_reports(
                         "status": r.status,
                         "trading_mode": r.trading_mode,
                         "broker_name": r.broker_name,
+                        "metadata": {
+                            "time_horizon": meta.get("time_horizon", ""),
+                            "main_reasons": meta.get("main_reasons", []),
+                            "main_risks": meta.get("main_risks", []),
+                        },
                         "timestamp": r.timestamp.isoformat() if r.timestamp else "",
                     })
         finally:
@@ -1262,6 +1268,7 @@ def get_reports(
                     })
                 else:
                     action_label = "Compra recomendada" if r.action_type == "BUY" else "Venta recomendada" if r.action_type == "SELL" else "Mantener"
+                    meta = r.metadata_json or {}
                     result.append({
                         "id": f"rec-{r.id}",
                         "date": r.timestamp.strftime("%Y-%m-%d %H:%M") if r.timestamp else "",
@@ -1279,6 +1286,11 @@ def get_reports(
                         "status": r.status,
                         "trading_mode": r.trading_mode,
                         "broker_name": r.broker_name,
+                        "metadata": {
+                            "time_horizon": meta.get("time_horizon", ""),
+                            "main_reasons": meta.get("main_reasons", []),
+                            "main_risks": meta.get("main_risks", []),
+                        },
                         "timestamp": r.timestamp.isoformat() if r.timestamp else "",
                     })
         finally:
