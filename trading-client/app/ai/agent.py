@@ -21,7 +21,7 @@ from threading import Event, Thread
 from typing import Any, Literal
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.ai.intelligence_provider import IntelligenceProvider, create_intelligence_provider
 from app.ai.local_provider import LocalAIProvider
@@ -78,6 +78,13 @@ class PositionSuggestion(BaseModel):
     reason: str = ""
     detailed_analysis: str = ""
 
+    @field_validator("reason", "detailed_analysis", "time_horizon", mode="before")
+    @classmethod
+    def _coerce_str(cls, v):
+        if isinstance(v, dict):
+            return json.dumps(v, ensure_ascii=False)
+        return v or ""
+
 
 class PositionAnalysisDecision(BaseModel):
     market_overview: str = ""
@@ -86,13 +93,22 @@ class PositionAnalysisDecision(BaseModel):
     risk_assessment: str = ""
     next_steps: str = ""
 
+    @field_validator("market_overview", "analysis", "risk_assessment", "next_steps", mode="before")
+    @classmethod
+    def _coerce_str(cls, v):
+        if isinstance(v, dict):
+            return json.dumps(v, ensure_ascii=False)
+        return v or ""
+
 
 POSITION_ANALYSIS_PROMPT = """Eres un analista de trading experto de élite. El usuario tiene posiciones ABIERTAS y necesita un análisis PROFUNDO y EXHAUSTIVO para optimizarlas.
 
 ⚠️ MÁXIMA PRIORIDAD Y ESFUERZO: Esta es la tarea más importante del momento. Dedica tu MÁXIMA CAPACIDAD DE ANÁLISIS a cada posición. No te apresures. Analiza cada posición con el mismo rigor que un analista profesional aplicaría en un informe detallado.
 
-Devuelves SOLO JSON con este schema exacto:
-{"market_overview":"...","analysis":"...","suggestions":[{"symbol":"BTCUSDT","position_id":123,"side":"long","suggested_stop_loss":58000,"suggested_take_profit":68000,"time_horizon":"4h-8h","confidence":0.8,"reason":"...","detailed_analysis":"..."}],"risk_assessment":"...","next_steps":"..."}
+Devuelves SOLO JSON con este schema exacto. TODOS los campos de texto deben ser STRINGS PLANOS, no objetos anidados:
+{"market_overview":"texto plano","analysis":"texto plano","suggestions":[{"symbol":"BTCUSDT","position_id":123,"side":"long","suggested_stop_loss":58000,"suggested_take_profit":68000,"time_horizon":"4h-8h","confidence":0.8,"reason":"texto plano","detailed_analysis":"texto plano"}],"risk_assessment":"texto plano","next_steps":"texto plano"}
+
+⚠️ IMPORTANTE: market_overview, analysis, risk_assessment, next_steps, reason y detailed_analysis deben ser STRINGS (texto entre comillas), NO objetos JSON anidados.
 
 Recibes posiciones abiertas con: symbol, side, entry_price, current_price, stop_loss, take_profit, quantity, unrealized_pnl.
 El campo "side" indica la dirección de la posición: "long" (compra) o "short" (venta).
