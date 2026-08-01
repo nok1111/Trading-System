@@ -248,13 +248,13 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
                 <YAxis domain={yDomain} hide />
                 <Tooltip content={chartTooltip} cursor={{ stroke: "var(--color-border-strong)", strokeWidth: 1 }} />
                 {slPrice != null && (
-                  <ReferenceLine y={slPrice} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1} label={{ value: "SL", fill: "#ef4444", fontSize: 9, fontWeight: 700, position: "right" }} />
+                  <ReferenceLine y={slPrice} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1} label={{ value: "SL", fill: "#ef4444", fontSize: 9, fontWeight: 700 }} />
                 )}
                 {currentPrice != null && (
-                  <ReferenceLine y={currentPrice} stroke="var(--color-text-muted)" strokeDasharray="2 2" strokeWidth={1} label={{ value: "NOW", fill: "var(--color-text-muted)", fontSize: 9, fontWeight: 700, position: "right" }} />
+                  <ReferenceLine y={currentPrice} stroke="var(--color-text-muted)" strokeDasharray="2 2" strokeWidth={1} label={{ value: "NOW", fill: "var(--color-text-muted)", fontSize: 9, fontWeight: 700 }} />
                 )}
                 {tpPrice != null && (
-                  <ReferenceLine y={tpPrice} stroke="#22c55e" strokeDasharray="4 3" strokeWidth={1} label={{ value: "TP", fill: "#22c55e", fontSize: 9, fontWeight: 700, position: "right" }} />
+                  <ReferenceLine y={tpPrice} stroke="#22c55e" strokeDasharray="4 3" strokeWidth={1} label={{ value: "TP", fill: "#22c55e", fontSize: 9, fontWeight: 700 }} />
                 )}
                 <Area
                   type="monotone"

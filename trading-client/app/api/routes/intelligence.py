@@ -1119,6 +1119,9 @@ def get_all_reports(
                         "status": r.status,
                         "trading_mode": r.trading_mode,
                         "broker_name": r.broker_name,
+                        "stop_loss_pct": r.stop_loss_pct,
+                        "take_profit_pct": r.take_profit_pct,
+                        "reason": r.reason or "",
                         "metadata": {
                             "time_horizon": meta.get("time_horizon", ""),
                             "main_reasons": meta.get("main_reasons", []),
@@ -1286,6 +1289,9 @@ def get_reports(
                         "status": r.status,
                         "trading_mode": r.trading_mode,
                         "broker_name": r.broker_name,
+                        "stop_loss_pct": r.stop_loss_pct,
+                        "take_profit_pct": r.take_profit_pct,
+                        "reason": r.reason or "",
                         "metadata": {
                             "time_horizon": meta.get("time_horizon", ""),
                             "main_reasons": meta.get("main_reasons", []),
