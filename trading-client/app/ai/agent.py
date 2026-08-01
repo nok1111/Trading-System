@@ -2115,9 +2115,20 @@ class AITradingAgent:
         finally:
             session.close()
 
+    def _api_headers(self) -> dict[str, str]:
+        """Build headers with JWT token for internal API calls."""
+        headers: dict[str, str] = {}
+        token = self._jwt_token
+        if not token:
+            import app.api.state as state
+            token = getattr(state, "ai_jwt_token", None)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
     def _api_get(self, path: str) -> Any:
         try:
-            resp = httpx.get(f"{self.api_base}{path}", timeout=15.0)
+            resp = httpx.get(f"{self.api_base}{path}", headers=self._api_headers(), timeout=15.0)
             resp.raise_for_status()
             return resp.json()
         except Exception:
@@ -2125,7 +2136,7 @@ class AITradingAgent:
 
     def _api_post(self, path: str, json_body: dict) -> Any:
         try:
-            resp = httpx.post(f"{self.api_base}{path}", json=json_body, timeout=15.0)
+            resp = httpx.post(f"{self.api_base}{path}", json=json_body, headers=self._api_headers(), timeout=15.0)
             if resp.status_code < 400:
                 return resp.json()
             return {"error": f"HTTP {resp.status_code}", "detail": resp.text}
