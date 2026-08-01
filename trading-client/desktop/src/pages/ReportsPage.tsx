@@ -17,6 +17,9 @@ interface ReportItem extends IntelligenceReport {
   trading_mode?: string | null;
   broker_name?: string | null;
   metadata?: Record<string, any>;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  reason?: string | null;
 }
 
 export function ReportsPage() {
