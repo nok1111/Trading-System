@@ -31,6 +31,7 @@ import { BrokerPage } from "../../pages/BrokerPage";
 import { NotificationDropdown } from "./NotificationDropdown";
 import { NotificationToasts } from "./NotificationToasts";
 import { getUnreadNotificationCount } from "../../lib/intelligenceApi";
+import { api } from "../../lib/api";
 import {
   isBrokerConnected,
   isBrokerDegraded,
@@ -107,6 +108,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [newReportsCount, setNewReportsCount] = useState(0);
   const [expandedBrokers, setExpandedBrokers] = useState<Set<string>>(new Set());
   const [connectModalBroker, setConnectModalBroker] = useState<SupportedBroker | null>(null);
   const [selectedBrokerModule, setSelectedBrokerModule] = useState<{ brokerId: string; moduleId: string } | null>(null);
@@ -149,6 +151,47 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
       clearInterval(id);
     };
   }, []);
+
+  // Track new reports for badge on "Reportes" menu item
+  useEffect(() => {
+    let alive = true;
+    const loadReportsCount = async () => {
+      try {
+        const r = await api<any[]>("/api/intelligence/reports/all");
+        const currentCount = r?.length ?? 0;
+        const lastSeen = parseInt(localStorage.getItem("reports_last_seen_count") || "", 10);
+        if (alive) {
+          if (isNaN(lastSeen)) {
+            localStorage.setItem("reports_last_seen_count", String(currentCount));
+            setNewReportsCount(0);
+          } else if (currentCount > lastSeen) {
+            setNewReportsCount(currentCount - lastSeen);
+          }
+        }
+      } catch {}
+    };
+    loadReportsCount();
+    const id = setInterval(loadReportsCount, 60000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Reset reports badge when user visits the Reports page
+  useEffect(() => {
+    if (activeTab === "reports") {
+      const loadAndReset = async () => {
+        try {
+          const r = await api<any[]>("/api/intelligence/reports/all");
+          const currentCount = r?.length ?? 0;
+          localStorage.setItem("reports_last_seen_count", String(currentCount));
+          setNewReportsCount(0);
+        } catch {}
+      };
+      loadAndReset();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -269,6 +312,16 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                     )}
                     {item.icon}
                     {!collapsed && <span>{item.label}</span>}
+                    {item.id === "reports" && newReportsCount > 0 && (
+                      <span
+                        className={cn(
+                          "absolute min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center",
+                          collapsed ? "-top-0.5 -right-0.5" : "top-1/2 -translate-y-1/2 right-1.5"
+                        )}
+                      >
+                        {newReportsCount > 99 ? "99+" : newReportsCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
