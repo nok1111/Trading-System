@@ -1050,6 +1050,150 @@ def get_active_signals(limit: int = 10) -> list[dict]:
         return []
 
 
+def _build_live_data(
+    asset: str,
+    stop_loss_pct: float | None,
+    take_profit_pct: float | None,
+    user_id: int,
+) -> dict | None:
+    """Build live trading data for a BUY recommendation: balance, quantity, SL/TP prices, risk summary."""
+    try:
+        import app.api.state as _state
+        from app.api.helpers import get_shared_broker, resolve_binancekeys
+        from app.config import get_settings
+        from app.database.session import SessionLocal
+        from app.database.models.position import Position
+        from app.database.models.user import LocalUser
+        from decimal import Decimal as Dec
+        import httpx as _httpx
+
+        settings = get_settings()
+        symbol = asset.upper() + "USDT"
+
+        # Fetch live price from Binance
+        current_price: float | None = None
+        try:
+            resp = _httpx.get(
+                f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                current_price = float(resp.json()["price"])
+        except Exception:
+            pass
+
+        # Get open positions
+        db = SessionLocal()
+        try:
+            open_positions = db.query(Position).filter(
+                Position.status == "open",
+                Position.user_id == user_id,
+            ).all()
+            open_count = len(open_positions)
+            open_symbols = [p.symbol for p in open_positions]
+            has_existing = any(p.symbol == symbol for p in open_positions)
+        finally:
+            db.close()
+
+        # Get USDT balance from Binance
+        usdt_balance: float | None = None
+        allocated_capital: float | None = None
+        available_capital: float | None = None
+        kill_switch_active = False
+
+        try:
+            is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
+            kill_switch_active = bool(is_live and settings.LIVE_KILL_SWITCH)
+
+            if is_live:
+                # Resolve Binance keys for this user
+                from app.database.models.user import User
+                user_db = SessionLocal()
+                try:
+                    user = user_db.query(User).filter(User.id == user_id).first()
+                finally:
+                    user_db.close()
+
+                if user:
+                    keys = resolve_binancekeys(user)
+                    if keys:
+                        broker = get_shared_broker(keys)
+                        if hasattr(broker, "_signed_request"):
+                            acct_data = broker._signed_request("GET", "/api/v3/account", {})
+                            for bal in acct_data.get("balances", []):
+                                if bal.get("asset") == "USDT":
+                                    usdt_balance = float(bal["free"])
+                                    break
+            else:
+                # Paper mode — use snapshots
+                from app.database.models.account_snapshot import AccountSnapshot
+                snap_db = SessionLocal()
+                try:
+                    snap = snap_db.query(AccountSnapshot).order_by(
+                        AccountSnapshot.timestamp.desc()
+                    ).first()
+                    if snap:
+                        usdt_balance = float(snap.cash or 0)
+                finally:
+                    snap_db.close()
+        except Exception:
+            pass
+
+        # Calculate allocated/available capital
+        ai_allocated = getattr(_state, "ai_allocated_capital", 0) or 0
+        if ai_allocated > 0:
+            allocated_capital = float(ai_allocated)
+            if usdt_balance is not None and allocated_capital > usdt_balance:
+                allocated_capital = usdt_balance
+            # Subtract committed capital from open positions
+            committed = sum(
+                float(p.entry_price or 0) * float(p.quantity or 0)
+                for p in open_positions
+            )
+            available_capital = max(0, allocated_capital - committed)
+        else:
+            allocated_capital = usdt_balance
+            available_capital = usdt_balance
+
+        # Max positions
+        base_max = getattr(settings, "MAX_OPEN_POSITIONS", 5)
+        dynamic_max = base_max + max(0, int(((allocated_capital or 0) - 50000) / 20000))
+
+        # Calculate SL/TP prices
+        sl_price = None
+        tp_price = None
+        if current_price and stop_loss_pct:
+            sl_price = current_price * (1 - stop_loss_pct / 100)
+        if current_price and take_profit_pct:
+            tp_price = current_price * (1 + take_profit_pct / 100)
+
+        # Estimated quantity
+        est_qty = None
+        est_value = None
+        if current_price and available_capital and available_capital > 0:
+            est_qty = available_capital / current_price
+            est_value = available_capital
+
+        return {
+            "usdt_balance": usdt_balance,
+            "allocated_capital": allocated_capital,
+            "available_capital": available_capital,
+            "open_positions_count": open_count,
+            "max_positions": dynamic_max,
+            "open_positions_symbols": open_symbols,
+            "has_existing_position": has_existing,
+            "estimated_quantity": est_qty,
+            "estimated_value": est_value,
+            "stop_loss_price": sl_price,
+            "take_profit_price": tp_price,
+            "current_price": current_price,
+            "kill_switch_active": kill_switch_active,
+        }
+    except Exception as exc:
+        logger.warning("Failed to build live_data for %s: %s", asset, exc)
+        return None
+
+
 @router.get("/reports/all")
 def get_all_reports(
     limit: int = 50,
@@ -1127,6 +1271,7 @@ def get_all_reports(
                             "main_reasons": meta.get("main_reasons", []),
                             "main_risks": meta.get("main_risks", []),
                         },
+                        "live_data": _build_live_data(r.asset, float(r.stop_loss_pct) if r.stop_loss_pct else None, float(r.take_profit_pct) if r.take_profit_pct else None, uid) if r.action_type == "BUY" and r.status == "pending" else None,
                         "timestamp": r.timestamp.isoformat() if r.timestamp else "",
                     })
         finally:
@@ -1297,6 +1442,7 @@ def get_reports(
                             "main_reasons": meta.get("main_reasons", []),
                             "main_risks": meta.get("main_risks", []),
                         },
+                        "live_data": _build_live_data(r.asset, float(r.stop_loss_pct) if r.stop_loss_pct else None, float(r.take_profit_pct) if r.take_profit_pct else None, uid) if r.action_type == "BUY" and r.status == "pending" else None,
                         "timestamp": r.timestamp.isoformat() if r.timestamp else "",
                     })
         finally:
@@ -1574,6 +1720,210 @@ def decline_recommendation(rec_id: int) -> dict:
         _clear_cache("reports_")
 
         return {"status": "dismissed", "id": rec_id}
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()
+
+
+@router.post("/reports/{rec_id}/buy-live")
+def buy_live_recommendation(
+    rec_id: int,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Execute a real BUY order from an AI recommendation via the configured broker.
+
+    Uses the same execution engine as the AI agent: resolves Binance keys,
+    fetches live price, calculates SL/TP, checks kill switch / max positions /
+    diversification, and executes via ExecutionEngine.
+    """
+    import app.api.state as _state
+    from app.api.helpers import get_shared_broker, resolve_binancekeys
+    from app.brokers import MockBroker
+    from app.config import get_settings
+    from app.database.models.ai_recommendation import AIRecommendation
+    from app.database.models.position import Position
+    from app.database.session import SessionLocal
+    from app.execution import ExecutionEngine
+    from app.models.signal import SignalCreate
+    from app.risk import RiskManager
+    from datetime import timedelta
+    from decimal import Decimal as Dec
+    import httpx as _httpx
+
+    settings = get_settings()
+    db = SessionLocal()
+    try:
+        rec = db.query(AIRecommendation).filter(AIRecommendation.id == rec_id).first()
+        if not rec:
+            return {"status": "error", "reason": "Recomendación no encontrada"}
+        if rec.status != "pending":
+            return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
+        if rec.action_type != "BUY":
+            return {"status": "error", "reason": "Solo se pueden ejecutar compras LIVE"}
+
+        symbol = rec.asset.upper() + "USDT"
+        is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
+
+        # Kill switch
+        if is_live and settings.LIVE_KILL_SWITCH:
+            return {"status": "rejected", "symbol": symbol, "reason": "KILL SWITCH activado. Compras bloqueadas."}
+
+        # Resolve broker keys
+        keys = resolve_binancekeys(current_user)
+        broker = get_shared_broker(keys)
+
+        # Daily loss limit check
+        if is_live:
+            from app.database.models.trade import Trade
+            today_start = datetime.now(tz=UTC) - timedelta(hours=24)
+            recent_trades = db.query(Trade).filter(
+                Trade.timestamp >= today_start,
+                Trade.side == "SELL",
+            ).all()
+            daily_loss = sum(float(t.realized_pnl) for t in recent_trades if float(t.realized_pnl) < 0)
+            if abs(daily_loss) >= settings.LIVE_DAILY_LOSS_LIMIT_USD:
+                return {"status": "rejected", "symbol": symbol, "reason": f"Pérdida diaria (${abs(daily_loss):.2f}) alcanzó el límite (${settings.LIVE_DAILY_LOSS_LIMIT_USD})."}
+
+        # Get live price
+        live_price = None
+        try:
+            from app.data.price_stream import get_price_stream
+            stream = get_price_stream()
+            if stream and stream.is_connected:
+                p = stream.get_price(symbol)
+                if p and p > 0:
+                    live_price = Dec(str(p))
+        except Exception:
+            pass
+
+        if not live_price or live_price <= 0:
+            try:
+                resp = _httpx.get(f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}", timeout=10.0)
+                if resp.status_code == 200:
+                    live_price = Dec(str(resp.json()["price"]))
+                else:
+                    resp = _httpx.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}", timeout=10.0)
+                    if resp.status_code == 200:
+                        live_price = Dec(str(resp.json()["price"]))
+                    else:
+                        return {"status": "error", "symbol": symbol, "reason": f"Símbolo {symbol} no existe en Binance"}
+            except Exception as exc:
+                return {"status": "error", "symbol": symbol, "reason": f"No se pudo validar {symbol}: {exc}"}
+
+        if not live_price or live_price <= 0:
+            return {"status": "error", "symbol": symbol, "reason": f"Precio inválido para {symbol}"}
+
+        # Diversification check
+        existing = db.query(Position).filter(
+            Position.symbol == symbol,
+            Position.status == "open",
+            Position.user_id == current_user.id,
+        ).first()
+        if existing:
+            return {"status": "rejected", "symbol": symbol, "reason": f"Ya hay posición abierta en {symbol}"}
+
+        # Get account info
+        acct = broker.get_account()
+        usdt_balance = 0.0
+        try:
+            if hasattr(broker, "_signed_request"):
+                acct_data = broker._signed_request("GET", "/api/v3/account", {})
+                for bal in acct_data.get("balances", []):
+                    if bal.get("asset") == "USDT":
+                        usdt_balance = float(bal["free"])
+                        break
+        except Exception:
+            pass
+
+        # Calculate allocated/available capital
+        open_positions = db.query(Position).filter(
+            Position.status == "open",
+            Position.user_id == current_user.id,
+        ).all()
+        is_auto_mode = _state.ai_allocated_capital <= 0
+        if _state.ai_allocated_capital > 0:
+            allocated = float(_state.ai_allocated_capital)
+            if usdt_balance > 0 and allocated > usdt_balance:
+                allocated = usdt_balance
+        else:
+            allocated = usdt_balance if usdt_balance > 0 else float(acct.equity)
+
+        if is_auto_mode:
+            available = allocated
+        else:
+            committed = sum(float(p.entry_price or 0) * float(p.quantity or 0) for p in open_positions)
+            available = allocated - committed
+
+        if available <= 0:
+            return {"status": "rejected", "symbol": symbol, "reason": f"Capital asignado (${allocated:.2f}) ya está comprometido en {len(open_positions)} posiciones."}
+
+        # Max positions
+        base_max = getattr(settings, "MAX_OPEN_POSITIONS", 5)
+        dynamic_max = base_max + max(0, int((allocated - 50000) / 20000))
+        open_count = len(open_positions)
+        if open_count >= dynamic_max:
+            return {"status": "rejected", "symbol": symbol, "reason": f"Máximo de {dynamic_max} posiciones alcanzado."}
+
+        # SL/TP from recommendation
+        sl_pct = float(rec.stop_loss_pct) if rec.stop_loss_pct else float(getattr(settings, "DEFAULT_STOP_LOSS_PERCENT", 3.0))
+        tp_pct = float(rec.take_profit_pct) if rec.take_profit_pct else float(getattr(settings, "DEFAULT_TAKE_PROFIT_PERCENT", 6.0))
+        stop_loss = live_price * (Dec(1) - Dec(str(sl_pct)) / Dec(100))
+        take_profit = live_price * (Dec(1) + Dec(str(tp_pct)) / Dec(100))
+
+        # Position budget
+        remaining_slots = max(1, dynamic_max - open_count)
+        position_budget = available / remaining_slots
+
+        from app.database.models.account_snapshot import AccountSnapshot as AcctModel
+        acct_override = AcctModel(
+            timestamp=datetime.now(tz=UTC),
+            cash=Dec(str(position_budget)),
+            equity=Dec(str(position_budget)),
+            buying_power=Dec(str(position_budget)),
+            margin_used=Dec("0"),
+            daily_pnl=Dec("0"),
+            total_pnl=Dec("0"),
+            open_positions_count=open_count,
+            strategy_run_id=None,
+        )
+
+        signal = SignalCreate(
+            timestamp=datetime.now(tz=UTC),
+            symbol=symbol,
+            signal_type="BUY",
+            confidence=Dec(str(rec.confidence)),
+            entry_price=live_price,
+            strategy_name="AI-Agent",
+            explanation=f"[AI Recommendation] {rec.reason or ''}",
+            metadata_json={"source": "ai_recommendation", "recommendation_id": rec.id},
+            suggested_stop_loss=stop_loss,
+            suggested_take_profit=take_profit,
+        )
+
+        risk_manager = RiskManager(settings)
+        engine = ExecutionEngine(broker, risk_manager, db, settings, user_id=current_user.id)
+        order = engine.process_signal(signal, account=acct_override)
+        db.commit()
+
+        if order:
+            rec.status = "executed"
+            db.commit()
+            _clear_cache("reports_")
+            return {
+                "status": "executed",
+                "symbol": symbol,
+                "side": order.side,
+                "quantity": str(order.filled_quantity),
+                "price": str(order.price) if order.price else None,
+                "order_id": order.id,
+                "stop_loss": str(stop_loss),
+                "take_profit": str(take_profit),
+                "trading_mode": "live" if is_live else "paper",
+            }
+        else:
+            return {"status": "rejected", "symbol": symbol, "reason": "Rechazado por risk manager"}
     except Exception as exc:
         db.rollback()
         return {"status": "error", "reason": str(exc)}

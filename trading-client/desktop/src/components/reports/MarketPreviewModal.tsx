@@ -6,6 +6,22 @@ import { api, cacheInvalidate } from "../../lib/api";
 import { CryptoIcon } from "../CryptoIcon";
 import { toast } from "../ui/Toast";
 
+interface LiveData {
+  usdt_balance: number | null;
+  allocated_capital: number | null;
+  available_capital: number | null;
+  open_positions_count: number;
+  max_positions: number;
+  open_positions_symbols: string[];
+  has_existing_position: boolean;
+  estimated_quantity: number | null;
+  estimated_value: number | null;
+  stop_loss_price: number | null;
+  take_profit_price: number | null;
+  current_price: number | null;
+  kill_switch_active: boolean;
+}
+
 interface ReportItem {
   id: string;
   date: string;
@@ -28,6 +44,7 @@ interface ReportItem {
   stop_loss_pct?: number | null;
   take_profit_pct?: number | null;
   reason?: string | null;
+  live_data?: LiveData | null;
 }
 
 interface MarketPreviewModalProps {
@@ -56,6 +73,7 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
   const [klines, setKlines] = useState<KlinePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [buyLiveLoading, setBuyLiveLoading] = useState(false);
 
   const isPositionAnalysis = report.action_type === "position_analysis";
   const meta = report.metadata || {};
@@ -157,6 +175,29 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
       toast("Error al declinar recomendación", false);
     }
     setActionLoading(false);
+  };
+
+  const handleBuyLive = async () => {
+    const recId = parseInt(report.id.replace("rec-", ""));
+    setBuyLiveLoading(true);
+    try {
+      const res = await api<any>(`/api/intelligence/reports/${recId}/buy-live`, { method: "POST" });
+      cacheInvalidate("/api/positions");
+      cacheInvalidate("/api/intelligence/paper-positions");
+      if (res?.status === "executed") {
+        toast(`Compra LIVE ejecutada: ${res.quantity} ${res.symbol} @ ${res.price}`, true);
+        onAction();
+        onClose();
+      } else if (res?.status === "rejected") {
+        toast(res?.reason || "Compra rechazada", false);
+      } else {
+        toast(res?.reason || "Error en compra LIVE", false);
+      }
+    } catch (err) {
+      console.error("Buy LIVE failed:", err);
+      toast("Error al ejecutar compra LIVE", false);
+    }
+    setBuyLiveLoading(false);
   };
 
   const fmtPrice = (v: number | null | undefined): string => {
@@ -295,6 +336,54 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
           </div>
         </div>
 
+        {/* Live trading data: balance, quantity, risk summary */}
+        {report.live_data && !isPositionAnalysis && report.action_type === "BUY" && report.status === "pending" && (
+          <div className="space-y-2">
+            {/* Balance & Quantity */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-[8px] p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+                <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Saldo USDT</div>
+                <div className="text-[13px] font-bold text-[var(--color-text)] mt-1">
+                  {report.live_data.usdt_balance != null ? `$${report.live_data.usdt_balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A"}
+                </div>
+                <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">
+                  Disponible: {report.live_data.available_capital != null ? `$${report.live_data.available_capital.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A"}
+                </div>
+              </div>
+              <div className="rounded-[8px] p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+                <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Cantidad estimada</div>
+                <div className="text-[13px] font-bold text-[var(--color-text)] mt-1">
+                  {report.live_data.estimated_quantity != null ? `${report.live_data.estimated_quantity.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${report.asset}` : "N/A"}
+                </div>
+                <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">
+                  Valor: {report.live_data.estimated_value != null ? `$${report.live_data.estimated_value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A"}
+                </div>
+              </div>
+            </div>
+
+            {/* Risk summary */}
+            <div className="rounded-[8px] p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+              <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">Resumen de Riesgo</div>
+              <div className="flex items-center justify-between text-[11px] mb-1">
+                <span className="text-[var(--color-text-muted)]">Posiciones abiertas</span>
+                <span className="font-bold text-[var(--color-text)]">{report.live_data.open_positions_count} / {report.live_data.max_positions}</span>
+              </div>
+              {report.live_data.has_existing_position && (
+                <div className="text-[10px] text-amber-400 font-bold mt-1">⚠ Ya tienes posición en {report.asset}</div>
+              )}
+              {report.live_data.kill_switch_active && (
+                <div className="text-[10px] text-red-400 font-bold mt-1">🛑 Kill switch activado</div>
+              )}
+              {!report.live_data.has_existing_position && !report.live_data.kill_switch_active && report.live_data.available_capital != null && report.live_data.available_capital > 0 && (
+                <div className="text-[10px] text-green-400 font-bold mt-1">✓ Dentro de límites del perfil</div>
+              )}
+              {report.live_data.available_capital != null && report.live_data.available_capital <= 0 && (
+                <div className="text-[10px] text-red-400 font-bold mt-1">✗ Sin capital disponible</div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Info row */}
         <div className="flex items-center gap-3 flex-wrap">
           {confidence != null && (
@@ -344,17 +433,26 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
         {/* Action buttons */}
         {report.id?.startsWith("rec-") && report.status === "pending" && (
           <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
+            {!isPositionAnalysis && report.action_type === "BUY" && (
+              <button
+                className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                disabled={buyLiveLoading || actionLoading || (report.live_data?.kill_switch_active ?? false) || (report.live_data?.has_existing_position ?? false) || (report.live_data?.available_capital != null && report.live_data.available_capital <= 0)}
+                onClick={handleBuyLive}
+              >
+                {buyLiveLoading ? "Ejecutando..." : "Comprar LIVE"}
+              </button>
+            )}
             <button
               className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-              disabled={actionLoading}
+              disabled={actionLoading || buyLiveLoading}
               onClick={handleAccept}
             >
               <Check size={14} />
-              {actionLoading ? "Procesando..." : isPositionAnalysis ? "Aceptar ajustes" : "Aceptar y ejecutar"}
+              {actionLoading ? "Procesando..." : isPositionAnalysis ? "Aceptar ajustes" : "Aceptar (Paper)"}
             </button>
             <button
               className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
-              disabled={actionLoading}
+              disabled={actionLoading || buyLiveLoading}
               onClick={handleDecline}
             >
               <X size={14} className="inline mr-1" />
@@ -372,6 +470,11 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
         {report.status === "dismissed" && (
           <div className="text-[11px] text-[var(--color-text-muted)] pt-1 text-center">
             ✕ Recomendación declinada
+          </div>
+        )}
+        {report.status === "expired" && (
+          <div className="text-[11px] text-[var(--color-text-muted)] pt-1 text-center">
+            ⏱ Recomendación expirada (sin acción en 24h)
           </div>
         )}
       </div>

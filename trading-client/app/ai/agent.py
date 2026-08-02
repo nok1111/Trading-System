@@ -759,8 +759,36 @@ class AITradingAgent:
         except Exception as exc:
             self._add_log("error", f"Error reportando uso: {exc}")
 
+    def _expire_old_recommendations(self) -> None:
+        """Mark pending recommendations older than 24h as expired."""
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.ai_recommendation import AIRecommendation
+            from datetime import timedelta
+
+            session = SessionLocal()
+            try:
+                cutoff = datetime.now(tz=UTC) - timedelta(hours=24)
+                expired = session.query(AIRecommendation).filter(
+                    AIRecommendation.status == "pending",
+                    AIRecommendation.timestamp < cutoff,
+                ).all()
+                for rec in expired:
+                    rec.status = "expired"
+                if expired:
+                    session.commit()
+                    self._add_log("info", f"{len(expired)} recomendaciones expiradas (>24h sin acción)", {
+                        "cycle": self._cycle, "phase": "expire_recommendations",
+                    })
+            finally:
+                session.close()
+        except Exception as exc:
+            logger.warning("[AI Agent] Failed to expire old recommendations: %s", exc)
+
     def _tick(self) -> None:
         self._add_log("info", f"--- Ciclo {self._cycle} iniciado ---", {"cycle": self._cycle, "phase": "start"})
+
+        self._expire_old_recommendations()
 
         # Route to intelligence platform mode if enabled
         if self._intelligence_provider is not None:

@@ -10,6 +10,22 @@ import { MarketPreviewModal } from "../components/reports/MarketPreviewModal";
 
 const ASSETS = ["ALL", "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"];
 
+interface LiveData {
+  usdt_balance: number | null;
+  allocated_capital: number | null;
+  available_capital: number | null;
+  open_positions_count: number;
+  max_positions: number;
+  open_positions_symbols: string[];
+  has_existing_position: boolean;
+  estimated_quantity: number | null;
+  estimated_value: number | null;
+  stop_loss_price: number | null;
+  take_profit_price: number | null;
+  current_price: number | null;
+  kill_switch_active: boolean;
+}
+
 interface ReportItem extends IntelligenceReport {
   action_type?: string;
   confidence?: number;
@@ -20,6 +36,7 @@ interface ReportItem extends IntelligenceReport {
   stop_loss_pct?: number | null;
   take_profit_pct?: number | null;
   reason?: string | null;
+  live_data?: LiveData | null;
 }
 
 export function ReportsPage() {
@@ -306,6 +323,7 @@ export function ReportsPage() {
     if (!status || status === "pending") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">⏳ PENDIENTE</span>;
     if (status === "executed") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">✓ EJECUTADA</span>;
     if (status === "dismissed") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/40">✕ DESCARTADA</span>;
+    if (status === "expired") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/40">⏱ EXPIRADA</span>;
     return null;
   };
 
@@ -520,6 +538,11 @@ export function ReportsPage() {
                     {r.id?.startsWith("rec-") && r.status === "dismissed" && (
                       <div className="text-[10px] text-[var(--color-text-muted)] pt-1">
                         ✕ Recomendación declinada
+                      </div>
+                    )}
+                    {r.id?.startsWith("rec-") && r.status === "expired" && (
+                      <div className="text-[10px] text-orange-400 pt-1">
+                        ⏱ Recomendación expirada (sin acción en 24h)
                       </div>
                     )}
                   </div>
