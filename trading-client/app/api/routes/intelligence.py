@@ -1063,7 +1063,6 @@ def _build_live_data(
         from app.config import get_settings
         from app.database.session import SessionLocal
         from app.database.models.position import Position
-        from app.database.models.user import LocalUser
         from decimal import Decimal as Dec
         import httpx as _httpx
 
@@ -1107,16 +1106,12 @@ def _build_live_data(
 
             if is_live:
                 # Resolve Binance keys for this user
-                from app.database.models.user import User
-                user_db = SessionLocal()
-                try:
-                    user = user_db.query(User).filter(User.id == user_id).first()
-                finally:
-                    user_db.close()
+                # User model was removed — resolve_binancekeys only needs user_id
+                from types import SimpleNamespace
+                user = SimpleNamespace(id=user_id)
 
-                if user:
-                    keys = resolve_binancekeys(user)
-                    if keys:
+                keys = resolve_binancekeys(user)
+                if keys:
                         broker = get_shared_broker(keys)
                         if hasattr(broker, "_signed_request"):
                             acct_data = broker._signed_request("GET", "/api/v3/account", {})

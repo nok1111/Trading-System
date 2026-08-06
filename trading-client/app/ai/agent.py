@@ -1837,17 +1837,17 @@ class AITradingAgent:
         try:
             from sqlalchemy import select
 
-            from app.database.models.user import User
+            from app.database.models.user_settings import UserSettings
             from app.database.session import SessionLocal
             from app.services.telegram import notify_trade
 
             db = SessionLocal()
             try:
-                users = db.execute(
-                    select(User).where(User.telegram_alerts, User.telegram_chat_id.isnot(None))
+                settings_rows = db.execute(
+                    select(UserSettings).where(UserSettings.telegram_alerts, UserSettings.telegram_chat_id.isnot(None))
                 ).scalars().all()
-                for user in users:
-                    notify_trade(user.telegram_chat_id, action, symbol, float(quantity), float(price), reason)
+                for s in settings_rows:
+                    notify_trade(s.telegram_chat_id, action, symbol, float(quantity), float(price), reason)
             finally:
                 db.close()
         except Exception:
