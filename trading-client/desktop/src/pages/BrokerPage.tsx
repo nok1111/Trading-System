@@ -1722,8 +1722,8 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                   : 0;
                 const positionValue = qty * current;
                 const isExpanded = expandedCharts.has(p.symbol);
-                // Use symbol as-is for chart (already in BTC/USDT format)
-                const chartSymbol = p.symbol.includes("/") ? p.symbol : p.symbol;
+                // Symbol is now normalized from backend (BTC/USDT format)
+                const chartSymbol = p.symbol;
                 // Distance to SL/TP
                 const sl = p.stop_loss ? Number(p.stop_loss) : null;
                 const tp = p.take_profit ? Number(p.take_profit) : null;

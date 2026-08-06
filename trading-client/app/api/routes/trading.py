@@ -154,6 +154,45 @@ def list_positions(
         Position.id.desc(),
     ).offset(skip).limit(limit).all()
 
+    # Normalize symbols (BTCUSDT -> BTC/USDT) and update live prices for open positions
+    from app.brokers.models import normalize_symbol
+    from app.brokers.registry import get_adapter
+    from app.api.helpers import resolve_broker_credentials
+
+    # Cache adapters per broker to avoid re-creating for each position
+    broker_adapter_cache: dict[str, any] = {}
+    for p in positions:
+        # Normalize symbol in-place
+        p.symbol = normalize_symbol(p.symbol)
+
+        # Update live price for open positions
+        if p.status == "open" and p.broker_id:
+            try:
+                if p.broker_id not in broker_adapter_cache:
+                    creds = resolve_broker_credentials(p.broker_id, current_user)
+                    if creds:
+                        broker_adapter_cache[p.broker_id] = get_adapter(p.broker_id, creds)
+                    else:
+                        broker_adapter_cache[p.broker_id] = None
+
+                adapter = broker_adapter_cache.get(p.broker_id)
+                if adapter:
+                    ticker = adapter.get_ticker(p.symbol)
+                    live_price = float(ticker.price)
+                    p.current_price = Decimal(str(live_price))
+                    if p.side == "long":
+                        p.unrealized_pnl = Decimal(str((live_price - float(p.entry_price)) * float(p.quantity)))
+                    else:
+                        p.unrealized_pnl = Decimal(str((float(p.entry_price) - live_price) * float(p.quantity)))
+            except Exception:
+                pass  # Keep DB value if broker fetch fails
+
+    # Commit any price updates
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
     return positions
 
 
