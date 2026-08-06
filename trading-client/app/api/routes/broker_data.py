@@ -665,7 +665,7 @@ def place_oco_order(
 
     quantity = _round_to_step(req.quantity, step_size)
 
-    # Use Binance OCO if available
+    # Use native OCO if the adapter supports it (Binance, CCXT exchanges with OCO)
     if hasattr(adapter, "place_oco_order"):
         try:
             result = adapter.place_oco_order(

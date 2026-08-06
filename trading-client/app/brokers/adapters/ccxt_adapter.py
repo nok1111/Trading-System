@@ -689,6 +689,99 @@ class CCXTAdapter(BrokerAdapter):
         result.sort(key=lambda x: x["volume"], reverse=True)
         return result[:limit]
 
+    def place_oco_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: Decimal,
+        take_profit_price: Decimal,
+        stop_loss_price: Decimal,
+    ) -> dict:
+        """Place OCO (SL/TP) order via CCXT.
+
+        Uses create_order_with_take_profit_and_stop_loss when the exchange
+        supports it (bybit, okx, kucoin, bitget). Falls back to 2 separate
+        orders (STOP_LIMIT + TAKE_PROFIT_LIMIT) for exchanges without native OCO.
+        """
+        ccxt_side = "sell" if side.lower() == "sell" else "buy"
+
+        # Try native CCXT OCO first
+        if self._exchange.has.get("createOrderWithTakeProfitAndStopLoss"):
+            try:
+                result = self._exchange.create_order_with_take_profit_and_stop_loss(
+                    symbol=symbol,
+                    type="market",
+                    side=ccxt_side,
+                    amount=float(quantity),
+                    price=None,
+                    takeProfit=float(take_profit_price),
+                    stopLoss=float(stop_loss_price),
+                    params={
+                        "takeProfitType": "limit",
+                        "stopLossType": "limit",
+                        "takeProfitLimitPrice": float(take_profit_price),
+                        "stopLossLimitPrice": float(stop_loss_price),
+                    },
+                )
+                order_id = str(result.get("id", ""))
+                return {
+                    "success": True,
+                    "order_list_id": order_id,
+                    "sl_order_id": order_id,  # CCXT returns a single order with attached SL/TP
+                    "tp_order_id": order_id,
+                }
+            except Exception as exc:
+                # Fall through to separate orders fallback
+                mapped = _map_ccxt_error(exc)
+                # If it's a NotSupported error, fall through silently
+                if "not supported" not in str(mapped).lower():
+                    return {"success": False, "error": str(mapped)}
+
+        # Fallback: place separate STOP_LIMIT and TAKE_PROFIT_LIMIT orders
+        close_side = OrderSide.SELL if side.lower() == "sell" else OrderSide.BUY
+        tp_req = OrderRequest(
+            symbol=symbol, side=close_side,
+            order_type=OrderType.TAKE_PROFIT_LIMIT,
+            quantity=quantity,
+            price=take_profit_price,
+            stop_price=take_profit_price,
+        )
+        sl_req = OrderRequest(
+            symbol=symbol, side=close_side,
+            order_type=OrderType.STOP_LIMIT,
+            quantity=quantity,
+            price=stop_loss_price,
+            stop_price=stop_loss_price,
+        )
+        tp_result = self.place_order(tp_req)
+        sl_result = self.place_order(sl_req)
+
+        order_ids: list[str] = []
+        errors: list[str] = []
+        if tp_result.success and tp_result.order:
+            order_ids.append(tp_result.order.broker_order_id or "")
+        else:
+            errors.append(tp_result.error or "TP failed")
+        if sl_result.success and sl_result.order:
+            order_ids.append(sl_result.order.broker_order_id or "")
+        else:
+            errors.append(sl_result.error or "SL failed")
+
+        if errors:
+            return {
+                "success": False,
+                "error": "; ".join(errors),
+                "order_ids": order_ids,
+                "warning": "OCO no soportado nativamente, ordenes colocadas por separado",
+            }
+        return {
+            "success": True,
+            "order_list_id": ",".join(order_ids),
+            "sl_order_id": order_ids[1] if len(order_ids) > 1 else "",
+            "tp_order_id": order_ids[0] if order_ids else "",
+            "warning": "OCO no soportado nativamente, ordenes colocadas por separado",
+        }
+
 
 def get_curated_exchange_ids() -> tuple[str, ...]:
     """Devuelve los IDs de exchanges CCXT curados para mostrar al usuario."""
