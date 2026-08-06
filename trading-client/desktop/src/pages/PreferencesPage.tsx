@@ -293,11 +293,11 @@ export function PreferencesPage() {
         </div>
       </div>
 
-      {/* VPS Proxy Configuration */}
+      {/* VPS Proxy Configuration (legacy — Binance only) */}
       <div className="panel p-4 space-y-3">
         <div className="flex items-center gap-2">
           <Network size={18} />
-          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Proxy VPS (Binance)</h3>
+          <h3 className="text-[14px] font-bold text-[var(--color-text)]">Proxy VPS (Broker por defecto)</h3>
         </div>
         <div>
           <label className="block text-[12px] font-semibold text-[var(--color-text-muted)] mb-1.5">
@@ -329,8 +329,9 @@ export function PreferencesPage() {
         </div>
         {proxyStatus && <div className="text-[12px]">{proxyStatus}</div>}
         <p className="text-[11px] text-[var(--color-text-muted)]">
-          El proxy enruta tus órdenes a Binance desde una IP fija.
+          El proxy enruta las órdenes del broker por defecto (Binance) desde una IP fija.
           Agrega la IP del proxy a tu whitelist en Binance API Management.
+          Para otros brokers (Bybit, Kraken, OKX, etc.) no se necesita proxy — las conexiones son directas.
         </p>
       </div>
 

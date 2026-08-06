@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "../lib/api";
+import { useBrokerContext } from "../context/BrokerContext";
+import { isBrokerConnected } from "../lib/brokerTypes";
 import { Card } from "../components/ui/Card";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
@@ -14,14 +16,14 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-interface BinanceAsset {
+interface BrokerAsset {
   asset: string;
   free: string;
   locked: string;
 }
 
-interface BinanceBalance {
-  assets: BinanceAsset[];
+interface BrokerBalance {
+  assets: BrokerAsset[];
   total_usd: number;
   total_mxn: number;
   error?: string;
@@ -44,7 +46,11 @@ interface Position {
 }
 
 export function WalletPage() {
-  const [balance, setBalance] = useState<BinanceBalance | null>(null);
+  const { connectedAccounts } = useBrokerContext();
+  const firstConnectedBroker = connectedAccounts.find((a) => isBrokerConnected(a.status));
+  const activeBrokerId = firstConnectedBroker?.brokerId || null;
+
+  const [balance, setBalance] = useState<BrokerBalance | null>(null);
   const [prices, setPrices] = useState<PriceInfo[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,8 +58,12 @@ export function WalletPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const b = await api<any>("/api/binance/balance");
-      setBalance(b);
+      if (activeBrokerId) {
+        const b = await api<any>(`/api/broker/${activeBrokerId}/balance`);
+        setBalance(b);
+      } else {
+        setBalance(null);
+      }
     } catch {}
     try {
       const pr = await api<any>("/api/prices/live");
@@ -70,7 +80,7 @@ export function WalletPage() {
     } catch {}
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [activeBrokerId]);
 
   useEffect(() => {
     loadData();
@@ -240,7 +250,7 @@ export function WalletPage() {
             {enrichedAssets.length}
           </div>
           <div className="text-sm text-[var(--color-text-muted)] mt-1">
-            {balance?.assets && balance.assets.length > 0 ? "Vía Binance API" : "Vía posiciones"}
+            {balance?.assets && balance.assets.length > 0 ? `Vía ${firstConnectedBroker?.displayName || "Broker"} API` : "Vía posiciones"}
           </div>
         </Card>
       </div>

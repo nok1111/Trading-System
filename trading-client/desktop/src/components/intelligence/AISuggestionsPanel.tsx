@@ -198,7 +198,7 @@ export function AISuggestionsPanel() {
 
   const connectedBrokers = connectedAccounts.filter((a) => isBrokerConnected(a.status));
   const hasConnectedBroker = connectedBrokers.length > 0;
-  const primaryBrokerId = connectedBrokers[0]?.brokerId || supportedBrokers[0]?.brokerId || "binance";
+  const primaryBrokerId = connectedBrokers[0]?.brokerId || supportedBrokers.find((b) => b.implemented)?.brokerId || "binance";
 
   const enriched: EnrichedSignal[] = signals
     .filter((s) => s.status === "active")

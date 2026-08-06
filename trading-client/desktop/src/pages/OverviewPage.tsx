@@ -34,6 +34,8 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../lib/api";
+import { useBrokerContext } from "../context/BrokerContext";
+import { isBrokerConnected } from "../lib/brokerTypes";
 import { Panel, StatCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -84,7 +86,7 @@ interface Stats {
   losses: number;
 }
 
-interface BinanceBalance {
+interface BrokerBalance {
   assets: { asset: string; free: string; locked: string }[];
   total_usd: number;
   total_mxn: number;
@@ -92,10 +94,14 @@ interface BinanceBalance {
 }
 
 export function OverviewPage() {
+  const { connectedAccounts } = useBrokerContext();
+  const firstConnectedBroker = connectedAccounts.find((a) => isBrokerConnected(a.status));
+  const activeBrokerId = firstConnectedBroker?.brokerId || null;
+
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [balance, setBalance] = useState<BinanceBalance | null>(null);
+  const [balance, setBalance] = useState<BrokerBalance | null>(null);
   const [allocatedCapital, setAllocatedCapital] = useState<number>(0);
   const [capitalInput, setCapitalInput] = useState("");
   const [signals, setSignals] = useState<any[]>([]);
@@ -140,8 +146,12 @@ export function OverviewPage() {
       setStats(st?.today ?? null);
     } catch {}
     try {
-      const b = await api<BinanceBalance>("/api/binance/balance");
-      setBalance(b);
+      if (activeBrokerId) {
+        const b = await api<BrokerBalance>(`/api/broker/${activeBrokerId}/balance`);
+        setBalance(b);
+      } else {
+        setBalance(null);
+      }
     } catch {}
     try {
       const sig = await api<any>("/api/signals");
@@ -159,10 +169,14 @@ export function OverviewPage() {
       setAllocatedCapital(allocated);
     } catch {}
     try {
-      const r = await api<any>("/api/binance/resumen");
-      setResumen(r);
+      if (activeBrokerId) {
+        const r = await api<any>(`/api/broker/${activeBrokerId}/portfolio`);
+        setResumen(r);
+      } else {
+        setResumen(null);
+      }
     } catch {}
-  }, []);
+  }, [activeBrokerId]);
 
   useEffect(() => {
     loadData();
@@ -257,7 +271,7 @@ export function OverviewPage() {
         .sort((a, b) => b.usd - a.usd)
         .slice(0, 5);
     }
-    // No Binance API keys — derive from open positions
+    // No broker API keys — derive from open positions
     return (openPositions ?? [])
       .map((p) => {
         const qty = Number(p.quantity || 0);

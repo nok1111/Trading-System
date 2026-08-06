@@ -49,8 +49,8 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
   const [balanceData, setBalanceData] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
-  const [binanceActiveOrders, setBinanceActiveOrders] = useState<any[]>([]);
-  const [binanceFilledOrders, setBinanceFilledOrders] = useState<any[]>([]);
+  const [brokerActiveOrders, setBrokerActiveOrders] = useState<any[]>([]);
+  const [brokerFilledOrders, setBrokerFilledOrders] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -94,11 +94,10 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
           if (t.key === "balance") setBalanceData(data);
           else if (t.key === "positions") setPositions(Array.isArray(data) ? data : (data?.positions || []));
           else if (t.key === "open-orders") {
-            setBinanceActiveOrders(Array.isArray(data) ? data : (data?.orders || []));
-          }
+            setBrokerActiveOrders(Array.isArray(data) ? data : (data?.orders || []));          }
           else if (t.key === "orders") {
-            setBinanceActiveOrders(Array.isArray(data) ? data.filter((o: any) => o.status === "open" || o.status === "pending") : (data?.active || []));
-            setBinanceFilledOrders(Array.isArray(data) ? data.filter((o: any) => o.status === "filled" || o.status === "closed") : (data?.filled || []));
+            setBrokerActiveOrders(Array.isArray(data) ? data.filter((o: any) => o.status === "open" || o.status === "pending") : (data?.active || []));
+            setBrokerFilledOrders(Array.isArray(data) ? data.filter((o: any) => o.status === "filled" || o.status === "closed") : (data?.filled || []));
           }
           else if (t.key === "trades") setTrades(data || []);
         });
@@ -154,7 +153,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       {loading && module !== "trade" && module !== "markets" ? (
         <LoadingSkeleton lines={5} />
       ) : module === "overview" ? (
-        <OverviewModule balanceData={balanceData} positions={positions} activeOrdersCount={binanceActiveOrders.length} />
+        <OverviewModule balanceData={balanceData} positions={positions} activeOrdersCount={brokerActiveOrders.length} />
       ) : module === "portfolio" ? (
         <PortfolioModule balanceData={balanceData} />
       ) : module === "trade" ? (
@@ -164,7 +163,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       ) : module === "positions" ? (
         <PositionsModule positions={positions} brokerId={brokerId} />
       ) : module === "orders" ? (
-        <OrdersModule activeOrders={binanceActiveOrders} filledOrders={binanceFilledOrders} />
+        <OrdersModule activeOrders={brokerActiveOrders} filledOrders={brokerFilledOrders} brokerDisplayName={broker?.displayName || brokerId} />
       ) : module === "history" ? (
         <HistoryModule trades={trades} />
       ) : module === "config" ? (
@@ -913,19 +912,19 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
           </button>
         ))}
       </div>
-      <PriceChart symbol={symbol} interval="1h" height={420} />
+      <PriceChart symbol={symbol} interval="1h" height={420} brokerId={brokerId} />
     </div>
   );
 }
 
-function OrdersModule({ activeOrders, filledOrders }: { activeOrders: any[]; filledOrders: any[] }) {
+function OrdersModule({ activeOrders, filledOrders, brokerDisplayName }: { activeOrders: any[]; filledOrders: any[]; brokerDisplayName: string }) {
   return (
     <div className="space-y-4">
       <div className="panel p-4 border-l-2 border-[var(--color-primary)]">
-        <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-1">Órdenes Activas en Binance ({activeOrders.length})</h3>
-        <p className="text-[10px] text-[var(--color-text-muted)] mb-3">Datos en tiempo real desde Binance API</p>
+        <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-1">Órdenes Activas en {brokerDisplayName} ({activeOrders.length})</h3>
+        <p className="text-[10px] text-[var(--color-text-muted)] mb-3">Datos en tiempo real desde {brokerDisplayName} API</p>
         {activeOrders.length === 0 ? (
-          <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">No tienes órdenes activas en Binance actualmente</p>
+          <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">No tienes órdenes activas en {brokerDisplayName} actualmente</p>
         ) : (
         <table className="w-full text-[12px]">
           <thead>
@@ -965,7 +964,7 @@ function OrdersModule({ activeOrders, filledOrders }: { activeOrders: any[]; fil
 
       {filledOrders.length > 0 && (
         <div className="panel p-4">
-          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Historial de Órdenes Binance ({filledOrders.length})</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Historial de Órdenes {brokerDisplayName} ({filledOrders.length})</h3>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
@@ -1616,8 +1615,8 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                             existingTp={p.take_profit ? Number(p.take_profit) : null}
                             quantity={Number(p.quantity || 0)}
                             isLive={true}
-                            isFutures={!!(p.metadata_json?.source && String(p.metadata_json.source).includes("futures"))}
                             side={p.side || "long"}
+                            brokerId={brokerId || undefined}
                             onSuccess={() => { loadLivePositions(); setShowSlTpPanel(new Set()); }}
                           />
                         )}

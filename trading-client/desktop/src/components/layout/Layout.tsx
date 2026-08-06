@@ -120,7 +120,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
     const onNavigate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.page === "trade" && detail?.asset) {
-        const brokerId = detail.broker || "binance";
+        const firstConnected = connectedAccounts.find((a) => isBrokerConnected(a.status));
+        const brokerId = detail.broker || firstConnected?.brokerId || connectedAccounts[0]?.brokerId || "binance";
         const rawAsset = detail.asset.toUpperCase().replace("/", "");
         const symbol = rawAsset.endsWith("USDT") || rawAsset.endsWith("BTC") || rawAsset.endsWith("ETH") || rawAsset.endsWith("BNB") || rawAsset.endsWith("FDUSD") || rawAsset.endsWith("TUSD")
           ? rawAsset
@@ -134,7 +135,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
     };
     window.addEventListener("navigate", onNavigate);
     return () => window.removeEventListener("navigate", onNavigate);
-  }, [onTabChange]);
+  }, [onTabChange, connectedAccounts]);
 
   useEffect(() => {
     let alive = true;

@@ -108,7 +108,7 @@ export function AIAgentPage() {
   const loadBrokerBalance = useCallback(async () => {
     if (selectedBroker === "paper" || selectedBroker === "mock") { setBrokerBalance(null); return; }
     try {
-      const r = await api<any>("/api/binance/balance");
+      const r = await api<any>(`/api/broker/${selectedBroker}/balance`);
       setBrokerBalance(r);
     } catch { setBrokerBalance(null); }
   }, [selectedBroker]);
@@ -548,7 +548,7 @@ export function AIAgentPage() {
             </div>
             <div className="text-[10px] text-[var(--color-text-muted)]">
               💡 <strong>Auto</strong> = la IA usa todo el USDT disponible. <strong>Asignar</strong> = la IA solo usa el monto fijo que indiques.
-              El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja automáticamente en Binance.
+              El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja automáticamente en tu broker.
             </div>
           </div>
         )}

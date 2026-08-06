@@ -9,6 +9,7 @@ interface PriceChartProps {
   stopLoss?: number | null;
   takeProfit?: number | null;
   entryPrice?: number | null;
+  brokerId?: string;
 }
 
 const INTERVALS = [
@@ -20,7 +21,7 @@ const INTERVALS = [
   { value: "1d", label: "1D" },
 ];
 
-export function PriceChart({ symbol, interval: initialInterval = "1h", height = 400, stopLoss, takeProfit, entryPrice }: PriceChartProps) {
+export function PriceChart({ symbol, interval: initialInterval = "1h", height = 400, stopLoss, takeProfit, entryPrice, brokerId }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -121,7 +122,9 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
 
     const load = async () => {
       try {
-        const data = await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=300`);
+        const data = brokerId
+          ? await api<any[]>(`/api/broker/${brokerId}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=300`)
+          : await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=300`);
         if (!alive) return;
 
         const root = document.documentElement;
@@ -181,7 +184,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     };
     load();
     return () => { alive = false; };
-  }, [symbol, interval]);
+  }, [symbol, interval, brokerId]);
 
   // Function to draw SL/TP/entry price lines (used by multiple effects)
   const drawPriceLines = useCallback(() => {

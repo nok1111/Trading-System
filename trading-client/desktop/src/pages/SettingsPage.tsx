@@ -32,8 +32,8 @@ export function SettingsPage() {
 
   const checkApiKeys = useCallback(async () => {
     try {
-      const r = await api<any>("/api/binance/balance");
-      if (r?.balances?.length > 0) {
+      const r = await api<any>("/api/broker/binance/balance");
+      if (r?.assets?.length > 0) {
         setApiKeyStatus("✓ API Keys del .env funcionando");
       } else {
         setApiKeyStatus("⚠ Sin balances. Verifica tus API keys en .env");
@@ -226,11 +226,15 @@ export function SettingsPage() {
         </p>
       </Card>
 
-      {/* Binance API Keys */}
+      {/* Default Broker API Keys (legacy .env config) */}
       <Card>
         <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-4">
-          Binance API Keys
+          Broker por defecto — API Keys (Binance)
         </h3>
+        <p className="text-[11px] text-[var(--color-text-muted)] mb-3">
+          Estas keys se guardan en el archivo .env del servidor y se usan como broker por defecto.
+          Para conectar otros brokers (Bybit, Kraken, OKX, etc.), usa la página <strong>Conexiones</strong>.
+        </p>
 
         {binanceKeySet && (
           <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-[var(--color-success)]/10">
