@@ -938,6 +938,12 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
 function MarketsModule({ brokerId }: { brokerId: string }) {
   const [quoteCurrency, setQuoteCurrency] = useState("USDT");
   const [symbol, setSymbol] = useState("BTC/USDT");
+  const [brokerSymbols, setBrokerSymbols] = useState<brokerApi.BrokerSymbol[]>([]);
+  const [movers, setMovers] = useState<brokerApi.BrokerMoversResponse | null>(null);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<"volume" | "change_24h_pct" | "price">("volume");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     brokerApi.getBalance(brokerId).then((data) => {
@@ -946,35 +952,192 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
       for (const a of data.assets) {
         if (stablecoins.includes(a.asset) && a.total > 0) {
           setQuoteCurrency(a.asset);
-          setSymbol(`BTC/${a.asset}`);
           break;
         }
       }
     }).catch(() => {});
   }, [brokerId]);
 
-  const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA"];
-  const symbols = baseSymbols.map((s) => `${s}/${quoteCurrency}`);
+  // Fetch all tradable symbols + movers
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      brokerApi.getTopSymbols(brokerId, { quote: quoteCurrency, limit: 100 }),
+      brokerApi.getMovers(brokerId, { quote: quoteCurrency, limit: 10 }).catch(() => null),
+    ]).then(([syms, mvs]) => {
+      setBrokerSymbols(syms);
+      setMovers(mvs);
+      if (syms.length > 0 && symbol === "BTC/USDT") {
+        const btc = syms.find((s) => s.base === "BTC");
+        if (btc) setSymbol(btc.symbol);
+      }
+    }).finally(() => setLoading(false));
+  }, [brokerId, quoteCurrency]);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const id = setInterval(() => {
+      brokerApi.getTopSymbols(brokerId, { quote: quoteCurrency, limit: 100 }).then(setBrokerSymbols).catch(() => {});
+      brokerApi.getMovers(brokerId, { quote: quoteCurrency, limit: 10 }).then(setMovers).catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+  }, [brokerId, quoteCurrency]);
+
+  const filtered = brokerSymbols.filter((s) => {
+    if (!search) return true;
+    const q = search.toUpperCase();
+    return s.base.includes(q) || s.symbol.includes(q);
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === "desc" ? -1 : 1;
+    return (a[sortKey] - b[sortKey]) * dir;
+  });
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(sortDir === "desc" ? "asc" : "desc");
+    else { setSortKey(key); setSortDir("desc"); }
+  };
+
+  const SortHeader = ({ label, k, align = "right" }: { label: string; k: typeof sortKey; align?: "left" | "right" }) => (
+    <th
+      className={cn("pb-2 cursor-pointer select-none hover:text-[var(--color-text)] transition-colors", align === "right" ? "text-right" : "text-left")}
+      onClick={() => toggleSort(k)}
+    >
+      {label} {sortKey === k && (sortDir === "desc" ? "↓" : "↑")}
+    </th>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1.5 flex-wrap">
-        {symbols.map((s) => (
-          <button
-            key={s}
-            onClick={() => setSymbol(s)}
-            className={`px-3 h-8 rounded-[8px] text-[12px] font-bold transition-colors flex items-center gap-1.5 ${
-              symbol === s
-                ? "bg-[var(--color-primary)] text-white"
-                : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-            }`}
-          >
-            <CryptoIcon symbol={s} size={16} />
-            {s}
-          </button>
-        ))}
+      {/* Top Gainers / Losers */}
+      {movers && (movers.gainers.length > 0 || movers.losers.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Gainers */}
+          <div className="panel p-4">
+            <h3 className="text-[13px] font-bold text-green-400 mb-3 flex items-center gap-1.5">
+              <ChevronUp size={14} /> Top Gainers (24h)
+            </h3>
+            <div className="space-y-1.5">
+              {movers.gainers.slice(0, 5).map((m, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const sym = m.symbol.includes("/") ? m.symbol : `${m.symbol.replace(quoteCurrency, "").replace(/\/+$/, "")}/${quoteCurrency}`;
+                    setSymbol(sym);
+                  }}
+                  className="w-full flex items-center justify-between rounded-[6px] px-2 py-1.5 hover:bg-[var(--color-surface-hover)] transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <CryptoIcon symbol={m.symbol.includes("/") ? m.symbol : `${m.symbol}/${quoteCurrency}`} size={18} />
+                    <span className="text-[12px] font-bold text-[var(--color-text)]">
+                      {m.symbol.includes("/") ? m.symbol.split("/")[0] : m.symbol.replace(quoteCurrency, "")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-[var(--color-text-muted)]">${fmt(m.price)}</span>
+                    <span className="text-[12px] font-bold text-green-400">+{m.price_change_percent.toFixed(2)}%</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Losers */}
+          <div className="panel p-4">
+            <h3 className="text-[13px] font-bold text-red-400 mb-3 flex items-center gap-1.5">
+              <ChevronDown size={14} /> Top Losers (24h)
+            </h3>
+            <div className="space-y-1.5">
+              {movers.losers.slice(0, 5).map((m, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const sym = m.symbol.includes("/") ? m.symbol : `${m.symbol.replace(quoteCurrency, "").replace(/\/+$/, "")}/${quoteCurrency}`;
+                    setSymbol(sym);
+                  }}
+                  className="w-full flex items-center justify-between rounded-[6px] px-2 py-1.5 hover:bg-[var(--color-surface-hover)] transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <CryptoIcon symbol={m.symbol.includes("/") ? m.symbol : `${m.symbol}/${quoteCurrency}`} size={18} />
+                    <span className="text-[12px] font-bold text-[var(--color-text)]">
+                      {m.symbol.includes("/") ? m.symbol.split("/")[0] : m.symbol.replace(quoteCurrency, "")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-[var(--color-text-muted)]">${fmt(m.price)}</span>
+                    <span className="text-[12px] font-bold text-red-400">{m.price_change_percent.toFixed(2)}%</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Market table + Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Market table */}
+        <div className="panel p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[13px] font-bold text-[var(--color-text)]">Mercados ({quoteCurrency})</h3>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar..."
+              className="h-7 w-32 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[11px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+          {loading ? (
+            <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Cargando mercados...</p>
+          ) : sorted.length === 0 ? (
+            <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">No hay símbolos disponibles</p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              <table className="w-full text-[12px]">
+                <thead className="sticky top-0 bg-[var(--color-surface)] z-10">
+                  <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                    <th className="text-left pb-2">Symbol</th>
+                    <SortHeader label="Price" k="price" />
+                    <SortHeader label="24h%" k="change_24h_pct" />
+                    <SortHeader label="Volume" k="volume" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.slice(0, 80).map((s, i) => (
+                    <tr
+                      key={i}
+                      onClick={() => setSymbol(s.symbol)}
+                      className={cn(
+                        "cursor-pointer border-b border-[var(--color-border)]/30 transition-colors",
+                        symbol === s.symbol ? "bg-[var(--color-primary)]/10" : "hover:bg-[var(--color-surface-hover)]"
+                      )}
+                    >
+                      <td className="py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <CryptoIcon symbol={s.symbol} size={16} />
+                          <span className="font-bold text-[var(--color-text)]">{s.base}</span>
+                        </div>
+                      </td>
+                      <td className="text-right text-[var(--color-text)]">${fmt(s.price)}</td>
+                      <td className={cn(
+                        "text-right font-bold",
+                        s.change_24h_pct >= 0 ? "text-green-400" : "text-red-400"
+                      )}>
+                        {s.change_24h_pct >= 0 ? "+" : ""}{s.change_24h_pct.toFixed(2)}%
+                      </td>
+                      <td className="text-right text-[var(--color-text-muted)]">{fmtVol(s.volume)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Chart */}
+        <PriceChart symbol={symbol} interval="1h" height={420} brokerId={brokerId} />
       </div>
-      <PriceChart symbol={symbol} interval="1h" height={420} brokerId={brokerId} />
     </div>
   );
 }
