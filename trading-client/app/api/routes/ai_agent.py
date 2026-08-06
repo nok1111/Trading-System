@@ -1407,6 +1407,7 @@ def import_binance_positions(
 
             pos = PositionModel(
                 user_id=current_user.id,
+                broker_id="binance",
                 symbol=symbol,
                 opened_at=datetime.now(tz=UTC),
                 side="long",
@@ -1454,6 +1455,7 @@ def import_binance_positions(
 
                 pos = PositionModel(
                     user_id=current_user.id,
+                    broker_id="binance",
                     symbol=symbol,
                     opened_at=datetime.now(tz=UTC),
                     side=side,
@@ -2563,6 +2565,7 @@ def record_trade(
             else:
                 pos = PositionModel(
                     user_id=user_id,
+                    broker_id="binance",
                     symbol=symbol,
                     opened_at=datetime.now(tz=UTC),
                     side="long",
@@ -2661,6 +2664,7 @@ def bulk_import_positions(
 
             pos = PositionModel(
                 user_id=user_id,
+                broker_id="binance",
                 symbol=symbol,
                 opened_at=datetime.now(tz=UTC),
                 side=side,

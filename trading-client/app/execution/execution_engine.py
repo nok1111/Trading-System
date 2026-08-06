@@ -115,6 +115,7 @@ class ExecutionEngine:
 
     def _persist_signal(self, signal_create: SignalCreate) -> Signal:
         signal = Signal(
+            broker_id=self.broker.name,
             timestamp=signal_create.timestamp,
             symbol=signal_create.symbol,
             signal_type=signal_create.signal_type,
@@ -178,6 +179,7 @@ class ExecutionEngine:
         # Fallback: legacy path without OrderManager
         order = Order(
             user_id=self.user_id,
+            broker_id=self.broker.name,
             client_order_id=self._generate_client_order_id(),
             idempotency_key=uuid4().hex[:36],
             broker_order_id=None,
@@ -235,6 +237,7 @@ class ExecutionEngine:
         # Fallback: legacy path without OrderManager
         order = Order(
             user_id=self.user_id,
+            broker_id=self.broker.name,
             client_order_id=self._generate_client_order_id(),
             idempotency_key=uuid4().hex[:36],
             broker_order_id=None,
@@ -269,6 +272,7 @@ class ExecutionEngine:
     ) -> None:
         trade = Trade(
             user_id=self.user_id,
+            broker_id=self.broker.name,
             timestamp=datetime.now(tz=UTC),
             symbol=order.symbol,
             side="BUY",
@@ -287,6 +291,7 @@ class ExecutionEngine:
 
         position = Position(
             user_id=self.user_id,
+            broker_id=self.broker.name,
             symbol=order.symbol,
             opened_at=datetime.now(tz=UTC),
             closed_at=None,

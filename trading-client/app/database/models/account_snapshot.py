@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, func
+from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -14,6 +14,7 @@ class AccountSnapshot(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    broker_id: Mapped[str] = mapped_column(String(50), nullable=False, default="binance", index=True)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
     cash: Mapped[Decimal] = mapped_column(Numeric(19, 8), nullable=False, default=Decimal("0"))
     equity: Mapped[Decimal] = mapped_column(Numeric(19, 8), nullable=False, default=Decimal("0"))

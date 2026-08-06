@@ -14,6 +14,7 @@ class Position(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
+    broker_id: Mapped[str] = mapped_column(String(50), nullable=False, default="binance", index=True)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     opened_at: Mapped[datetime] = mapped_column(nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(nullable=True)

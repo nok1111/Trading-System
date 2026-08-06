@@ -14,6 +14,7 @@ class Signal(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    broker_id: Mapped[str] = mapped_column(String(50), nullable=False, default="binance", index=True)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     signal_type: Mapped[str] = mapped_column(

@@ -129,18 +129,21 @@ _MIGRATIONS = {
     ],
     "signals": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+        ("broker_id", "VARCHAR(50) NOT NULL DEFAULT 'binance'"),
     ],
     "risk_events": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
     ],
     "account_snapshots": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+        ("broker_id", "VARCHAR(50) NOT NULL DEFAULT 'binance'"),
     ],
     "prediction_records": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
     ],
     "order_reconciliations": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+        ("broker_id", "VARCHAR(50) NOT NULL DEFAULT 'binance'"),
     ],
     "system_events": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
@@ -153,6 +156,15 @@ _MIGRATIONS = {
     ],
     "intelligence_events": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "positions": [
+        ("broker_id", "VARCHAR(50) NOT NULL DEFAULT 'binance'"),
+    ],
+    "orders": [
+        ("broker_id", "VARCHAR(50) NOT NULL DEFAULT 'binance'"),
+    ],
+    "trades": [
+        ("broker_id", "VARCHAR(50) NOT NULL DEFAULT 'binance'"),
     ],
 }
 

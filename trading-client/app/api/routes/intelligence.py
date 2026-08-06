@@ -1632,6 +1632,7 @@ def accept_recommendation(
         # Create Position
         pos = Position(
             user_id=0,
+            broker_id="binance",
             symbol=symbol,
             opened_at=datetime.now(tz=UTC),
             side="long",

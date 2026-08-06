@@ -142,6 +142,7 @@ def create_ai_snapshot(broker) -> None:
     session = SessionLocal()
     try:
         snapshot = AccountSnapshot(
+            broker_id=broker.name,
             timestamp=datetime.now(tz=UTC),
             cash=account.cash,
             equity=account.equity,

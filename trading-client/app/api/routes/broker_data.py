@@ -239,6 +239,7 @@ def get_positions(
         positions = db.query(Position).filter(
             Position.status == "open",
             Position.user_id == current_user.id,
+            Position.broker_id == broker_id,
         ).all()
         if not positions:
             return {"positions": [], "count": 0}
