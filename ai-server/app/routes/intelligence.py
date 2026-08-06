@@ -361,7 +361,7 @@ async def portfolio_match(
 
     portfolio = UserPortfolio(
         user_id_hash=req.user_id_hash,
-        broker=req.portfolio.get("broker", "binance"),
+        broker=req.portfolio.get("broker", "unknown"),
         risk_profile=req.portfolio.get("risk_profile", "intermediate"),
         max_allocation_pct=req.portfolio.get("max_allocation_pct", 40.0),
         max_risk_per_trade_pct=req.portfolio.get("max_risk_per_trade_pct", 2.0),

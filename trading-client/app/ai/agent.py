@@ -563,21 +563,21 @@ class AITradingAgent:
                 if not stop_loss or not take_profit:
                     continue
 
-                # Get current price from Binance (spot first, then futures)
+                # Get current price from internal API (broker-agnostic)
                 try:
-                    resp = httpx.get(
-                        f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
-                        timeout=5.0,
-                    )
-                    if resp.status_code == 200:
-                        current_price = float(resp.json()["price"])
+                    price_data = self._api_get(f"/api/prices/live")
+                    if isinstance(price_data, dict) and price_data.get("prices"):
+                        symbol_price = price_data["prices"].get(symbol)
+                        if symbol_price:
+                            current_price = float(symbol_price)
+                        else:
+                            continue
                     else:
-                        resp = httpx.get(
-                            f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}",
-                            timeout=5.0,
-                        )
-                        if resp.status_code == 200:
-                            current_price = float(resp.json()["price"])
+                        # Fallback: try broker ticker endpoint
+                        broker_id = self._get_broker_name()
+                        ticker_data = self._api_get(f"/api/broker/{broker_id}/ticker?symbol={symbol}")
+                        if isinstance(ticker_data, dict) and ticker_data.get("price"):
+                            current_price = float(ticker_data["price"])
                         else:
                             continue
                 except Exception:
@@ -1303,7 +1303,7 @@ class AITradingAgent:
                 cash_pct = (cash / equity) * 100
 
         result = {
-            "broker": "binance",
+            "broker": self._get_broker_name(),
             "risk_profile": risk_profile,
             "positions": position_list,
             "total_portfolio_value": total_portfolio,
@@ -1326,6 +1326,33 @@ class AITradingAgent:
             import hashlib as _hashlib
             return _hashlib.sha256(self._jwt_token.encode()).hexdigest()[:32]
         return "anonymous_user_hash_000000"
+
+    def _get_broker_name(self) -> str:
+        """Get the broker name from settings or first connected broker account."""
+        try:
+            from app.config import get_settings
+            settings = get_settings()
+            provider = settings.BROKER_PROVIDER
+            if provider and provider not in ("mock", "paper"):
+                return provider
+        except Exception:
+            pass
+        # Fallback: query first connected broker account from DB
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.broker_account import BrokerAccount
+            session = SessionLocal()
+            try:
+                acct = session.query(BrokerAccount).filter(
+                    BrokerAccount.status.like("CONNECTED%")
+                ).order_by(BrokerAccount.created_at).first()
+                if acct:
+                    return acct.broker_id
+            finally:
+                session.close()
+        except Exception:
+            pass
+        return "binance"
 
     def _recommendation_to_action(self, rec: Any) -> dict | None:
         """Convert a PersonalRecommendation to an action dict for execution."""
@@ -1455,7 +1482,7 @@ class AITradingAgent:
                     for p in positions
                 ]
 
-            # Market movers - spot (top gainers/losers from Binance, filtered)
+            # Market movers - spot (top gainers/losers, filtered)
             movers_spot = self._api_get("/api/market/movers?market=spot&limit=50")
             movers_futures = self._api_get("/api/market/movers?market=futures&limit=50")
             if isinstance(movers_spot, dict):
@@ -1550,7 +1577,7 @@ class AITradingAgent:
             self._add_log("error", f"Error recopilando contexto: {exc}")
             return {}
 
-    # Cached set of valid Binance spot symbols
+    # Cached set of valid spot symbols
     _valid_symbols_cache: set[str] | None = None
     _valid_symbols_cache_time: float = 0
     # Allowed symbols loaded from config (DEFAULT_SYMBOLS)

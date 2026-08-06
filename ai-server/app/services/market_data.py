@@ -599,10 +599,20 @@ _engine_lock = threading.Lock()
 
 
 def get_market_data_engine() -> MarketDataEngine:
-    """Get or create the singleton MarketDataEngine instance."""
+    """Get or create the singleton MarketDataEngine instance.
+
+    Uses CCXTDataProvider by default for multi-exchange support.
+    Falls back to BinanceDataProvider if CCXT is not available.
+    """
     global _engine_instance
     with _engine_lock:
         if _engine_instance is None:
-            from app.services.binance_data_provider import BinanceDataProvider
-            _engine_instance = MarketDataEngine(data_provider=BinanceDataProvider())
+            try:
+                from app.services.ccxt_data_provider import CCXTDataProvider
+                _engine_instance = MarketDataEngine(data_provider=CCXTDataProvider())
+                logger.info("MarketDataEngine initialized with CCXTDataProvider")
+            except ImportError:
+                from app.services.binance_data_provider import BinanceDataProvider
+                _engine_instance = MarketDataEngine(data_provider=BinanceDataProvider())
+                logger.info("MarketDataEngine initialized with BinanceDataProvider (CCXT not available)")
         return _engine_instance

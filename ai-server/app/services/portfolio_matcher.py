@@ -21,7 +21,7 @@ class UserPortfolio:
     """Portafolio del usuario enviado desde el trading-client."""
 
     user_id_hash: str
-    broker: str = "binance"
+    broker: str = "unknown"
     risk_profile: str = "intermediate"  # passive, intermediate, aggressive
     max_allocation_pct: float = 40.0
     max_risk_per_trade_pct: float = 2.0
