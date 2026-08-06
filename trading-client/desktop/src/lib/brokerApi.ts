@@ -293,6 +293,30 @@ export async function getMovers(
   return api<BrokerMoversResponse>(`/api/broker/${brokerId}/movers${qs ? `?${qs}` : ""}`);
 }
 
+export interface BrokerSymbol {
+  symbol: string;
+  base: string;
+  quote: string;
+  price: number;
+  change_24h_pct: number;
+  volume: number;
+}
+
+export async function getTopSymbols(
+  brokerId: string,
+  opts?: { quote?: string; limit?: number }
+): Promise<BrokerSymbol[]> {
+  const params = new URLSearchParams();
+  if (opts?.quote) params.set("quote", opts.quote);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  try {
+    return await api<BrokerSymbol[]>(`/api/broker/${brokerId}/symbols${qs ? `?${qs}` : ""}`);
+  } catch {
+    return [];
+  }
+}
+
 export async function placeOrder(brokerId: string, params: PlaceOrderParams): Promise<PlaceOrderResponse> {
   return api<PlaceOrderResponse>(`/api/broker/${brokerId}/order`, {
     method: "POST",

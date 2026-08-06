@@ -56,7 +56,7 @@ async def license_check(request: Request, call_next):
         or path.startswith("/api/signals")
         or (
             path.startswith("/api/broker/")
-            and ("/ticker" in path or "/klines" in path or "/movers" in path or "/market-info" in path)
+            and ("/ticker" in path or "/klines" in path or "/movers" in path or "/market-info" in path or "/symbols" in path)
         )
     )
     if is_public:

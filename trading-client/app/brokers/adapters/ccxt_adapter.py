@@ -661,6 +661,34 @@ class CCXTAdapter(BrokerAdapter):
         losers = list(reversed(movers[-limit:]))
         return {"gainers": gainers, "losers": losers}
 
+    def get_top_symbols(
+        self, quote: str = "USDT", limit: int = 50
+    ) -> list[dict]:
+        """Top símbolos por volumen via CCXT fetch_tickers."""
+        try:
+            tickers = self._exchange.fetch_tickers()
+        except Exception as exc:
+            raise _map_ccxt_error(exc) from exc
+
+        result = []
+        for sym, t in tickers.items():
+            if not sym.endswith(f"/{quote}"):
+                continue
+            base = sym.split("/")[0]
+            vol = t.get("quoteVolume", 0) or 0
+            if vol <= 0:
+                continue
+            result.append({
+                "symbol": sym,
+                "base": base,
+                "quote": quote,
+                "price": float(t.get("last", 0) or 0),
+                "change_24h_pct": float(t.get("percentage", 0) or 0),
+                "volume": float(vol),
+            })
+        result.sort(key=lambda x: x["volume"], reverse=True)
+        return result[:limit]
+
 
 def get_curated_exchange_ids() -> tuple[str, ...]:
     """Devuelve los IDs de exchanges CCXT curados para mostrar al usuario."""

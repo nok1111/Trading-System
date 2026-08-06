@@ -445,6 +445,31 @@ def get_movers(
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
 
 
+# ─── Top Symbols (tradable list) ──────────────────────────────────────────────
+
+@router.get("/{broker_id}/symbols")
+def get_top_symbols(
+    broker_id: str,
+    quote: str = Query("USDT"),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: Annotated[LocalUser | None, Depends(get_optional_user)] = None,
+) -> list[dict]:
+    """Lista de símbolos tradables del broker con precio y cambio 24h.
+
+    Ordenados por volumen. No requiere credenciales (datos públicos).
+    """
+    try:
+        from app.brokers.models import BrokerCredentials
+        creds = BrokerCredentials(broker_id=broker_id, api_key="", api_secret="")
+        adapter = get_adapter(broker_id, creds)
+        symbols = adapter.get_top_symbols(quote=quote, limit=limit)
+        return symbols
+    except BrokerError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
+
+
 # ─── Place Order ──────────────────────────────────────────────────────────────
 
 class PlaceOrderRequest(BaseModel):

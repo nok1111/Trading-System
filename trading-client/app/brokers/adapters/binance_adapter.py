@@ -475,6 +475,36 @@ class BinanceAdapter(BrokerAdapter):
         losers = list(reversed(tickers[-limit:]))
         return {"gainers": gainers, "losers": losers}
 
+    def get_top_symbols(
+        self, quote: str = "USDT", limit: int = 50
+    ) -> list[dict]:
+        """Top símbolos por volumen de 24h desde Binance con precio y cambio."""
+        url = f"{self._base_url}/api/v3/ticker/24hr"
+        try:
+            resp = httpx.get(url, timeout=self._broker._timeout)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise BrokerError(f"Error al consultar ticker 24h: {exc}") from exc
+
+        tickers = []
+        for item in resp.json():
+            sym = item.get("symbol", "")
+            if not sym.endswith(quote):
+                continue
+            base = sym[:-len(quote)] if quote else sym
+            if not base or len(base) > 10:
+                continue
+            tickers.append({
+                "symbol": f"{base}/{quote}",
+                "base": base,
+                "quote": quote,
+                "price": float(item.get("lastPrice", "0")),
+                "change_24h_pct": float(item.get("priceChangePercent", "0")),
+                "volume": float(item.get("quoteVolume", "0")),
+            })
+        tickers.sort(key=lambda x: x["volume"], reverse=True)
+        return tickers[:limit]
+
     def _parse_binance_order(self, data: dict) -> BrokerOrder:
         bin_status = data.get("status", "NEW")
         status = _BINANCE_STATUS_MAP.get(bin_status.upper(), OrderStatus.PENDING)

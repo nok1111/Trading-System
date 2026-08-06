@@ -333,10 +333,12 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   const [quoteCurrency, setQuoteCurrency] = useState("USDT");
   const [userBalance, setUserBalance] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
+  const [brokerSymbols, setBrokerSymbols] = useState<brokerApi.BrokerSymbol[]>([]);
+  const [symbolSearch, setSymbolSearch] = useState("");
+  const [symbolsLoading, setSymbolsLoading] = useState(false);
+  const [change24h, setChange24h] = useState<number | null>(null);
 
   const BROKER_FEE_RATE = 0.001; // 0.1% spot fee (approximate, varies by exchange)
-  const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA", "LINK", "DOT"];
-  const symbols = baseSymbols.map((s) => `${s}/${quoteCurrency}`);
 
   // Detect quote currency from user's balance and load balance + positions
   useEffect(() => {
@@ -356,6 +358,19 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
       setOpenPositions(positions || []);
     }).catch(() => {});
   }, [brokerId]);
+
+  // Fetch tradable symbols from broker
+  useEffect(() => {
+    setSymbolsLoading(true);
+    brokerApi.getTopSymbols(brokerId, { quote: quoteCurrency, limit: 100 }).then((syms) => {
+      setBrokerSymbols(syms);
+      // If no preset symbol, default to BTC/{quote}
+      if (!presetSymbol && syms.length > 0) {
+        const btc = syms.find((s) => s.base === "BTC");
+        if (btc) setSymbol(btc.symbol);
+      }
+    }).finally(() => setSymbolsLoading(false));
+  }, [brokerId, quoteCurrency]);
 
   useEffect(() => {
     if (presetSymbol) setSymbol(presetSymbol);
@@ -381,8 +396,21 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
     return () => clearInterval(id);
   }, [fetchPrice]);
 
+  // Update 24h change from broker symbols data
+  useEffect(() => {
+    const found = brokerSymbols.find((s) => s.symbol === symbol);
+    setChange24h(found ? found.change_24h_pct : null);
+  }, [symbol, brokerSymbols]);
+
+  // Filtered symbols based on search
+  const filteredSymbols = brokerSymbols.filter((s) => {
+    if (!symbolSearch) return true;
+    const q = symbolSearch.toUpperCase();
+    return s.base.includes(q) || s.symbol.includes(q);
+  });
+
   // Available balance for the current operation
-  const baseAsset = symbol.replace(quoteCurrency, "");
+  const baseAsset = symbol.includes("/") ? symbol.split("/")[0] : symbol.replace(quoteCurrency, "");
   const availableUsdt = userBalance?.assets?.find((a: any) => a.asset === quoteCurrency)?.free || 0;
   const availableAsset = userBalance?.assets?.find((a: any) => a.asset === baseAsset)?.free || 0;
 
@@ -478,21 +506,45 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
         </div>
       )}
 
-      {/* Symbol selector */}
-      <div className="flex gap-1.5 flex-wrap">
-        {symbols.map((s) => (
-          <button
-            key={s}
-            onClick={() => { setSymbol(s); setResult(null); setError(""); }}
-            className={`px-3 h-8 rounded-[8px] text-[12px] font-bold transition-colors ${
-              symbol === s
-                ? "bg-[var(--color-primary)] text-white"
-                : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+      {/* Symbol selector with search */}
+      <div className="space-y-2">
+        <input
+          type="text"
+          value={symbolSearch}
+          onChange={(e) => setSymbolSearch(e.target.value)}
+          placeholder="Buscar símbolo (BTC, ETH, SOL...)"
+          className="w-full h-9 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-[13px] font-medium text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+        />
+        <div className="flex gap-1.5 flex-wrap max-h-28 overflow-y-auto">
+          {symbolsLoading ? (
+            <span className="text-[11px] text-[var(--color-text-muted)]">Cargando símbolos...</span>
+          ) : filteredSymbols.length === 0 ? (
+            <span className="text-[11px] text-[var(--color-text-muted)]">No se encontraron símbolos</span>
+          ) : (
+            filteredSymbols.slice(0, 60).map((s) => (
+              <button
+                key={s.symbol}
+                onClick={() => { setSymbol(s.symbol); setResult(null); setError(""); }}
+                className={cn(
+                  "px-2.5 h-7 rounded-[6px] text-[11px] font-bold transition-colors flex items-center gap-1",
+                  symbol === s.symbol
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                )}
+              >
+                {s.base}
+                {s.change_24h_pct !== 0 && (
+                  <span className={cn(
+                    "text-[9px]",
+                    symbol === s.symbol ? "text-white/70" : s.change_24h_pct >= 0 ? "text-green-400" : "text-red-400"
+                  )}>
+                    {s.change_24h_pct >= 0 ? "+" : ""}{s.change_24h_pct.toFixed(1)}%
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -502,9 +554,19 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           <div className="flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Precio actual</span>
-              <p className="text-[20px] font-extrabold text-[var(--color-text)]">
-                {priceLoading ? "..." : livePrice ? `$${livePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })}` : "—"}
-              </p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-[20px] font-extrabold text-[var(--color-text)]">
+                  {priceLoading ? "..." : livePrice ? `$${livePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })}` : "—"}
+                </p>
+                {change24h !== null && (
+                  <span className={cn(
+                    "text-[12px] font-bold",
+                    change24h >= 0 ? "text-green-400" : "text-red-400"
+                  )}>
+                    {change24h >= 0 ? "▲" : "▼"} {Math.abs(change24h).toFixed(2)}%
+                  </span>
+                )}
+              </div>
             </div>
             <button onClick={fetchPrice} className="text-[11px] font-bold text-[var(--color-primary)] hover:opacity-80">
               Actualizar
@@ -866,7 +928,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
 
         {/* Chart */}
         <div className="space-y-3">
-          <PriceChart symbol={symbol} interval="1h" height={380} />
+          <PriceChart symbol={symbol} interval="1h" height={380} brokerId={brokerId} stopLoss={stopLossPrice ? parseFloat(stopLossPrice) : null} takeProfit={takeProfitPrice ? parseFloat(takeProfitPrice) : null} entryPrice={entryPrice} />
         </div>
       </div>
     </div>

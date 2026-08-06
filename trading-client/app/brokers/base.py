@@ -132,6 +132,36 @@ class BrokerAdapter(ABC):
     ) -> dict:
         """Devuelve top gainers y losers de 24h."""
 
+    def get_top_symbols(
+        self, quote: str = "USDT", limit: int = 50
+    ) -> list[dict]:
+        """Devuelve los símbolos más tradedados por volumen con precio y cambio 24h.
+
+        Cada item: {symbol, base, quote, price, change_24h_pct, volume}
+        Implementación por defecto: usa get_market_movers y combina gainers+losers.
+        """
+        try:
+            movers = self.get_market_movers(quote=quote, limit=limit)
+            seen = set()
+            result = []
+            for item in (movers.get("gainers", []) + movers.get("losers", [])):
+                sym = item.get("symbol", "")
+                if sym in seen:
+                    continue
+                seen.add(sym)
+                result.append({
+                    "symbol": sym,
+                    "base": sym.replace(quote, "").rstrip("/"),
+                    "quote": quote,
+                    "price": float(item.get("price", 0)),
+                    "change_24h_pct": float(item.get("price_change_percent", 0)),
+                    "volume": float(item.get("volume", 0)),
+                })
+            result.sort(key=lambda x: x["volume"], reverse=True)
+            return result[:limit]
+        except Exception:
+            return []
+
     def subscribe_market_data(
         self,
         symbols: list[str],
