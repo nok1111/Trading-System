@@ -358,6 +358,61 @@ class BinanceAdapter(BrokerAdapter):
         order = self._parse_binance_order(resp)
         return OrderExecutionResult(success=True, order=order)
 
+    def place_oco_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: Decimal,
+        take_profit_price: Decimal,
+        stop_loss_price: Decimal,
+    ) -> dict:
+        """Place a real OCO (One-Cancels-Other) order on Binance.
+
+        TP is a LIMIT order, SL is a STOP_LOSS_LIMIT order.
+        When one fills, the other is automatically cancelled.
+        Returns dict with order_list_id, sl_order_id, tp_order_id.
+        """
+        broker_symbol = denormalize_symbol(symbol, "binance")
+        bin_side = "SELL" if side.lower() == "sell" else "BUY"
+
+        def _fmt(v: Decimal) -> str:
+            return f"{float(v):.8f}".rstrip("0").rstrip(".")
+
+        params: dict[str, Any] = {
+            "symbol": broker_symbol,
+            "side": bin_side,
+            "quantity": self._broker._format_quantity(quantity),
+            "price": _fmt(take_profit_price),
+            "stopPrice": _fmt(stop_loss_price),
+            "stopLimitPrice": _fmt(stop_loss_price),
+            "stopLimitTimeInForce": "GTC",
+        }
+
+        try:
+            resp = self._broker._signed_request("POST", "/api/v3/order/oco", params)
+        except BinanceBrokerError as exc:
+            mapped = _map_binance_error(exc)
+            return {"success": False, "error": str(mapped)}
+
+        order_list_id = str(resp.get("orderListId", ""))
+        orders = resp.get("orders", [])
+        sl_id = ""
+        tp_id = ""
+        for o in orders:
+            otype = o.get("type", "")
+            oid = str(o.get("orderId", ""))
+            if otype in ("STOP_LOSS_LIMIT", "STOP_LOSS"):
+                sl_id = oid
+            elif otype in ("LIMIT", "TAKE_PROFIT_LIMIT"):
+                tp_id = oid
+
+        return {
+            "success": True,
+            "order_list_id": order_list_id,
+            "sl_order_id": sl_id,
+            "tp_order_id": tp_id,
+        }
+
     def cancel_order(self, request: CancelOrderRequest) -> OrderCancellationResult:
         params: dict[str, Any] = {}
         if request.broker_order_id:

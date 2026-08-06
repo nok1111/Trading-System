@@ -1398,6 +1398,29 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
     }
   };
 
+  const handleClosePosition = async (positionId: number, symbol: string, quantity: number) => {
+    if (!brokerId) return;
+    if (!confirm(`¿Cerrar posición de ${quantity} ${symbol} a precio de mercado?`)) return;
+    try {
+      const resp = await brokerApi.placeOrder(brokerId, {
+        symbol,
+        side: "sell",
+        order_type: "market",
+        quantity,
+      });
+      if (resp.error) {
+        toast(`Error: ${resp.error}`, false);
+        return;
+      }
+      // Mark position as closed in DB
+      await api(`/api/intelligence/positions/${positionId}/stop-monitoring`, { method: "POST" }).catch(() => {});
+      toast(`Posición cerrada: ${resp.executedQty || quantity} ${symbol}`, true);
+      await loadLivePositions();
+    } catch (e: any) {
+      toast(e?.message || "Error al cerrar posición", false);
+    }
+  };
+
   const loadPaperStatus = useCallback(async () => {
     try {
       const s = await api<any>("/api/paper-trading/status");
@@ -1691,15 +1714,34 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
               {/* Position cards with charts */}
               {openPositions.map((p, i) => {
                 const pnl = Number(p.unrealized_pnl || 0);
-                const pnlPct = p.entry_price && p.current_price
-                  ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
+                const entry = Number(p.entry_price || 0);
+                const current = Number(p.current_price || 0);
+                const qty = Number(p.quantity || 0);
+                const pnlPct = entry > 0
+                  ? ((current - entry) / entry * 100)
                   : 0;
+                const positionValue = qty * current;
                 const isExpanded = expandedCharts.has(p.symbol);
-                const QUOTES = ["USDT", "USDC", "FDUSD", "TUSD", "BUSD", "USD", "EUR", "BTC", "ETH", "BNB", "TRY", "BRL", "MXN", "JPY", "GBP", "AUD"];
-                const cleanSym = p.symbol.replace("/", "").toUpperCase();
-                const chartSymbol = QUOTES.some((q) => cleanSym.endsWith(q))
-                  ? cleanSym
-                  : cleanSym + "USDT";
+                // Use symbol as-is for chart (already in BTC/USDT format)
+                const chartSymbol = p.symbol.includes("/") ? p.symbol : p.symbol;
+                // Distance to SL/TP
+                const sl = p.stop_loss ? Number(p.stop_loss) : null;
+                const tp = p.take_profit ? Number(p.take_profit) : null;
+                const slDistPct = (sl !== null && current > 0) ? ((sl - current) / current * 100) : null;
+                const tpDistPct = (tp !== null && current > 0) ? ((tp - current) / current * 100) : null;
+                const rrRatio = (sl !== null && tp !== null && current > 0)
+                  ? Math.abs(tp - current) / Math.abs(current - sl)
+                  : null;
+                // Duration
+                const openedAt = p.opened_at ? new Date(p.opened_at) : null;
+                const durationMs = openedAt ? Date.now() - openedAt.getTime() : 0;
+                const durationStr = durationMs > 0
+                  ? durationMs < 3600000
+                    ? `${Math.floor(durationMs / 60000)}m`
+                    : durationMs < 86400000
+                      ? `${Math.floor(durationMs / 3600000)}h`
+                      : `${Math.floor(durationMs / 86400000)}d`
+                  : "—";
 
                 return (
                   <div key={i} className="panel overflow-hidden">
@@ -1724,28 +1766,47 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                         )}>
                           {p.side === "long" ? "L" : "S"}
                         </div>
-                        <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
+                        <div>
+                          <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
+                          <span className="text-[9px] text-[var(--color-text-muted)] ml-1.5">{durationStr}</span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-4 flex-1 text-[11px]">
+                      <div className="flex items-center gap-3 flex-1 text-[11px] flex-wrap">
                         <div>
                           <span className="text-[var(--color-text-muted)]">Qty </span>
-                          <span className="font-bold text-[var(--color-text)]">{fmt(p.quantity)}</span>
+                          <span className="font-bold text-[var(--color-text)]">{fmt(qty)}</span>
                         </div>
                         <div>
                           <span className="text-[var(--color-text-muted)]">Entry </span>
-                          <span className="font-bold text-[var(--color-text)]">{fmt(p.entry_price)}</span>
+                          <span className="font-bold text-[var(--color-text)]">{fmt(entry)}</span>
                         </div>
                         <div>
                           <span className="text-[var(--color-text-muted)]">Live </span>
-                          <span className="font-bold text-[var(--color-text)]">{p.current_price ? fmt(p.current_price) : "—"}</span>
+                          <span className="font-bold text-[var(--color-text)]">{current > 0 ? fmt(current) : "—"}</span>
                         </div>
-                        {(p.stop_loss || p.take_profit) && (
-                          <div className="text-[10px] text-[var(--color-text-muted)]">
-                            {p.stop_loss && <span className="text-[var(--color-danger)]">SL {fmt(p.stop_loss)}</span>}
-                            {p.stop_loss && p.take_profit && " · "}
-                            {p.take_profit && <span className="text-[var(--color-success)]">TP {fmt(p.take_profit)}</span>}
+                        <div>
+                          <span className="text-[var(--color-text-muted)]">Value </span>
+                          <span className="font-bold text-[var(--color-text)]">${fmtVol(positionValue)}</span>
+                        </div>
+                        {sl !== null && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[var(--color-danger)]">SL {fmt(sl)}</span>
+                            {slDistPct !== null && (
+                              <span className="text-[9px] text-[var(--color-text-muted)]">({slDistPct >= 0 ? "+" : ""}{slDistPct.toFixed(1)}%)</span>
+                            )}
                           </div>
+                        )}
+                        {tp !== null && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[var(--color-success)]">TP {fmt(tp)}</span>
+                            {tpDistPct !== null && (
+                              <span className="text-[9px] text-[var(--color-text-muted)]">({tpDistPct >= 0 ? "+" : ""}{tpDistPct.toFixed(1)}%)</span>
+                            )}
+                          </div>
+                        )}
+                        {rrRatio !== null && rrRatio > 0 && (
+                          <span className="text-[10px] font-bold text-[var(--color-primary)]">R/R 1:{rrRatio.toFixed(1)}</span>
                         )}
                         {p.strategy_name && (
                           <div className="text-[10px] text-[var(--color-text-muted)] italic">{p.strategy_name}</div>
@@ -1778,6 +1839,7 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                           symbol={chartSymbol}
                           interval="1h"
                           height={300}
+                          brokerId={brokerId || undefined}
                           stopLoss={p.stop_loss ? Number(p.stop_loss) : null}
                           takeProfit={p.take_profit ? Number(p.take_profit) : null}
                           entryPrice={p.entry_price ? Number(p.entry_price) : null}
@@ -1829,6 +1891,14 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                               {showSlTpPanel.has(p.id) ? "✕ Cerrar" : "Colocar SL/TP"}
                             </button>
                           )}
+
+                          {/* Close position at market price */}
+                          <button
+                            onClick={() => handleClosePosition(p.id, p.symbol, qty)}
+                            className="h-7 px-3 rounded-[6px] text-[11px] font-bold bg-[var(--color-danger)] text-white hover:opacity-90 transition-opacity ml-auto"
+                          >
+                            Cerrar posición
+                          </button>
                         </div>
 
                         {/* SlTpPanel inline */}

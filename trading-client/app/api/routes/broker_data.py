@@ -622,3 +622,116 @@ def cancel_order(
         return {"status": "error", "error": str(exc)}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+
+# ─── Place OCO Order (SL/TP) ──────────────────────────────────────────────────
+
+class PlaceOcoRequest(BaseModel):
+    symbol: str
+    side: str = "sell"  # close side: sell for long, buy for short
+    quantity: float
+    take_profit_price: float
+    stop_loss_price: float
+
+
+@router.post("/{broker_id}/oco")
+def place_oco_order(
+    broker_id: str,
+    req: PlaceOcoRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Place a real OCO (One-Cancels-Other) order: TP limit + SL stop-limit.
+
+    When one side fills, the other is automatically cancelled by the exchange.
+    """
+    adapter = _get_adapter(broker_id, current_user)
+    symbol = normalize_symbol(req.symbol)
+
+    # Fetch market info for precision
+    step_size = None
+    try:
+        info = adapter.get_market_info(symbol)
+        if info.step_size:
+            step_size = float(info.step_size)
+    except Exception:
+        pass
+
+    def _round_to_step(value: float, step: float | None) -> float:
+        if not step or step <= 0:
+            return value
+        d = Decimal(str(value))
+        s = Decimal(str(step))
+        return float((d // s) * s)
+
+    quantity = _round_to_step(req.quantity, step_size)
+
+    # Use Binance OCO if available
+    if hasattr(adapter, "place_oco_order"):
+        try:
+            result = adapter.place_oco_order(
+                symbol=symbol,
+                side=req.side,
+                quantity=Decimal(str(quantity)),
+                take_profit_price=Decimal(str(req.take_profit_price)),
+                stop_loss_price=Decimal(str(req.stop_loss_price)),
+            )
+            if not result.get("success", False):
+                return {"status": "error", "error": result.get("error", "Error OCO")}
+            return {
+                "status": "ok",
+                "oco_order_id": result["order_list_id"],
+                "sl_order_id": result.get("sl_order_id", ""),
+                "tp_order_id": result.get("tp_order_id", ""),
+                "symbol": symbol,
+                "stop_loss": req.stop_loss_price,
+                "take_profit": req.take_profit_price,
+            }
+        except BrokerError as exc:
+            return {"status": "error", "error": str(exc)}
+        except Exception as exc:
+            return {"status": "error", "error": str(exc)}
+
+    # Fallback: place separate STOP and TAKE_PROFIT orders
+    try:
+        close_side = OrderSide.SELL if req.side == "sell" else OrderSide.BUY
+        tp_req = OrderRequest(
+            symbol=symbol, side=close_side,
+            order_type=OrderType.TAKE_PROFIT_LIMIT,
+            quantity=Decimal(str(quantity)),
+            price=Decimal(str(req.take_profit_price)),
+            stop_price=Decimal(str(req.take_profit_price)),
+        )
+        sl_req = OrderRequest(
+            symbol=symbol, side=close_side,
+            order_type=OrderType.STOP_LIMIT,
+            quantity=Decimal(str(quantity)),
+            price=Decimal(str(req.stop_loss_price)),
+            stop_price=Decimal(str(req.stop_loss_price)),
+        )
+        tp_result = adapter.place_order(tp_req)
+        sl_result = adapter.place_order(sl_req)
+        order_ids = []
+        if tp_result.success and tp_result.order:
+            order_ids.append(tp_result.order.broker_order_id or "")
+        if sl_result.success and sl_result.order:
+            order_ids.append(sl_result.order.broker_order_id or "")
+        errors = []
+        if not tp_result.success:
+            errors.append(tp_result.error or "")
+        if not sl_result.success:
+            errors.append(sl_result.error or "")
+        if errors:
+            return {"status": "error", "error": "; ".join(errors), "order_ids": order_ids}
+        return {
+            "status": "ok",
+            "oco_order_id": ",".join(order_ids),
+            "sl_order_id": order_ids[1] if len(order_ids) > 1 else "",
+            "tp_order_id": order_ids[0] if order_ids else "",
+            "symbol": symbol,
+            "stop_loss": req.stop_loss_price,
+            "take_profit": req.take_profit_price,
+        }
+    except BrokerError as exc:
+        return {"status": "error", "error": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}

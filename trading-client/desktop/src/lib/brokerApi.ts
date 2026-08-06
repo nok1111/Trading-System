@@ -324,6 +324,32 @@ export async function placeOrder(brokerId: string, params: PlaceOrderParams): Pr
   });
 }
 
+export interface PlaceOcoParams {
+  symbol: string;
+  side?: string;
+  quantity: number;
+  take_profit_price: number;
+  stop_loss_price: number;
+}
+
+export interface PlaceOcoResponse {
+  status: string;
+  oco_order_id?: string;
+  sl_order_id?: string;
+  tp_order_id?: string;
+  symbol?: string;
+  stop_loss?: number;
+  take_profit?: number;
+  error?: string;
+}
+
+export async function placeOcoOrder(brokerId: string, params: PlaceOcoParams): Promise<PlaceOcoResponse> {
+  return api<PlaceOcoResponse>(`/api/broker/${brokerId}/oco`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
 export async function cancelOrder(brokerId: string, params: CancelOrderParams): Promise<{ status: string; orderId?: string; error?: string }> {
   return api(`/api/broker/${brokerId}/order`, {
     method: "DELETE",

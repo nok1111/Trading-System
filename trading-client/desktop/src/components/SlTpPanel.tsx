@@ -107,7 +107,7 @@ export function SlTpPanel({
     setLoading(true);
     try {
       if (isLive) {
-        // Live mode: place SL/TP orders via generic broker API
+        // Live mode: place real OCO order via broker API
         const closeSide = side === "short" ? "buy" : "sell";
 
         // Fetch market info for precision/min sizes
@@ -150,44 +150,34 @@ export function SlTpPanel({
           return;
         }
 
-        // Place TP as a limit sell order
-        const tpResp = await brokerApi.placeOrder(brokerId, {
+        // Place real OCO order (TP limit + SL stop-limit, one cancels other)
+        const ocoResp = await brokerApi.placeOcoOrder(brokerId, {
           symbol,
-          side: closeSide as "buy" | "sell",
-          order_type: "limit",
+          side: closeSide,
           quantity: formattedQty,
-          price: tp,
-        });
-        // Place SL as a market sell order (simplified — real SL would need stop order type)
-        const slResp = await brokerApi.placeOrder(brokerId, {
-          symbol,
-          side: closeSide as "buy" | "sell",
-          order_type: "limit",
-          quantity: formattedQty,
-          price: sl,
+          take_profit_price: tp,
+          stop_loss_price: sl,
         });
 
-        const orderIds: string[] = [];
-        if (tpResp.orderId) orderIds.push(tpResp.orderId);
-        if (slResp.orderId) orderIds.push(slResp.orderId);
-
-        if (tpResp.error || slResp.error) {
-          toast(`Error: ${tpResp.error || slResp.error}`, false);
+        if (ocoResp.error || ocoResp.status === "error") {
+          toast(`Error OCO: ${ocoResp.error}`, false);
           setLoading(false);
           return;
         }
+
+        const ocoId = ocoResp.oco_order_id || "";
 
         // Update DB via backend
         const res = await api<any>(`/api/intelligence/positions/${positionId}/update-oco`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ oco_order_id: orderIds.join(","), stop_loss: sl, take_profit: tp }),
+          body: JSON.stringify({ oco_order_id: ocoId, stop_loss: sl, take_profit: tp }),
         });
 
         if (res?.status === "placed" || res?.status === "ok") {
-          toast(`SL/TP colocado en ${brokerId} para ${symbol} (IDs: ${orderIds.join(", ")})`, true);
+          toast(`OCO colocado en ${brokerId} para ${symbol} (ID: ${ocoId})`, true);
         } else {
-          toast(res?.error || "Error al actualizar DB tras SL/TP", false);
+          toast(res?.error || "Error al actualizar DB tras OCO", false);
         }
       } else {
         // Paper mode: use backend endpoint (simulated monitoring)
