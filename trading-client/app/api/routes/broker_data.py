@@ -665,6 +665,20 @@ def place_oco_order(
 
     quantity = _round_to_step(req.quantity, step_size)
 
+    # Pre-check: verify the user has enough balance of the base asset
+    base_asset = symbol.split("/")[0] if "/" in symbol else symbol
+    try:
+        balances = adapter.get_account_balances()
+        balance_map = {b.asset: float(b.free) for b in balances}
+        available = balance_map.get(base_asset, 0)
+        if available < quantity:
+            return {
+                "status": "error",
+                "error": f"Saldo insuficiente de {base_asset}: tienes {available} pero necesitas {quantity}. La posición en la DB no coincide con tu balance real del broker.",
+            }
+    except Exception:
+        pass  # If balance check fails, let the broker return its own error
+
     # Use native OCO if the adapter supports it (Binance, CCXT exchanges with OCO)
     if hasattr(adapter, "place_oco_order"):
         try:

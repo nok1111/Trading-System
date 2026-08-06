@@ -1284,6 +1284,7 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
   const [livePositions, setLivePositions] = useState<any[]>(propPositions || []);
   const [showSlTpPanel, setShowSlTpPanel] = useState<Set<number>>(new Set());
   const [showPaperSlTpPanel, setShowPaperSlTpPanel] = useState<Set<number>>(new Set());
+  const [brokerBalances, setBrokerBalances] = useState<Record<string, number>>({});
 
   // Fetch live positions directly (more reliable than parent props)
   const loadLivePositions = useCallback(async () => {
@@ -1293,11 +1294,30 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
     } catch {}
   }, []);
 
+  // Fetch broker balances to check if positions have sufficient assets
+  const loadBrokerBalances = useCallback(async () => {
+    if (!brokerId) return;
+    try {
+      const data = await brokerApi.getBalance(brokerId);
+      if (data?.assets) {
+        const map: Record<string, number> = {};
+        for (const a of data.assets) {
+          map[a.asset] = a.free;
+        }
+        setBrokerBalances(map);
+      }
+    } catch {}
+  }, [brokerId]);
+
   useEffect(() => {
     loadLivePositions();
-    const id = setInterval(loadLivePositions, activeTab === "live" ? 5000 : 15000);
+    loadBrokerBalances();
+    const id = setInterval(() => {
+      loadLivePositions();
+      if (activeTab === "live") loadBrokerBalances();
+    }, activeTab === "live" ? 5000 : 15000);
     return () => clearInterval(id);
-  }, [activeTab, loadLivePositions]);
+  }, [activeTab, loadLivePositions, loadBrokerBalances]);
 
   // Load saved AI provider and model so analyze-positions uses the correct config
   useEffect(() => {
@@ -1724,6 +1744,10 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                 const isExpanded = expandedCharts.has(p.symbol);
                 // Symbol is now normalized from backend (BTC/USDT format)
                 const chartSymbol = p.symbol;
+                // Check if actual broker balance is sufficient for this position
+                const baseAsset = p.symbol.includes("/") ? p.symbol.split("/")[0] : p.symbol.replace("USDT", "");
+                const actualBalance = brokerBalances[baseAsset] ?? null;
+                const balanceInsufficient = actualBalance !== null && actualBalance < qty;
                 // Distance to SL/TP
                 const sl = p.stop_loss ? Number(p.stop_loss) : null;
                 const tp = p.take_profit ? Number(p.take_profit) : null;
@@ -1769,6 +1793,11 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                         <div>
                           <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
                           <span className="text-[9px] text-[var(--color-text-muted)] ml-1.5">{durationStr}</span>
+                          {balanceInsufficient && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-[var(--color-danger)]/15 text-[var(--color-danger)] border border-[var(--color-danger)]/30" title={`Tienes ${actualBalance} ${baseAsset} en el broker pero la posición dice ${qty}`}>
+                              ⚠ Saldo insuficiente
+                            </span>
+                          )}
                         </div>
                       </div>
 
