@@ -36,6 +36,27 @@ export function SlTpPanel({
   const [slPct, setSlPct] = useState<string>("");
   const [tpPct, setTpPct] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [marketInfo, setMarketInfo] = useState<{ minQty: number; minNotional: number; stepSize: number } | null>(null);
+  const [dustMode, setDustMode] = useState(false);
+
+  // Fetch market info on mount to detect dust early
+  useEffect(() => {
+    if (!isLive || !brokerId) return;
+    brokerApi.getMarketInfo(brokerId, symbol).then((info) => {
+      const mi = {
+        minQty: info.min_quantity || 0,
+        minNotional: info.min_notional || 0,
+        stepSize: info.step_size || 0,
+      };
+      setMarketInfo(mi);
+      // Check if position is dust (quantity below min notional or min qty)
+      if (mi.minQty > 0 && quantity < mi.minQty) {
+        setDustMode(true);
+      } else if (mi.minNotional > 0 && quantity * currentPrice < mi.minNotional) {
+        setDustMode(true);
+      }
+    }).catch(() => {});
+  }, [isLive, brokerId, symbol, quantity, currentPrice]);
 
   const initValues = useCallback(() => {
     const sl = existingSl ?? (currentPrice > 0 ? currentPrice * 0.97 : 0);
@@ -92,6 +113,41 @@ export function SlTpPanel({
     }
   };
 
+  const handleDustTransfer = async () => {
+    const baseAsset = symbol.includes("/") ? symbol.split("/")[0] : symbol.replace("USDT", "");
+    setLoading(true);
+    try {
+      const res = await brokerApi.dustTransfer(brokerId, [baseAsset]);
+      if (res.status === "ok") {
+        toast(`Convertido ${baseAsset} a ${res.total_bnb || "BNB"}`, true);
+        if (onSuccess) onSuccess();
+      } else {
+        toast(`Error dust transfer: ${res.error}`, false);
+      }
+    } catch (err: any) {
+      toast(`Error: ${err?.message || err}`, false);
+    }
+    setLoading(false);
+  };
+
+  const handleCloseInDb = async () => {
+    setLoading(true);
+    try {
+      const res = await api<any>(`/api/intelligence/positions/${positionId}/stop-monitoring`, {
+        method: "POST",
+      });
+      if (res?.status === "ok" || res?.status === "closed") {
+        toast(`Posición ${symbol} cerrada en DB`, true);
+        if (onSuccess) onSuccess();
+      } else {
+        toast(res?.error || "Error al cerrar", false);
+      }
+    } catch (err: any) {
+      toast(`Error: ${err?.message || err}`, false);
+    }
+    setLoading(false);
+  };
+
   const handleConfirm = async () => {
     const sl = parseFloat(slPrice);
     const tp = parseFloat(tpPrice);
@@ -110,17 +166,19 @@ export function SlTpPanel({
         // Live mode: place real OCO order via broker API
         const closeSide = side === "short" ? "buy" : "sell";
 
-        // Fetch market info for precision/min sizes
-        let stepSize = 0;
-        let minQty = 0;
-        let minNotional = 0;
-        try {
-          const info = await brokerApi.getMarketInfo(brokerId, symbol);
-          if (info.step_size) stepSize = info.step_size;
-          if (info.min_quantity) minQty = info.min_quantity;
-          if (info.min_notional) minNotional = info.min_notional;
-        } catch (err) {
-          console.warn("Could not fetch market info", err);
+        // Use cached market info or fetch if not available
+        let stepSize = marketInfo?.stepSize || 0;
+        let minQty = marketInfo?.minQty || 0;
+        let minNotional = marketInfo?.minNotional || 0;
+        if (!marketInfo) {
+          try {
+            const info = await brokerApi.getMarketInfo(brokerId, symbol);
+            if (info.step_size) stepSize = info.step_size;
+            if (info.min_quantity) minQty = info.min_quantity;
+            if (info.min_notional) minNotional = info.min_notional;
+          } catch (err) {
+            console.warn("Could not fetch market info", err);
+          }
         }
 
         // Helper: round to step size
@@ -215,77 +273,114 @@ export function SlTpPanel({
         <span className="text-[10px] text-[var(--color-text-muted)]">{symbol}</span>
       </div>
 
-      {/* Current price reference */}
-      <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-        <span>Precio actual: <span className="num font-bold text-[var(--color-text)]">{currentPrice}</span></span>
-        <span>|</span>
-        <span>Entry: <span className="num font-bold text-[var(--color-text)]">{entryPrice}</span></span>
-      </div>
+      {/* Dust warning */}
+      {isLive && dustMode && (
+        <div className="p-2.5 rounded-[6px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 space-y-2">
+          <div className="text-[11px] font-bold text-[var(--color-warning)]">
+            ⚠ Posición dust (polvo)
+          </div>
+          <div className="text-[10px] text-[var(--color-text-muted)]">
+            Tienes {quantity} {symbol.includes("/") ? symbol.split("/")[0] : symbol} (~${(quantity * currentPrice).toFixed(2)}).
+            El mínimo de {brokerId} es {marketInfo?.minQty || "?"} unidades.
+            No se puede colocar SL/TP porque la cantidad es insuficiente para una orden.
+          </div>
+          <div className="flex gap-2">
+            {brokerId === "binance" && (
+              <button
+                onClick={handleDustTransfer}
+                disabled={loading}
+                className="flex-1 h-7 rounded-[6px] text-[10px] font-bold text-white bg-[var(--color-warning)] hover:opacity-90 disabled:opacity-50"
+              >
+                {loading ? "Convirtiendo..." : "Convertir a BNB"}
+              </button>
+            )}
+            <button
+              onClick={handleCloseInDb}
+              disabled={loading}
+              className="flex-1 h-7 rounded-[6px] text-[10px] font-bold text-[var(--color-text)] bg-[var(--color-surface-3)] hover:opacity-90 disabled:opacity-50"
+            >
+              Cerrar en DB
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* SL row */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-[10px] font-bold text-[var(--color-danger)] uppercase mb-1 block">SL Precio</label>
-          <input
-            type="number"
-            step="any"
-            value={slPrice}
-            onChange={(e) => handleSlPriceChange(e.target.value)}
-            className={cn(inputCls, "text-[var(--color-danger)]")}
-            placeholder="0.00"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] font-bold text-[var(--color-danger)] uppercase mb-1 block">SL %</label>
-          <input
-            type="number"
-            step="any"
-            value={slPct}
-            onChange={(e) => handleSlPctChange(e.target.value)}
-            className={cn(inputCls, "text-[var(--color-danger)]")}
-            placeholder="3.00"
-          />
-        </div>
-      </div>
+      {/* Normal SL/TP form (hidden in dust mode) */}
+      {!dustMode && (
+        <>
+          {/* Current price reference */}
+          <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+            <span>Precio actual: <span className="num font-bold text-[var(--color-text)]">{currentPrice}</span></span>
+            <span>|</span>
+            <span>Entry: <span className="num font-bold text-[var(--color-text)]">{entryPrice}</span></span>
+          </div>
 
-      {/* TP row */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-[10px] font-bold text-[var(--color-success)] uppercase mb-1 block">TP Precio</label>
-          <input
-            type="number"
-            step="any"
-            value={tpPrice}
-            onChange={(e) => handleTpPriceChange(e.target.value)}
-            className={cn(inputCls, "text-[var(--color-success)]")}
-            placeholder="0.00"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] font-bold text-[var(--color-success)] uppercase mb-1 block">TP %</label>
-          <input
-            type="number"
-            step="any"
-            value={tpPct}
-            onChange={(e) => handleTpPctChange(e.target.value)}
-            className={cn(inputCls, "text-[var(--color-success)]")}
-            placeholder="6.00"
-          />
-        </div>
-      </div>
+          {/* SL row */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-danger)] uppercase mb-1 block">SL Precio</label>
+              <input
+                type="number"
+                step="any"
+                value={slPrice}
+                onChange={(e) => handleSlPriceChange(e.target.value)}
+                className={cn(inputCls, "text-[var(--color-danger)]")}
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-danger)] uppercase mb-1 block">SL %</label>
+              <input
+                type="number"
+                step="any"
+                value={slPct}
+                onChange={(e) => handleSlPctChange(e.target.value)}
+                className={cn(inputCls, "text-[var(--color-danger)]")}
+                placeholder="3.00"
+              />
+            </div>
+          </div>
 
-      {/* Confirm button */}
-      <button
-        onClick={handleConfirm}
-        disabled={loading}
-        className={cn(
-          "w-full h-8 rounded-[8px] text-[12px] font-bold text-white transition-opacity",
-          loading ? "opacity-50 cursor-not-allowed" : "hover:opacity-90",
-          isLive ? "bg-[var(--color-success)]" : "bg-[var(--color-info)]"
-        )}
-      >
-        {loading ? "Procesando..." : isLive ? `Confirmar SL/TP en ${brokerId}` : "Confirmar Monitoreo"}
-      </button>
+          {/* TP row */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-success)] uppercase mb-1 block">TP Precio</label>
+              <input
+                type="number"
+                step="any"
+                value={tpPrice}
+                onChange={(e) => handleTpPriceChange(e.target.value)}
+                className={cn(inputCls, "text-[var(--color-success)]")}
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-success)] uppercase mb-1 block">TP %</label>
+              <input
+                type="number"
+                step="any"
+                value={tpPct}
+                onChange={(e) => handleTpPctChange(e.target.value)}
+                className={cn(inputCls, "text-[var(--color-success)]")}
+                placeholder="6.00"
+              />
+            </div>
+          </div>
+
+          {/* Confirm button */}
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className={cn(
+              "w-full h-8 rounded-[8px] text-[12px] font-bold text-white transition-opacity",
+              loading ? "opacity-50 cursor-not-allowed" : "hover:opacity-90",
+              isLive ? "bg-[var(--color-success)]" : "bg-[var(--color-info)]"
+            )}
+          >
+            {loading ? "Procesando..." : isLive ? `Confirmar SL/TP en ${brokerId}` : "Confirmar Monitoreo"}
+          </button>
+        </>
+      )}
     </div>
   );
 }

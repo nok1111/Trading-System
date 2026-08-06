@@ -868,3 +868,79 @@ def sync_positions(
         return {"status": "error", "error": str(exc)}
     finally:
         db.close()
+
+
+# ─── Dust Transfer (convert dust to BNB) ──────────────────────────────────────
+
+class DustTransferRequest(BaseModel):
+    assets: list[str]  # e.g. ["AVAX", "DOGE"]
+
+
+@router.post("/{broker_id}/dust-transfer")
+def dust_transfer(
+    broker_id: str,
+    req: DustTransferRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Convert dust assets to BNB via Binance Dust Transfer.
+
+    Only supported on Binance. Closes any open positions for the dusted assets.
+    """
+    adapter = _get_adapter(broker_id, current_user)
+
+    if not hasattr(adapter, "dust_transfer"):
+        return {"status": "error", "error": f"Dust transfer no soportado en {broker_id}"}
+
+    result = adapter.dust_transfer(req.assets)
+    if not result.get("success"):
+        return {"status": "error", "error": result.get("error", "Error en dust transfer")}
+
+    # Close positions in DB for the dusted assets
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from decimal import Decimal as Dec
+    from datetime import datetime, UTC
+
+    db = SessionLocal()
+    try:
+        for asset in req.assets:
+            # Find positions for this asset (symbol could be BTC/USDT or BTCUSDT)
+            patterns = [f"{asset}/%", f"{asset}USDT", f"{asset}USDC"]
+            positions = db.query(Position).filter(
+                Position.status == "open",
+                Position.user_id == current_user.id,
+                Position.broker_id == broker_id,
+            ).filter(
+                Position.symbol.like(f"{asset}/%") | Position.symbol.like(f"{asset}%")
+            ).all()
+
+            for p in positions:
+                entry = float(p.entry_price)
+                try:
+                    ticker = adapter.get_ticker(p.symbol)
+                    close_price = float(ticker.price)
+                except Exception:
+                    close_price = float(p.current_price or entry)
+
+                realized = (close_price - entry) * float(p.quantity) if p.side == "long" else (entry - close_price) * float(p.quantity)
+                p.realized_pnl = Dec(str(round(realized, 8)))
+                p.current_price = Dec(str(close_price))
+                p.status = "closed"
+                p.closed_at = datetime.now(tz=UTC)
+                meta = p.metadata_json or {}
+                meta["closed_by"] = "dust_transfer"
+                meta["dust_transfer_bnb"] = result.get("total_bnb", "0")
+                p.metadata_json = meta
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+    finally:
+        db.close()
+
+    return {
+        "status": "ok",
+        "total_bnb": result.get("total_bnb", "0"),
+        "transfer_result": result.get("transfer_result", []),
+        "assets_converted": req.assets,
+    }

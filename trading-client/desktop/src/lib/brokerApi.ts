@@ -375,3 +375,20 @@ export async function syncPositions(brokerId: string): Promise<SyncPositionsResp
     method: "POST",
   });
 }
+
+// ─── Dust Transfer ───────────────────────────────────────────────────────────
+
+export interface DustTransferResponse {
+  status: string;
+  total_bnb?: string;
+  transfer_result?: any[];
+  assets_converted?: string[];
+  error?: string;
+}
+
+export async function dustTransfer(brokerId: string, assets: string[]): Promise<DustTransferResponse> {
+  return api<DustTransferResponse>(`/api/broker/${brokerId}/dust-transfer`, {
+    method: "POST",
+    body: JSON.stringify({ assets }),
+  });
+}

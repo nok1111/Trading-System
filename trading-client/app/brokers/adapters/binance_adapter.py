@@ -595,3 +595,35 @@ class BinanceAdapter(BrokerAdapter):
             updated_at=datetime.now(tz=UTC),
             metadata=data,
         )
+
+    def dust_transfer(self, assets: list[str]) -> dict:
+        """Convert dust assets to BNB via Binance Dust Transfer endpoint.
+
+        Args:
+            assets: List of asset symbols to convert (e.g. ["AVAX", "DOGE"])
+
+        Returns:
+            dict with transfer result from Binance.
+        """
+        try:
+            resp = self._broker._signed_request("POST", "/sapi/v1/asset/dust", {
+                "asset": assets,
+            })
+            return {
+                "success": True,
+                "transfer_result": resp.get("transferResult", []),
+                "total_bnb": resp.get("totalTransferedBnb", "0"),
+                "dust_log": resp.get("dribbletLogs", []),
+            }
+        except BinanceBrokerError as exc:
+            return {"success": False, "error": str(exc)}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    def get_dustable_assets_log(self) -> dict:
+        """Get list of assets that can be converted to BNB (dust log)."""
+        try:
+            resp = self._broker._signed_request("POST", "/sapi/v1/asset/dust-btc", {})
+            return {"success": True, "data": resp}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
