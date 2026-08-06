@@ -2407,14 +2407,3 @@ def paper_place_oco(position_id: int, req: OcoRequest) -> dict:
         return {"status": "error", "error": str(exc)}
     finally:
         db.close()
-
-
-@router.post("/sltp/check")
-def check_sltp() -> dict:
-    """Run SL/TP price monitoring check for all open positions with monitoring active."""
-    try:
-        from app.monitoring.sltp_monitor import check_sltp_prices
-        results = check_sltp_prices()
-        return {"status": "ok", "results": results}
-    except Exception as exc:
-        return {"status": "error", "error": str(exc)}

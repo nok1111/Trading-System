@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.schemas import HealthOut
@@ -27,9 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_DASHBOARD_HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
-_LANDING_HTML = (Path(__file__).parent / "landing.html").read_text(encoding="utf-8")
-
 # Serve static files (images, etc.) from project root /images
 _static_path = Path(__file__).resolve().parent.parent.parent / "images"
 if _static_path.exists():
@@ -40,7 +37,7 @@ if _static_path.exists():
 # ---------------------------------------------------------------------------
 
 # Paths that don't require license validation
-_PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/paper-trading/status"}
+_PUBLIC_PATHS = {"/", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/paper-trading/status"}
 
 
 @app.middleware("http")
@@ -228,20 +225,8 @@ def _shutdown_services() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Core routes (HTML pages + health)
+# Core routes
 # ---------------------------------------------------------------------------
-
-
-@app.get("/", response_class=HTMLResponse)
-def landing() -> HTMLResponse:
-    """Landing page de Alvora."""
-    return HTMLResponse(_LANDING_HTML)
-
-
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard() -> HTMLResponse:
-    """Dashboard web interactivo (requiere login)."""
-    return HTMLResponse(_DASHBOARD_HTML)
 
 
 @app.get("/health", response_model=HealthOut)
