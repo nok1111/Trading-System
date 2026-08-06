@@ -26,6 +26,7 @@ trading.db-wal
 alvora_auth.db
 alvora_auth.db-shm
 alvora_auth.db-wal
+migrations.db
 
 # IDEs
 .idea/
