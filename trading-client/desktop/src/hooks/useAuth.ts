@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, authApi, getAuthToken, setAuthToken } from "../lib/api";
+import * as brokerApi from "../lib/brokerApi";
 
 export interface User {
   id: number;
@@ -48,8 +49,13 @@ export function useAuth() {
     setAuthServerOk(true);
     setLoading(false);
 
-    // Auto-sync positions with broker balance after login
-    api("/api/broker/binance/sync-positions", { method: "POST" }).catch(() => {});
+    // Auto-sync positions with broker balance after login (all connected brokers)
+    try {
+      const accounts = await brokerApi.getConnectedAccounts();
+      for (const acc of accounts) {
+        api(`/api/broker/${acc.brokerId}/sync-positions`, { method: "POST" }).catch(() => {});
+      }
+    } catch {}
 
     return data.user;
   }, []);
@@ -67,8 +73,13 @@ export function useAuth() {
       setUser(data.user);
       setAuthServerOk(true);
 
-      // Auto-sync positions with broker balance after register
-      api("/api/broker/binance/sync-positions", { method: "POST" }).catch(() => {});
+      // Auto-sync positions with broker balance after register (all connected brokers)
+      try {
+        const accounts = await brokerApi.getConnectedAccounts();
+        for (const acc of accounts) {
+          api(`/api/broker/${acc.brokerId}/sync-positions`, { method: "POST" }).catch(() => {});
+        }
+      } catch {}
 
       return data.user;
     },

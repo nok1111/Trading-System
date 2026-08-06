@@ -119,7 +119,10 @@ export function SlTpPanel({
     try {
       const res = await brokerApi.dustTransfer(brokerId, [baseAsset]);
       if (res.status === "ok") {
-        toast(`Convertido ${baseAsset} a ${res.total_bnb || "BNB"}`, true);
+        const msg = brokerId === "binance"
+          ? `Convertido ${baseAsset} a ${res.total_bnb || "BNB"}`
+          : `Vendido ${baseAsset} a mercado`;
+        toast(msg, true);
         if (onSuccess) onSuccess();
       } else {
         toast(`Error dust transfer: ${res.error}`, false);
@@ -282,18 +285,16 @@ export function SlTpPanel({
           <div className="text-[10px] text-[var(--color-text-muted)]">
             Tienes {quantity} {symbol.includes("/") ? symbol.split("/")[0] : symbol} (~${(quantity * currentPrice).toFixed(2)}).
             El mínimo de {brokerId} es {marketInfo?.minQty || "?"} unidades.
-            No se puede colocar SL/TP porque la cantidad es insuficiente para una orden.
+            No se puede colocar SL/TP porque la cantidad es insuficiente.
           </div>
           <div className="flex gap-2">
-            {brokerId === "binance" && (
-              <button
-                onClick={handleDustTransfer}
-                disabled={loading}
-                className="flex-1 h-7 rounded-[6px] text-[10px] font-bold text-white bg-[var(--color-warning)] hover:opacity-90 disabled:opacity-50"
-              >
-                {loading ? "Convirtiendo..." : "Convertir a BNB"}
-              </button>
-            )}
+            <button
+              onClick={handleDustTransfer}
+              disabled={loading}
+              className="flex-1 h-7 rounded-[6px] text-[10px] font-bold text-white bg-[var(--color-warning)] hover:opacity-90 disabled:opacity-50"
+            >
+              {loading ? "Procesando..." : brokerId === "binance" ? "Convertir a BNB" : "Vender (market)"}
+            </button>
             <button
               onClick={handleCloseInDb}
               disabled={loading}

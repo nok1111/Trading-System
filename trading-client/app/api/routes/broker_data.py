@@ -882,9 +882,11 @@ def dust_transfer(
     req: DustTransferRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
-    """Convert dust assets to BNB via Binance Dust Transfer.
+    """Convert dust assets to BNB (Binance) or market sell (CCXT brokers).
 
-    Only supported on Binance. Closes any open positions for the dusted assets.
+    For Binance, uses the native /sapi/v1/asset/dust endpoint.
+    For CCXT brokers, attempts a market sell of the dust amount.
+    Closes any open positions for the dusted assets in the DB.
     """
     adapter = _get_adapter(broker_id, current_user)
 

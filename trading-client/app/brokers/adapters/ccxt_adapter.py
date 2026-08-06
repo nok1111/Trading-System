@@ -782,6 +782,52 @@ class CCXTAdapter(BrokerAdapter):
             "warning": "OCO no soportado nativamente, ordenes colocadas por separado",
         }
 
+    def dust_transfer(self, assets: list[str]) -> dict:
+        """Convert dust assets to quote currency via market sell.
+
+        CCXT doesn't have a unified dust transfer endpoint. For non-Binance
+        exchanges, we attempt to market sell the dust assets. If the exchange
+        rejects the order (amount too small), we return an error.
+        """
+        results = []
+        errors = []
+        for asset in assets:
+            # Try to sell against USDT (or the exchange's default quote)
+            symbol = f"{asset}/USDT"
+            try:
+                # Get balance to know the exact amount
+                balance = self._exchange.fetch_balance()
+                amount = float(balance.get(asset, {}).get("free", 0))
+                if amount <= 0:
+                    errors.append(f"{asset}: sin saldo")
+                    continue
+
+                # Try market sell
+                result = self._exchange.create_order(
+                    symbol=symbol,
+                    type="market",
+                    side="sell",
+                    amount=amount,
+                )
+                results.append({
+                    "asset": asset,
+                    "amount": amount,
+                    "order_id": str(result.get("id", "")),
+                })
+            except Exception as exc:
+                mapped = _map_ccxt_error(exc)
+                errors.append(f"{asset}: {mapped}")
+
+        if errors and not results:
+            return {"success": False, "error": "; ".join(errors)}
+        return {
+            "success": True,
+            "transfer_result": results,
+            "errors": errors,
+            "total_bnb": "0",  # CCXT doesn't convert to BNB
+            "warning": "Market sell (no dust transfer nativo en este exchange)" if errors else None,
+        }
+
 
 def get_curated_exchange_ids() -> tuple[str, ...]:
     """Devuelve los IDs de exchanges CCXT curados para mostrar al usuario."""
