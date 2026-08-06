@@ -48,8 +48,8 @@ export function useAuth() {
     setAuthServerOk(true);
     setLoading(false);
 
-    // Auto-import Binance positions after login
-    api("/api/binance/import-positions", { method: "POST" }).catch(() => {});
+    // Auto-sync positions with broker balance after login
+    api("/api/broker/binance/sync-positions", { method: "POST" }).catch(() => {});
 
     return data.user;
   }, []);
@@ -67,8 +67,8 @@ export function useAuth() {
       setUser(data.user);
       setAuthServerOk(true);
 
-      // Auto-import Binance positions after register
-      api("/api/binance/import-positions", { method: "POST" }).catch(() => {});
+      // Auto-sync positions with broker balance after register
+      api("/api/broker/binance/sync-positions", { method: "POST" }).catch(() => {});
 
       return data.user;
     },

@@ -1386,11 +1386,17 @@ def import_binance_positions(
             if price <= 0:
                 continue
 
+            # Normalize symbol for DB lookup (BTCUSDT -> BTC/USDT)
+            from app.brokers.models import normalize_symbol
+            normalized = normalize_symbol(symbol)
+
             # Check if spot position already exists (futures can coexist separately)
+            # Search by both normalized and raw symbol to handle legacy data
             existing = db.query(PositionModel).filter(
-                PositionModel.symbol == symbol,
                 PositionModel.status == "open",
                 PositionModel.user_id == current_user.id,
+            ).filter(
+                PositionModel.symbol.in_([symbol, normalized])
             ).all()
             spot_existing = None
             for ex in existing:
@@ -1408,7 +1414,7 @@ def import_binance_positions(
             pos = PositionModel(
                 user_id=current_user.id,
                 broker_id="binance",
-                symbol=symbol,
+                symbol=normalized,
                 opened_at=datetime.now(tz=UTC),
                 side="long",
                 quantity=Decimal(str(total)),
@@ -1420,7 +1426,7 @@ def import_binance_positions(
                 metadata_json={"source": "binance_spot_import", "asset": asset},
             )
             db.add(pos)
-            imported.append({"symbol": symbol, "quantity": total, "entry_price": price})
+            imported.append({"symbol": normalized, "quantity": total, "entry_price": price})
 
         # 2) Futures positions from /fapi/v2/positionRisk
         try:
