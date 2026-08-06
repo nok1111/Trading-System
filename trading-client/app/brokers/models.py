@@ -268,6 +268,8 @@ def normalize_symbol(symbol: str) -> str:
         BTC/USDT -> BTC/USDT
         btcusdt -> BTC/USDT
         ETH-USDT -> ETH/USDT
+        BTCUSDC -> BTC/USDC
+        BTCEUR -> BTC/EUR
     """
     s = symbol.upper().strip()
     for sep in ("/", "-", "_"):
@@ -275,14 +277,11 @@ def normalize_symbol(symbol: str) -> str:
             parts = s.split(sep)
             if len(parts) == 2:
                 return f"{parts[0]}/{parts[1]}"
-    if s.endswith("USDT"):
-        return f"{s[:-4]}/USDT"
-    if s.endswith("BUSD"):
-        return f"{s[:-4]}/BUSD"
-    if s.endswith("BTC"):
-        return f"{s[:-3]}/BTC"
-    if s.endswith("ETH"):
-        return f"{s[:-3]}/ETH"
+    # Try known quote currencies (longest first to avoid partial matches)
+    _QUOTES = ("USDT", "USDC", "FDUSD", "TUSD", "BUSD", "UST", "USD", "EUR", "GBP", "AUD", "JPY", "TRY", "BRL", "MXN", "BTC", "ETH", "BNB")
+    for q in sorted(_QUOTES, key=len, reverse=True):
+        if s.endswith(q) and len(s) > len(q):
+            return f"{s[:-len(q)]}/{q}"
     return s
 
 

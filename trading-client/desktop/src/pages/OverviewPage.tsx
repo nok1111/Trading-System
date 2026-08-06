@@ -247,9 +247,14 @@ export function OverviewPage() {
 
   const priceOf = useCallback(
     (asset: string) => {
-      if (asset === "USDT" || asset === "BUSD" || asset === "USDC") return 1;
-      const t = (prices ?? []).find((p) => p.symbol === `${asset}USDT`);
-      return t ? Number(t.price) || 0 : 0;
+      const STABLES = ["USDT", "BUSD", "USDC", "USD", "FDUSD", "TUSD", "UST", "USDP", "GUSD"];
+      if (STABLES.includes(asset)) return 1;
+      const QUOTES = ["USDT", "USDC", "USD", "FDUSD", "TUSD", "BUSD"];
+      for (const q of QUOTES) {
+        const t = (prices ?? []).find((p) => p.symbol === `${asset}${q}`);
+        if (t && Number(t.price) > 0) return Number(t.price);
+      }
+      return 0;
     },
     [prices]
   );

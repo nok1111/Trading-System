@@ -94,22 +94,35 @@ def get_balance(
 
     assets = _balance_to_dict(balances)
 
+    # Stablecoins that are ~1:1 with USD
+    STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP", "GUSD", "PAX"}
+    # Quote currencies to try for price conversion (in order of preference)
+    USD_QUOTES = ["USDT", "USDC", "USD", "FDUSD", "TUSD", "BUSD"]
+
     # Fetch USD prices for each asset
     total_usd = 0.0
     for a in assets:
         asset = a["asset"]
-        if asset in ("USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD"):
+        if asset in STABLECOINS:
             a["usd_value"] = a["total"]
             total_usd += a["usd_value"]
         elif asset == "EUR":
             a["usd_value"] = a["total"] * 1.08
             total_usd += a["usd_value"]
         else:
-            try:
-                ticker = adapter.get_ticker(f"{asset}/USDT")
-                a["usd_value"] = round(a["total"] * float(ticker.price), 4)
+            # Try multiple quote currencies until one works
+            price = None
+            for quote in USD_QUOTES:
+                try:
+                    ticker = adapter.get_ticker(f"{asset}/{quote}")
+                    price = float(ticker.price)
+                    break
+                except Exception:
+                    continue
+            if price is not None:
+                a["usd_value"] = round(a["total"] * price, 4)
                 total_usd += a["usd_value"]
-            except Exception:
+            else:
                 a["usd_value"] = 0.0
 
     # Sort by USD value descending

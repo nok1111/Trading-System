@@ -123,7 +123,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
         const firstConnected = connectedAccounts.find((a) => isBrokerConnected(a.status));
         const brokerId = detail.broker || firstConnected?.brokerId || connectedAccounts[0]?.brokerId || "binance";
         const rawAsset = detail.asset.toUpperCase().replace("/", "");
-        const symbol = rawAsset.endsWith("USDT") || rawAsset.endsWith("BTC") || rawAsset.endsWith("ETH") || rawAsset.endsWith("BNB") || rawAsset.endsWith("FDUSD") || rawAsset.endsWith("TUSD")
+        const QUOTES = ["USDT", "USDC", "FDUSD", "TUSD", "BUSD", "USD", "EUR", "BTC", "ETH", "BNB", "TRY", "BRL", "MXN", "JPY", "GBP", "AUD"];
+        const symbol = QUOTES.some((q) => rawAsset.endsWith(q))
           ? rawAsset
           : rawAsset + "USDT";
         setSelectedBrokerModule({ brokerId, moduleId: "trade" });

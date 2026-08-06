@@ -1470,9 +1470,11 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
                   ? ((Number(p.current_price) - Number(p.entry_price)) / Number(p.entry_price) * 100)
                   : 0;
                 const isExpanded = expandedCharts.has(p.symbol);
-                const chartSymbol = p.symbol.includes("USDT") || p.symbol.includes("BTC") || p.symbol.includes("ETH") || p.symbol.includes("BNB") || p.symbol.includes("FDUSD") || p.symbol.includes("TUSD")
-                  ? p.symbol.replace("/", "")
-                  : p.symbol.replace("/", "") + "USDT";
+                const QUOTES = ["USDT", "USDC", "FDUSD", "TUSD", "BUSD", "USD", "EUR", "BTC", "ETH", "BNB", "TRY", "BRL", "MXN", "JPY", "GBP", "AUD"];
+                const cleanSym = p.symbol.replace("/", "").toUpperCase();
+                const chartSymbol = QUOTES.some((q) => cleanSym.endsWith(q))
+                  ? cleanSym
+                  : cleanSym + "USDT";
 
                 return (
                   <div key={i} className="panel overflow-hidden">

@@ -471,17 +471,24 @@ class CCXTAdapter(BrokerAdapter):
     def get_portfolio(self) -> PortfolioSnapshot:
         balances = self.get_account_balances()
         total_usd = Decimal("0")
+        STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP"}
+        USD_QUOTES = ["USDT", "USDC", "USD", "FDUSD", "TUSD", "BUSD"]
 
         for bal in balances:
-            if bal.asset in ("USDT", "BUSD", "USDC", "USD", "UST"):
+            if bal.asset in STABLECOINS:
                 total_usd += bal.total
             else:
-                try:
-                    ticker = self._exchange.fetch_ticker(f"{bal.asset}/USDT")
-                    price = _to_decimal(ticker.get("last", 0))
-                    total_usd += bal.total * price
-                except Exception:
-                    pass
+                # Try multiple quote currencies until one works
+                priced = False
+                for quote in USD_QUOTES:
+                    try:
+                        ticker = self._exchange.fetch_ticker(f"{bal.asset}/{quote}")
+                        price = _to_decimal(ticker.get("last", 0))
+                        total_usd += bal.total * price
+                        priced = True
+                        break
+                    except Exception:
+                        continue
 
         return PortfolioSnapshot(
             timestamp=datetime.now(tz=UTC),

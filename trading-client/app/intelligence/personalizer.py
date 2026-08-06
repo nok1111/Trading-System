@@ -19,6 +19,19 @@ from app.database.models.signal import Signal
 from app.database.models.user_settings import UserSettings
 from app.intelligence.event_journal import EventJournal
 
+# Common quote currencies for symbol parsing
+_QUOTE_CURRENCIES = ("USDT", "USDC", "FDUSD", "TUSD", "BUSD", "USD", "EUR", "BTC", "ETH", "BNB", "TRY", "BRL", "MXN", "JPY", "GBP", "AUD")
+
+
+def _extract_asset(symbol: str) -> str:
+    """Extract the base asset from a trading symbol (BTCUSDT -> BTC, BTC/USDC -> BTC)."""
+    s = symbol.upper().strip().replace("/", "")
+    for q in sorted(_QUOTE_CURRENCIES, key=len, reverse=True):
+        if s.endswith(q) and len(s) > len(q):
+            return s[:-len(q)]
+    return s
+
+
 # Icon + color mapping for frontend
 EVENT_ICONS: dict[str, str] = {
     "new_opportunity": "🟢",
@@ -88,7 +101,7 @@ def _get_user_assets(session: Session, user_id: int) -> list[str]:
     ).scalars().all()
     assets = []
     for p in positions:
-        symbol = p.symbol.upper().replace("USDT", "").replace("USDC", "")
+        symbol = _extract_asset(p.symbol)
         if symbol:
             assets.append(symbol)
     return list(set(assets))
@@ -146,7 +159,7 @@ def _get_portfolio_summary(session: Session, user_id: int = 0) -> dict[str, Any]
         qty = float(p.quantity) if p.quantity else 0.0
         price = float(p.current_price) if p.current_price else 0.0
         total_value += qty * price
-        asset = p.symbol.upper().replace("USDT", "").replace("USDC", "")
+        asset = _extract_asset(p.symbol)
         pnl_pct = 0.0
         if p.entry_price and float(p.entry_price) > 0 and p.current_price:
             pnl_pct = ((float(p.current_price) - float(p.entry_price)) / float(p.entry_price)) * 100
@@ -402,7 +415,7 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
     for p in positions:
         if p.updated_at and p.updated_at > last_login_naive:
             pnl = float(p.unrealized_pnl) if p.unrealized_pnl else 0.0
-            asset = p.symbol.upper().replace("USDT", "").replace("USDC", "")
+            asset = _extract_asset(p.symbol)
             portfolio_changes.append({
                 "id": f"port-{p.id}",
                 "type": "portfolio_change",
@@ -420,7 +433,7 @@ def get_changes_since_last_login(session: Session, user_id: int) -> dict[str, An
     # 4. To-review list
     to_review: list[dict[str, str]] = []
     for p in positions[:5]:
-        asset = p.symbol.upper().replace("USDT", "").replace("USDC", "")
+        asset = _extract_asset(p.symbol)
         to_review.append({"asset": asset, "reason": "Posición abierta"})
 
     # 5. Portfolio summary
@@ -475,7 +488,7 @@ def get_today_priorities(session: Session, user_id: int) -> dict[str, Any]:
 
     # From positions
     for pos in positions[:3]:
-        asset = pos.symbol.upper().replace("USDT", "").replace("USDC", "")
+        asset = _extract_asset(pos.symbol)
         pnl_pct = 0.0
         if pos.entry_price and pos.current_price and float(pos.entry_price) > 0:
             pnl_pct = ((float(pos.current_price) - float(pos.entry_price)) / float(pos.entry_price)) * 100
@@ -505,7 +518,7 @@ def get_today_priorities(session: Session, user_id: int) -> dict[str, Any]:
     # From recent signals (if we have room)
     if len(priorities) < 3:
         for sig in signals[:3 - len(priorities)]:
-            asset = sig.symbol.upper().replace("USDT", "").replace("USDC", "")
+            asset = _extract_asset(sig.symbol)
             priorities.append({
                 "id": f"sig-{sig.id}",
                 "asset": asset,

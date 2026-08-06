@@ -4,10 +4,8 @@ const ICON_BASE = "https://assets.coincap.io/assets/icons";
 
 function normalizeSymbol(symbol: string): string {
   return symbol
-    .replace(/USDT$/i, "")
-    .replace(/USD$/i, "")
-    .replace(/BUSD$/i, "")
-    .replace(/USDC$/i, "")
+    .replace(/(USDT|USDC|FDUSD|TUSD|BUSD|USD|EUR|BTC|ETH|BNB|TRY|BRL|MXN|JPY|GBP|AUD)$/i, "")
+    .replace(/\//g, "")
     .toLowerCase();
 }
 
