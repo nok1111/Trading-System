@@ -749,3 +749,122 @@ def place_oco_order(
         return {"status": "error", "error": str(exc)}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+
+# ─── Sync Positions (reconcile DB with broker balance) ────────────────────────
+
+@router.post("/{broker_id}/sync-positions")
+def sync_positions(
+    broker_id: str,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Reconcilia las posiciones en DB con el balance real del broker.
+
+    - Si una posicion open tiene 0 balance del activo -> la cierra (status=closed)
+    - Si tiene menos balance que la cantidad registrada -> actualiza la cantidad
+    - Calcula realized_pnl al cerrar/ajustar
+    - Retorna un resumen de los cambios
+    """
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position
+    from decimal import Decimal as Dec
+    from datetime import datetime, UTC
+
+    adapter = _get_adapter(broker_id, current_user)
+
+    # Fetch real balance from broker
+    try:
+        balances = adapter.get_account_balances()
+        balance_map = {b.asset: float(b.free) for b in balances}
+    except BrokerError as exc:
+        return {"status": "error", "error": f"No se pudo obtener balance: {exc}"}
+    except Exception as exc:
+        return {"status": "error", "error": f"No se pudo obtener balance: {exc}"}
+
+    db = SessionLocal()
+    try:
+        positions = db.query(Position).filter(
+            Position.status == "open",
+            Position.user_id == current_user.id,
+            Position.broker_id == broker_id,
+        ).all()
+
+        closed_count = 0
+        updated_count = 0
+        unchanged_count = 0
+        details = []
+
+        for p in positions:
+            base = p.symbol.split("/")[0] if "/" in p.symbol else p.symbol.replace("USDT", "")
+            actual_balance = balance_map.get(base, 0)
+            db_qty = float(p.quantity)
+
+            if actual_balance <= 0.00000001:
+                # Position has no balance -> close it
+                entry = float(p.entry_price)
+                try:
+                    ticker = adapter.get_ticker(p.symbol)
+                    close_price = float(ticker.price)
+                except Exception:
+                    close_price = float(p.current_price or entry)
+
+                realized = (close_price - entry) * db_qty if p.side == "long" else (entry - close_price) * db_qty
+                p.realized_pnl = Dec(str(round(realized, 8)))
+                p.current_price = Dec(str(close_price))
+                p.status = "closed"
+                p.closed_at = datetime.now(tz=UTC)
+                meta = p.metadata_json or {}
+                meta["closed_by"] = "sync"
+                meta["close_reason"] = "no balance in broker"
+                p.metadata_json = meta
+
+                closed_count += 1
+                details.append(f"Cerrada {p.symbol}: qty={db_qty} (sin saldo, PnL={realized:.4f})")
+
+            elif actual_balance < db_qty * 0.99:
+                # Position has less balance than DB -> update quantity
+                entry = float(p.entry_price)
+                try:
+                    ticker = adapter.get_ticker(p.symbol)
+                    current_price = float(ticker.price)
+                except Exception:
+                    current_price = float(p.current_price or entry)
+
+                new_qty = actual_balance
+                sold_qty = db_qty - new_qty
+                realized = (current_price - entry) * sold_qty if p.side == "long" else (entry - current_price) * sold_qty
+                p.realized_pnl = Dec(str(round(realized, 8)))
+                p.quantity = Dec(str(new_qty))
+                p.current_price = Dec(str(current_price))
+                if p.side == "long":
+                    p.unrealized_pnl = Dec(str(round((current_price - entry) * new_qty, 8)))
+                else:
+                    p.unrealized_pnl = Dec(str(round((entry - current_price) * new_qty, 8)))
+
+                meta = p.metadata_json or {}
+                meta["synced_at"] = datetime.now(tz=UTC).isoformat()
+                meta["previous_qty"] = db_qty
+                p.metadata_json = meta
+
+                updated_count += 1
+                details.append(f"Actualizada {p.symbol}: {db_qty} -> {new_qty} (vendiste {sold_qty:.8f})")
+
+            else:
+                unchanged_count += 1
+
+        db.commit()
+
+        return {
+            "status": "ok",
+            "broker_id": broker_id,
+            "total_positions": len(positions),
+            "closed": closed_count,
+            "updated": updated_count,
+            "unchanged": unchanged_count,
+            "details": details,
+        }
+    except Exception as exc:
+        db.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        db.close()

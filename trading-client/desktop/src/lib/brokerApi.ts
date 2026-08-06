@@ -356,3 +356,22 @@ export async function cancelOrder(brokerId: string, params: CancelOrderParams): 
     body: JSON.stringify(params),
   });
 }
+
+// ─── Sync Positions ──────────────────────────────────────────────────────────
+
+export interface SyncPositionsResponse {
+  status: string;
+  broker_id?: string;
+  total_positions?: number;
+  closed?: number;
+  updated?: number;
+  unchanged?: number;
+  details?: string[];
+  error?: string;
+}
+
+export async function syncPositions(brokerId: string): Promise<SyncPositionsResponse> {
+  return api<SyncPositionsResponse>(`/api/broker/${brokerId}/sync-positions`, {
+    method: "POST",
+  });
+}

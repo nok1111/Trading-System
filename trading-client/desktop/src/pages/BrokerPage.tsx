@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown } from "lucide-react";
+import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
@@ -53,6 +53,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
   const [brokerFilledOrders, setBrokerFilledOrders] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   const account = brokerId ? connectedAccounts.find((a) => a.brokerId === brokerId) || null : null;
   const broker = brokerId ? supportedBrokers.find((b) => b.brokerId === brokerId) || null : null;
@@ -111,6 +112,47 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
     return () => { alive = false; };
   }, [brokerId, module]);
 
+  // Sync positions with broker balance (manual + auto on load)
+  const handleSync = useCallback(async (showToast = true) => {
+    if (!brokerId || syncing) return;
+    setSyncing(true);
+    try {
+      const res = await brokerApi.syncPositions(brokerId);
+      if (res.status === "ok") {
+        if (showToast) {
+          const parts: string[] = [];
+          if (res.closed) parts.push(`${res.closed} cerrada(s)`);
+          if (res.updated) parts.push(`${res.updated} actualizada(s)`);
+          if (res.unchanged) parts.push(`${res.unchanged} sin cambios`);
+          toast(`Sync: ${parts.join(", ") || "sin cambios"}`, true);
+          if (res.details && res.details.length > 0) {
+            res.details.forEach((d) => console.log(`  [sync] ${d}`));
+          }
+        }
+        // Reload data after sync
+        const [bal, pos] = await Promise.all([
+          brokerApi.getBalance(brokerId).catch(() => null),
+          api<any[]>("/api/positions").catch(() => []),
+        ]);
+        if (bal) setBalanceData(bal);
+        if (Array.isArray(pos)) setPositions(pos);
+      } else if (showToast) {
+        toast(`Error sync: ${res.error}`, false);
+      }
+    } catch (err: any) {
+      if (showToast) toast(`Error sync: ${err?.message || err}`, false);
+    } finally {
+      setSyncing(false);
+    }
+  }, [brokerId, syncing]);
+
+  // Auto-sync on broker change (silent)
+  useEffect(() => {
+    if (brokerId && account) {
+      handleSync(false);
+    }
+  }, [brokerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!brokerId || !broker) {
     return (
       <div className="p-5">
@@ -143,9 +185,20 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
             {account.displayName || "Cuenta"} · {account.environment} · {account.apiKeyPreview}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-text-muted)]">
-          {MODULE_ICONS[module]}
-          {MODULE_LABELS[module] || module}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleSync(true)}
+            disabled={syncing}
+            title="Sincronizar posiciones con balance del broker"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] border border-[var(--color-border)] text-[11px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Sincronizando..." : "Sync"}
+          </button>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-text-muted)]">
+            {MODULE_ICONS[module]}
+            {MODULE_LABELS[module] || module}
+          </div>
         </div>
       </div>
 
