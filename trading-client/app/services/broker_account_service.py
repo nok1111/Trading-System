@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.brokers.base import BrokerAdapter, BrokerError
 from app.brokers.capabilities import BrokerCapabilities
 from app.brokers.models import BrokerCredentials, BrokerInfo, CredentialValidationResult
-from app.brokers.registry import get_adapter, get_capabilities, list_brokers
+from app.brokers.registry import get_adapter, get_capabilities, is_implemented, list_brokers
 from app.database.models.broker_account import BrokerAccount as BrokerAccountModel
 from app.services.crypto import decrypt, encrypt
 
@@ -66,7 +66,7 @@ def get_supported_brokers() -> list[dict[str, Any]]:
                     "stopOrders": caps.stop_orders,
                     "withdrawals": caps.withdrawals,
                 },
-                "requiresPassphrase": info.broker_id == "okx",
+                "requiresPassphrase": _requires_passphrase(info.broker_id),
                 "environments": _get_environments(info.broker_id),
                 "implemented": _is_implemented(info.broker_id),
             }
@@ -76,16 +76,27 @@ def get_supported_brokers() -> list[dict[str, Any]]:
 
 def _is_implemented(broker_id: str) -> bool:
     """Check if a broker adapter is fully implemented (not a stub)."""
-    return broker_id == "binance"
+    return is_implemented(broker_id)
+
+
+def _requires_passphrase(broker_id: str) -> bool:
+    """Check if a broker requires a passphrase (e.g. OKX, KuCoin)."""
+    from app.brokers.adapters.ccxt_adapter import get_exchange_meta
+
+    if broker_id == "binance":
+        return False
+    meta = get_exchange_meta(broker_id)
+    return meta.get("passphrase", False)
 
 
 def _get_environments(broker_id: str) -> list[str]:
+    from app.brokers.adapters.ccxt_adapter import get_exchange_meta
+
     if broker_id == "binance":
         return ["testnet", "live"]
-    if broker_id == "coinbase":
+    meta = get_exchange_meta(broker_id)
+    if meta.get("sandbox"):
         return ["sandbox", "live"]
-    if broker_id == "okx":
-        return ["demo", "live"]
     return ["live"]
 
 

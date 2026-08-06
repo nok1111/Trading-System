@@ -1,17 +1,29 @@
 """Registry de brokers — unico lugar donde se decide el broker por id.
 
+Binance usa BinanceAdapter nativo (HMAC propio, cache exchangeInfo, futures OCO).
+Todos los demas exchanges usan CCXTAdapter (100+ exchanges via libreria CCXT).
+
 Detras del flag ENABLE_MULTI_BROKER (por defecto solo Binance).
 Fuera de este modulo, ningun condicional por nombre de broker.
 """
 
 from __future__ import annotations
 
+from app.brokers.adapters.ccxt_adapter import (
+    CCXTAdapter,
+    get_curated_exchange_ids,
+    get_exchange_meta,
+)
 from app.brokers.base import BrokerAdapter, BrokerError
 from app.brokers.capabilities import BrokerCapabilities
 from app.brokers.models import BrokerCredentials, BrokerInfo
 from app.config import get_settings
 
-_BROKER_IDS: tuple[str, ...] = ("binance", "bybit", "coinbase", "kraken", "okx")
+# Binance usa adapter nativo. El resto via CCXT.
+_BINANCE_ID = "binance"
+
+# Todos los brokers soportados: Binance nativo + exchanges CCXT curados.
+_BROKER_IDS: tuple[str, ...] = (_BINANCE_ID,) + get_curated_exchange_ids()
 
 _ADAPTER_CLASSES: dict[str, type[BrokerAdapter]] = {}
 
@@ -21,20 +33,11 @@ def _register_adapters() -> None:
     if _ADAPTER_CLASSES:
         return
     from app.brokers.adapters.binance_adapter import BinanceAdapter
-    from app.brokers.adapters.bybit_adapter import BybitAdapter
-    from app.brokers.adapters.coinbase_adapter import CoinbaseAdapter
-    from app.brokers.adapters.kraken_adapter import KrakenAdapter
-    from app.brokers.adapters.okx_adapter import OKXAdapter
 
-    _ADAPTER_CLASSES.update(
-        {
-            "binance": BinanceAdapter,
-            "bybit": BybitAdapter,
-            "coinbase": CoinbaseAdapter,
-            "kraken": KrakenAdapter,
-            "okx": OKXAdapter,
-        }
-    )
+    _ADAPTER_CLASSES[_BINANCE_ID] = BinanceAdapter
+
+    for exchange_id in get_curated_exchange_ids():
+        _ADAPTER_CLASSES[exchange_id] = CCXTAdapter
 
 
 def list_brokers() -> list[BrokerInfo]:
@@ -45,8 +48,20 @@ def list_brokers() -> list[BrokerInfo]:
     _register_adapters()
     brokers: list[BrokerInfo] = []
     for _broker_id, cls in _ADAPTER_CLASSES.items():
-        dummy = cls.__new__(cls)
-        brokers.append(dummy.get_broker_info())
+        if _broker_id == _BINANCE_ID:
+            dummy = cls.__new__(cls)
+            brokers.append(dummy.get_broker_info())
+        else:
+            meta = get_exchange_meta(_broker_id)
+            brokers.append(
+                BrokerInfo(
+                    broker_id=_broker_id,
+                    display_name=meta.get("display_name", _broker_id.title()),
+                    supported_markets=meta.get("markets", ()),
+                    website_url=meta.get("website"),
+                    api_docs_url=meta.get("api_docs"),
+                )
+            )
     return brokers
 
 
@@ -57,15 +72,32 @@ def get_capabilities(broker_id: str) -> BrokerCapabilities:
     cls = _ADAPTER_CLASSES.get(broker_id)
     if cls is None:
         raise BrokerError(f"Broker desconocido: {broker_id}")
-    dummy = cls.__new__(cls)
-    return dummy.get_capabilities()
+    if broker_id == _BINANCE_ID:
+        dummy = cls.__new__(cls)
+        return dummy.get_capabilities()
+    meta = get_exchange_meta(broker_id)
+    from app.brokers.models import MarketType
+
+    markets = meta.get("markets", (MarketType.SPOT,))
+    return BrokerCapabilities(
+        spot=MarketType.SPOT in markets,
+        margin=MarketType.MARGIN in markets,
+        futures=MarketType.FUTURES in markets,
+        staking=False,
+        earn=False,
+        websocket=False,
+        market_orders=True,
+        limit_orders=True,
+        stop_orders=False,
+        withdrawals=False,
+    )
 
 
 def get_adapter(broker_id: str, credentials: BrokerCredentials) -> BrokerAdapter:
     """Crea y devuelve un adaptador de broker.
 
     Args:
-        broker_id: Identificador del broker (ej: "binance").
+        broker_id: Identificador del broker (ej: "binance", "bybit", "kraken").
         credentials: Credenciales normalizadas para el broker.
 
     Returns:
@@ -81,7 +113,7 @@ def get_adapter(broker_id: str, credentials: BrokerCredentials) -> BrokerAdapter
     settings = get_settings()
     multi_broker_enabled = getattr(settings, "ENABLE_MULTI_BROKER", False)
 
-    if broker_id != "binance" and not multi_broker_enabled:
+    if broker_id != _BINANCE_ID and not multi_broker_enabled:
         raise BrokerError(
             f"Multi-broker deshabilitado. Solo 'binance' esta disponible. "
             f"Habilita ENABLE_MULTI_BROKER para usar '{broker_id}'."
@@ -91,19 +123,23 @@ def get_adapter(broker_id: str, credentials: BrokerCredentials) -> BrokerAdapter
     if cls is None:
         raise BrokerError(f"Broker desconocido: {broker_id}. Disponibles: {', '.join(_BROKER_IDS)}")
 
-    return cls(credentials)
+    if broker_id == _BINANCE_ID:
+        return cls(credentials)
+    # CCXTAdapter requiere exchange_id extra
+    return cls(credentials, exchange_id=broker_id)
 
 
 def get_available_broker_ids() -> tuple[str, ...]:
     """Devuelve los IDs de brokers disponibles segun configuracion."""
     if getattr(get_settings(), "ENABLE_MULTI_BROKER", False):
         return _BROKER_IDS
-    return ("binance",)
+    return (_BINANCE_ID,)
 
 
-_IMPLEMENTED_BROKERS: frozenset[str] = frozenset({"binance"})
+# Todos los brokers estan implementados: Binance nativo + CCXT para el resto.
+_IMPLEMENTED_BROKERS: frozenset[str] = frozenset(_BROKER_IDS)
 
 
 def is_implemented(broker_id: str) -> bool:
-    """Devuelve True si el adapter del broker está completamente implementado (no es stub)."""
+    """Devuelve True si el adapter del broker esta completamente implementado."""
     return broker_id.lower().strip() in _IMPLEMENTED_BROKERS

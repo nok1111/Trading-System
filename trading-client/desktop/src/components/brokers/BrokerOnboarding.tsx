@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Link2, ChevronRight, ShieldCheck, Clock, ExternalLink, Key } from "lucide-react";
+import { Link2, ChevronRight, ShieldCheck, Clock, ExternalLink, Key, Search } from "lucide-react";
 import { CredentialForm } from "./CredentialForm";
 import { ValidationResult } from "./ValidationResult";
 import { useBrokerContext } from "../../context/BrokerContext";
@@ -25,6 +25,7 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingRequest, setPendingRequest] = useState<CredentialValidationRequest | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const implementedBrokers = useMemo(
     () => supportedBrokers.filter((b) => b.implemented),
@@ -33,6 +34,18 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
   const upcomingBrokers = useMemo(
     () => supportedBrokers.filter((b) => !b.implemented),
     [supportedBrokers]
+  );
+  const filteredBrokers = useMemo(
+    () => {
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return implementedBrokers;
+      return implementedBrokers.filter(
+        (b) =>
+          b.displayName.toLowerCase().includes(q) ||
+          b.brokerId.toLowerCase().includes(q)
+      );
+    },
+    [implementedBrokers, searchQuery]
   );
 
   const handleValidate = async (req: CredentialValidationRequest): Promise<CredentialValidationResponse> => {
@@ -112,11 +125,25 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
         {phase === "select" && (
           /* Broker selection */
           <div className="space-y-4">
+            {/* Search box — solo visible si hay muchos brokers */}
+            {implementedBrokers.length > 6 && (
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar exchange..."
+                  className="w-full pl-9 pr-3 py-2.5 rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
-                Brokers disponibles
+                Brokers disponibles {filteredBrokers.length !== implementedBrokers.length && `(${filteredBrokers.length})`}
               </p>
-              {implementedBrokers.map((broker) => (
+              {filteredBrokers.map((broker) => (
                 <button
                   key={broker.brokerId}
                   onClick={() => handleSelectBroker(broker)}
@@ -136,6 +163,11 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
                   <ChevronRight size={18} className="text-[var(--color-text-muted)]" />
                 </button>
               ))}
+              {filteredBrokers.length === 0 && searchQuery && (
+                <div className="text-center py-6 text-[12px] text-[var(--color-text-muted)]">
+                  No se encontraron exchanges para "{searchQuery}"
+                </div>
+              )}
             </div>
 
             {upcomingBrokers.length > 0 && (
@@ -453,11 +485,82 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
                     Cómo obtener tu API Key de {selectedBroker.displayName}
                   </h3>
                 </div>
-                <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
-                  <p className="text-[12px] text-[var(--color-text-muted)]">
-                    Consulta la documentación de {selectedBroker.displayName} para obtener tu API Key.
-                  </p>
+
+                {/* Prerequisites */}
+                <div className="rounded-[8px] bg-[var(--color-warning)]/5 border border-[var(--color-warning)]/20 p-2.5 space-y-1">
+                  <p className="text-[11px] font-bold text-[var(--color-text)]">Antes de empezar necesitas:</p>
+                  <ul className="text-[10px] text-[var(--color-text-muted)] space-y-0.5 ml-4 list-disc">
+                    <li>Tener una cuenta verificada en {selectedBroker.displayName}</li>
+                    <li>Tener <span className="font-semibold">2FA activado</span> (recomendado)</li>
+                  </ul>
+                  {selectedBroker.websiteUrl && (
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">¿No tienes cuenta? <a href={selectedBroker.websiteUrl} target="_blank" rel="noopener" className="text-[var(--color-accent)] underline inline-flex items-center gap-0.5">Crear cuenta <ExternalLink size={9} /></a></p>
+                  )}
                 </div>
+
+                {/* Generic steps */}
+                <div className="space-y-2.5">
+                  <div className="flex gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-[var(--color-primary)]/15 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)] shrink-0">1</div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-bold text-[var(--color-text)]">Inicia sesión en {selectedBroker.displayName}</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Ve a la web oficial y accede a tu cuenta con tus credenciales.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-[var(--color-primary)]/15 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)] shrink-0">2</div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-bold text-[var(--color-text)]">Busca la sección "API" o "API Management"</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Normalmente está en <span className="font-semibold text-[var(--color-text)]">Settings</span> → <span className="font-semibold text-[var(--color-text)]">API</span> o en el menú de tu perfil.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-[var(--color-primary)]/15 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)] shrink-0">3</div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-bold text-[var(--color-text)]">Crea una nueva API Key</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Pulsa "Create API" o "New API Key". Es posible que necesites verificar con 2FA o email.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-[var(--color-primary)]/15 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)] shrink-0">4</div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-bold text-[var(--color-text)]">Selecciona permisos de <span className="font-semibold">Read</span> y <span className="font-semibold">Trade</span></p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5"><span className="font-semibold text-[var(--color-danger)]">Nunca habilites Withdrawals</span> — Alvora bloquea las credenciales con permiso de retiro por seguridad.</p>
+                    </div>
+                  </div>
+
+                  {selectedBroker.requiresPassphrase && (
+                    <div className="flex gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-[var(--color-warning)]/15 flex items-center justify-center text-[10px] font-bold text-[var(--color-warning)] shrink-0">5</div>
+                      <div className="flex-1">
+                        <p className="text-[12px] font-bold text-[var(--color-text)]">Guarda la <span className="font-semibold">Passphrase</span></p>
+                        <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{selectedBroker.displayName} genera una passphrase adicional además de la API Key y Secret. La necesitarás para conectar.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-[var(--color-primary)]/15 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)] shrink-0">{selectedBroker.requiresPassphrase ? "6" : "5"}</div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-bold text-[var(--color-text)]">Copia tu API Key y Secret Key</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5"><span className="font-semibold text-[var(--color-warning)]">El Secret Key solo se muestra una vez</span> — guárdalo inmediatamente en un gestor de contraseñas.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* API docs link */}
+                {selectedBroker.apiDocsUrl && (
+                  <div className="rounded-[8px] bg-[var(--color-accent)]/5 border border-[var(--color-accent)]/20 p-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <ExternalLink size={12} className="text-[var(--color-accent)]" />
+                      <p className="text-[11px] font-bold text-[var(--color-text)]">Documentación oficial</p>
+                    </div>
+                    <a href={selectedBroker.apiDocsUrl} target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline inline-flex items-center gap-0.5 mt-1">Ver docs de API de {selectedBroker.displayName} <ExternalLink size={9} /></a>
+                  </div>
+                )}
               </div>
             )}
 
