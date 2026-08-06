@@ -47,10 +47,10 @@ _PUBLIC_PATHS = {"/", "/dashboard", "/health", "/openapi.json", "/docs", "/redoc
 async def license_check(request: Request, call_next):
     """Validate JWT against Auth Server on every request.
 
-    Skips public paths (health, dashboard HTML, docs).
+    Skips public paths (health, dashboard HTML, docs, public market data).
     Attaches license info to request.state for downstream use.
     """
-    if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images") or request.url.path.startswith("/api/binance/price") or request.url.path.startswith("/api/klines/") or request.url.path.startswith("/api/signals"):
+    if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/images") or request.url.path.startswith("/api/binance/price") or request.url.path.startswith("/api/klines/") or request.url.path.startswith("/api/signals") or request.url.path.startswith("/api/broker/") and ("/ticker" in request.url.path or "/klines" in request.url.path or "/movers" in request.url.path or "/market-info" in request.url.path):
         return await call_next(request)
 
     # Allow CORS preflight requests without auth
@@ -87,6 +87,7 @@ async def license_check(request: Request, call_next):
 from app.api.routes import (
     ai_agent,
     broker_accounts,
+    broker_data,
     brokers,
     intelligence,
     market,
@@ -106,6 +107,7 @@ app.include_router(ai_agent.router)
 app.include_router(settings.router)
 app.include_router(brokers.router)
 app.include_router(broker_accounts.router)
+app.include_router(broker_data.router)
 app.include_router(intelligence.router)
 
 # ---------------------------------------------------------------------------

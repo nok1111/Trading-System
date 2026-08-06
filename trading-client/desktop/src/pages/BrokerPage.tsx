@@ -10,7 +10,7 @@ import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PriceChart } from "../components/charts/PriceChart";
 import { SlTpPanel } from "../components/SlTpPanel";
-import * as binanceProxy from "../lib/binanceProxy";
+import * as brokerApi from "../lib/brokerApi";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
 interface BrokerPageProps {
@@ -66,16 +66,16 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       try {
         const tasks: { key: string; fn: () => Promise<any> }[] = [];
         if (module === "overview" || module === "portfolio") {
-          tasks.push({ key: "balance", fn: () => api<any>("/api/binance/balance").catch(() => null) });
+          tasks.push({ key: "balance", fn: () => brokerApi.getBalance(brokerId).catch(() => null) });
         }
         if (module === "overview" || module === "positions") {
-          tasks.push({ key: "positions", fn: () => api<any[]>("/api/positions").catch(() => []) });
+          tasks.push({ key: "positions", fn: () => brokerApi.getPositions(brokerId).catch(() => ({ positions: [] })) });
         }
         if (module === "overview") {
-          tasks.push({ key: "open-orders", fn: () => api<any[]>("/api/orders?status=open").catch(() => []) });
+          tasks.push({ key: "open-orders", fn: () => brokerApi.getOrders(brokerId, { status: "open" }).catch(() => ({ orders: [], active: [], filled: [] })) });
         }
         if (module === "orders") {
-          tasks.push({ key: "orders", fn: () => api<any[]>("/api/orders?limit=50").catch(() => []) });
+          tasks.push({ key: "orders", fn: () => brokerApi.getOrders(brokerId, { limit: 50 }).catch(() => ({ orders: [], active: [], filled: [] })) });
         }
         if (module === "history") {
           tasks.push({ key: "trades", fn: () => api<any[]>("/api/trades?limit=20").catch(() => []) });
@@ -160,7 +160,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       ) : module === "trade" ? (
         <TradeModule brokerId={brokerId} presetSymbol={presetSymbol} />
       ) : module === "markets" ? (
-        <MarketsModule />
+        <MarketsModule brokerId={brokerId} />
       ) : module === "positions" ? (
         <PositionsModule positions={positions} brokerId={brokerId} />
       ) : module === "orders" ? (
@@ -317,9 +317,9 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
 function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbol?: string }) {
   const { connectedAccounts } = useBrokerContext();
   const account = connectedAccounts.find((a) => a.brokerId === brokerId);
-  const [symbol, setSymbol] = useState(presetSymbol || "BTCUSDT");
-  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
-  const [orderType, setOrderType] = useState<"MARKET" | "LIMIT">("MARKET");
+  const [symbol, setSymbol] = useState(presetSymbol || "BTC/USDT");
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [amountUsd, setAmountUsd] = useState("100");
   const [quantity, setQuantity] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
@@ -335,13 +335,13 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   const [userBalance, setUserBalance] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
 
-  const BINANCE_FEE_RATE = 0.001; // 0.1% spot fee
+  const BROKER_FEE_RATE = 0.001; // 0.1% spot fee (approximate, varies by exchange)
   const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA", "LINK", "DOT"];
-  const symbols = baseSymbols.map((s) => s + quoteCurrency);
+  const symbols = baseSymbols.map((s) => `${s}/${quoteCurrency}`);
 
   // Detect quote currency from user's balance and load balance + positions
   useEffect(() => {
-    api<any>("/api/binance/balance").then((data) => {
+    brokerApi.getBalance(brokerId).then((data) => {
       if (!data?.assets) return;
       setUserBalance(data);
       const stablecoins = ["USDT", "BUSD", "USDC", "FDUSD", "TUSD", "EUR", "TRY", "BRL", "MXN"];
@@ -356,7 +356,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
     api<any[]>("/api/intelligence/paper-positions").then((positions) => {
       setOpenPositions(positions || []);
     }).catch(() => {});
-  }, []);
+  }, [brokerId]);
 
   useEffect(() => {
     if (presetSymbol) setSymbol(presetSymbol);
@@ -365,16 +365,16 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   const fetchPrice = useCallback(async () => {
     setPriceLoading(true);
     try {
-      const r = await api<any>(`/api/binance/price?symbol=${symbol}`);
+      const r = await brokerApi.getTicker(brokerId, symbol);
       if (r.price) {
         setLivePrice(r.price);
-        if (orderType === "LIMIT" && !limitPrice) setLimitPrice(r.price.toString());
+        if (orderType === "limit" && !limitPrice) setLimitPrice(r.price.toString());
       }
     } catch {
       setLivePrice(null);
     }
     setPriceLoading(false);
-  }, [symbol]);
+  }, [brokerId, symbol]);
 
   useEffect(() => {
     fetchPrice();
@@ -399,28 +399,28 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   })();
 
   // Fee and P&L calculations
-  const orderValue = computedQty * (orderType === "LIMIT" && limitPrice ? parseFloat(limitPrice) : (livePrice || 0));
-  const fee = orderValue * BINANCE_FEE_RATE;
+  const orderValue = computedQty * (orderType === "limit" && limitPrice ? parseFloat(limitPrice) : (livePrice || 0));
+  const fee = orderValue * BROKER_FEE_RATE;
   const netValue = orderValue - fee;
 
   // For SELL: calculate P&L if we have entry price
-  const sellPnl = (side === "SELL" && entryPrice && computedQty > 0)
+  const sellPnl = (side === "sell" && entryPrice && computedQty > 0)
     ? (orderValue - fee) - (entryPrice * computedQty)
     : null;
-  const sellPnlPct = (side === "SELL" && entryPrice && computedQty > 0)
+  const sellPnlPct = (side === "sell" && entryPrice && computedQty > 0)
     ? ((orderValue - fee) / (entryPrice * computedQty) - 1) * 100
     : null;
 
   // Validation
   const maxBuyUsd = availableUsdt;
   const maxSellQty = Math.min(availableAsset, heldQty || availableAsset);
-  const exceedsBalance = (side === "BUY" && amountUsd && parseFloat(amountUsd) > maxBuyUsd)
-    || (side === "SELL" && quantity && parseFloat(quantity) > maxSellQty);
+  const exceedsBalance = (side === "buy" && amountUsd && parseFloat(amountUsd) > maxBuyUsd)
+    || (side === "sell" && quantity && parseFloat(quantity) > maxSellQty);
 
   const handleSubmit = async () => {
     setError("");
     setResult(null);
-    if (orderType === "LIMIT" && !limitPrice) {
+    if (orderType === "limit" && !limitPrice) {
       setError("Precio límite requerido");
       return;
     }
@@ -429,7 +429,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
       return;
     }
     if (exceedsBalance) {
-      setError(side === "BUY"
+      setError(side === "buy"
         ? `Excede tu saldo disponible de ${maxBuyUsd.toFixed(2)} ${quoteCurrency}`
         : `Excede tu saldo disponible de ${maxSellQty.toFixed(6)} ${baseAsset}`);
       return;
@@ -437,27 +437,23 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
 
     setSubmitting(true);
     try {
-      const payload: any = {
+      const payload: brokerApi.PlaceOrderParams = {
         symbol,
         side,
         order_type: orderType,
       };
-      if (orderType === "MARKET" && side === "BUY" && amountUsd && !quantity) {
+      if (orderType === "market" && side === "buy" && amountUsd && !quantity) {
         payload.quote_order_qty = parseFloat(amountUsd);
       } else {
         payload.quantity = computedQty;
       }
-      if (orderType === "LIMIT") {
+      if (orderType === "limit") {
         payload.price = parseFloat(limitPrice);
       }
       if (stopLossPrice) payload.stop_loss_price = parseFloat(stopLossPrice);
       if (takeProfitPrice) payload.take_profit_price = parseFloat(takeProfitPrice);
 
-      const r = await api<any>("/api/binance/manual-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const r = await brokerApi.placeOrder(brokerId, payload);
       setResult(r);
       if (r.error) {
         setError(r.error);
@@ -519,10 +515,10 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           {/* Buy/Sell toggle */}
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => { setSide("BUY"); setQuantity(""); setAmountUsd(""); setResult(null); setError(""); }}
+              onClick={() => { setSide("buy"); setQuantity(""); setAmountUsd(""); setResult(null); setError(""); }}
               className={cn(
                 "h-11 rounded-[10px] text-[14px] font-extrabold transition-all",
-                side === "BUY"
+                side === "buy"
                   ? "bg-[var(--color-success)] text-white"
                   : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
               )}
@@ -530,10 +526,10 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               Comprar
             </button>
             <button
-              onClick={() => { setSide("SELL"); setQuantity(""); setAmountUsd(""); setResult(null); setError(""); }}
+              onClick={() => { setSide("sell"); setQuantity(""); setAmountUsd(""); setResult(null); setError(""); }}
               className={cn(
                 "h-11 rounded-[10px] text-[14px] font-extrabold transition-all",
-                side === "SELL"
+                side === "sell"
                   ? "bg-[var(--color-danger)] text-white"
                   : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
               )}
@@ -544,10 +540,10 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
 
           {/* Order type */}
           <div className="flex gap-2">
-            {(["MARKET", "LIMIT"] as const).map((t) => (
+            {(["market", "limit"] as const).map((t) => (
               <button
                 key={t}
-                onClick={() => { setOrderType(t); if (t === "MARKET") setLimitPrice(""); }}
+                onClick={() => { setOrderType(t); if (t === "market") setLimitPrice(""); }}
                 className={cn(
                   "flex-1 h-8 rounded-[8px] text-[12px] font-bold transition-colors",
                   orderType === t
@@ -555,7 +551,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
                     : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
                 )}
               >
-                {t === "MARKET" ? "Mercado" : "Límite"}
+                {t === "market" ? "Mercado" : "Límite"}
               </button>
             ))}
           </div>
@@ -563,7 +559,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           {/* Available balance display */}
           <div className="flex items-center justify-between text-[11px] rounded-[8px] bg-[var(--color-surface-2)]/50 px-3 py-2">
             <span className="text-[var(--color-text-muted)] font-bold">Disponible:</span>
-            {side === "BUY" ? (
+            {side === "buy" ? (
               <span className="font-bold text-green-400">{availableUsdt.toFixed(2)} {quoteCurrency}</span>
             ) : (
               <span className="font-bold text-red-400">{availableAsset.toFixed(6)} {baseAsset}{heldQty > 0 && heldQty < availableAsset ? ` (pos: ${heldQty.toFixed(6)})` : ""}</span>
@@ -571,7 +567,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           </div>
 
           {/* Amount input */}
-          {orderType === "MARKET" && side === "BUY" ? (
+          {orderType === "market" && side === "buy" ? (
             <div>
               <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
                 Monto en {quoteCurrency}
@@ -649,7 +645,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           )}
 
           {/* Limit price */}
-          {orderType === "LIMIT" && (
+          {orderType === "limit" && (
             <div>
               <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
                 Precio límite ({quoteCurrency})
@@ -665,7 +661,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           )}
 
           {/* Stop-Loss / Take-Profit (only for BUY) */}
-          {side === "BUY" && (
+          {side === "buy" && (
             <div className="space-y-3 rounded-[10px] bg-[var(--color-surface-2)]/50 p-3 border border-[var(--color-border)]/30">
               <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Gestión de riesgo</div>
 
@@ -739,11 +735,11 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
           <div className="rounded-[10px] bg-[var(--color-surface-2)] p-3 space-y-1.5 text-[12px]">
             <div className="flex justify-between">
               <span className="text-[var(--color-text-muted)]">Orden</span>
-              <span className="font-bold text-[var(--color-text)]">{side === "BUY" ? "Comprar" : "Vender"} {symbol}</span>
+              <span className="font-bold text-[var(--color-text)]">{side === "buy" ? "Comprar" : "Vender"} {symbol}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--color-text-muted)]">Tipo</span>
-              <span className="font-bold text-[var(--color-text)]">{orderType === "MARKET" ? "Mercado" : "Límite"}</span>
+              <span className="font-bold text-[var(--color-text)]">{orderType === "market" ? "Mercado" : "Límite"}</span>
             </div>
             {computedQty > 0 && (
               <div className="flex justify-between">
@@ -768,7 +764,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               </>
             )}
             {/* P&L for SELL */}
-            {side === "SELL" && sellPnl !== null && (
+            {side === "sell" && sellPnl !== null && (
               <div className={cn(
                 "rounded-[6px] px-2 py-1.5 mt-1.5 border",
                 sellPnl >= 0
@@ -802,7 +798,7 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               </div>
             )}
             {/* Entry price info for SELL */}
-            {side === "SELL" && entryPrice && (
+            {side === "sell" && entryPrice && (
               <div className="flex justify-between text-[10px] text-[var(--color-text-muted)]">
                 <span>Posición: {heldQty.toFixed(6)} {baseAsset} @ ${entryPrice.toFixed(4)}</span>
                 <span>Costo: ${(entryPrice * (computedQty || heldQty)).toFixed(2)}</span>
@@ -830,12 +826,12 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
               "w-full h-11 rounded-[10px] text-[14px] font-extrabold transition-all",
               submitting
                 ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : side === "BUY"
+                : side === "buy"
                   ? "bg-[var(--color-success)] text-white hover:opacity-90"
                   : "bg-[var(--color-danger)] text-white hover:opacity-90"
             )}
           >
-            {submitting ? "Enviando..." : `${side === "BUY" ? "Comprar" : "Vender"} ${baseAsset}`}
+            {submitting ? "Enviando..." : `${side === "buy" ? "Comprar" : "Vender"} ${baseAsset}`}
           </button>
 
           {/* Error */}
@@ -878,26 +874,26 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   );
 }
 
-function MarketsModule() {
+function MarketsModule({ brokerId }: { brokerId: string }) {
   const [quoteCurrency, setQuoteCurrency] = useState("USDT");
-  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [symbol, setSymbol] = useState("BTC/USDT");
 
   useEffect(() => {
-    api<any>("/api/binance/balance").then((data) => {
+    brokerApi.getBalance(brokerId).then((data) => {
       if (!data?.assets) return;
       const stablecoins = ["USDT", "BUSD", "USDC", "FDUSD", "TUSD", "EUR", "TRY", "BRL", "MXN"];
       for (const a of data.assets) {
         if (stablecoins.includes(a.asset) && a.total > 0) {
           setQuoteCurrency(a.asset);
-          setSymbol("BTC" + a.asset);
+          setSymbol(`BTC/${a.asset}`);
           break;
         }
       }
     }).catch(() => {});
-  }, []);
+  }, [brokerId]);
 
   const baseSymbols = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX", "XRP", "ADA"];
-  const symbols = baseSymbols.map((s) => s + quoteCurrency);
+  const symbols = baseSymbols.map((s) => `${s}/${quoteCurrency}`);
 
   return (
     <div className="space-y-4">
@@ -953,7 +949,7 @@ function OrdersModule({ activeOrders, filledOrders }: { activeOrders: any[]; fil
                     {o.symbol}
                   </div>
                 </td>
-                <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
+                <td className={cn("font-bold", o.side === "buy" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
                 <td className="text-[var(--color-text-muted)]">{o.type}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
                 <td className="text-right text-[var(--color-text-muted)]">{fmt(o.filled_quantity)}</td>
@@ -992,7 +988,7 @@ function OrdersModule({ activeOrders, filledOrders }: { activeOrders: any[]; fil
                       {o.symbol}
                     </div>
                   </td>
-                  <td className={cn("font-bold", o.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
+                  <td className={cn("font-bold", o.side === "buy" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{o.side}</td>
                   <td className="text-[var(--color-text-muted)]">{o.type}</td>
                   <td className="text-right text-[var(--color-text)]">{fmt(o.quantity)}</td>
                   <td className="text-right text-[var(--color-text)]">{o.avg_price ? fmt(o.avg_price) : o.price ? fmt(o.price) : "—"}</td>
@@ -1035,7 +1031,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
                     {t.symbol}
                   </div>
                 </td>
-                <td className={cn("font-bold", t.side === "BUY" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{t.side}</td>
+                <td className={cn("font-bold", t.side === "buy" ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>{t.side}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.quantity)}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.price)}</td>
                 <td className="text-right font-bold text-[var(--color-text)]">${fmtVol(Number(t.quantity) * Number(t.price))}</td>
@@ -1144,16 +1140,16 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
   };
 
   const handleCancelOco = async (positionId: number, symbol: string, ocoOrderId: string) => {
+    if (!brokerId) return;
     try {
-      const brokerSymbol = symbol.toUpperCase().replace(/[-_/]/g, "");
-      await binanceProxy.cancelOCO(brokerSymbol, ocoOrderId);
+      await brokerApi.cancelOrder(brokerId, { broker_order_id: ocoOrderId, symbol });
       const res = await api<any>(`/api/intelligence/positions/${positionId}/clear-oco`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ oco_order_id: ocoOrderId }),
       });
       if (res?.status === "cancelled") {
-        toast("OCO cancelado en Binance", true);
+        toast("OCO cancelado", true);
         await loadLivePositions();
       } else {
         toast(res?.error || "Error al cancelar OCO", false);
