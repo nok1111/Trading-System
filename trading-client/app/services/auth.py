@@ -57,3 +57,20 @@ def get_current_user(request: Request) -> LocalUser:
         username=license_info.get("username", ""),
         subscription=license_info.get("subscription", "free"),
     )
+
+
+def get_optional_user(request: Request) -> LocalUser | None:
+    """Like get_current_user but returns None instead of raising 401.
+
+    Use for endpoints that work for both authenticated and anonymous users
+    (e.g. public catalog endpoints that skip the license middleware).
+    """
+    license_info = getattr(request.state, "user", None)
+    if not license_info:
+        return None
+    return LocalUser(
+        id=license_info.get("user_id", 0),
+        email=license_info.get("email", ""),
+        username=license_info.get("username", ""),
+        subscription=license_info.get("subscription", "free"),
+    )

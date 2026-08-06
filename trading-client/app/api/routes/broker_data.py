@@ -35,7 +35,7 @@ from app.brokers.models import (
     normalize_symbol,
 )
 from app.brokers.registry import get_adapter
-from app.services.auth import LocalUser, get_current_user
+from app.services.auth import LocalUser, get_current_user, get_optional_user
 
 router = APIRouter(prefix="/api/broker", tags=["broker-data"])
 
@@ -299,7 +299,7 @@ def get_positions(
 def get_ticker(
     broker_id: str,
     symbol: str = Query(...),
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser | None, Depends(get_optional_user)] = None,
 ) -> dict:
     """Precio actual de un símbolo desde el broker.
 
@@ -343,7 +343,7 @@ def get_ticker(
 def get_market_info(
     broker_id: str,
     symbol: str = Query(...),
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser | None, Depends(get_optional_user)] = None,
 ) -> dict:
     """Información de mercado (filtros, precisiones) para un símbolo."""
     try:
@@ -378,7 +378,7 @@ def get_klines(
     symbol: str = Query(...),
     interval: str = Query("1m", pattern="^(1m|3m|5m|15m|30m|1h|2h|4h|1d|1w)$"),
     limit: int = Query(200, ge=1, le=1000),
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser | None, Depends(get_optional_user)] = None,
 ) -> list[dict]:
     """Velas OHLCV desde el broker (datos públicos, no requiere credenciales)."""
     try:
@@ -411,7 +411,7 @@ def get_movers(
     market: str = Query("spot", pattern="^(spot|futures)$"),
     limit: int = Query(20, ge=1, le=100),
     quote: str = Query("USDT"),
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser | None, Depends(get_optional_user)] = None,
 ) -> dict:
     """Top gainers y losers de 24h desde el broker."""
     try:
