@@ -103,12 +103,34 @@ export async function api<T = any>(
 
   if (r.status === 401) {
     console.log("API 401 on", path, "token:", authToken ? "yes" : "no");
-    setAuthToken(null);
-    window.dispatchEvent(new CustomEvent("auth-logout"));
-    throw new Error("Sesión expirada");
+    // Don't auto-logout on every 401 — only if we actually have a token
+    // and the auth server rejected it. A 401 without token means the endpoint
+    // requires auth and we're not logged in yet (caller should handle).
+    if (authToken) {
+      // Verify if token is actually invalid by checking with auth server
+      // Only logout if token is truly invalid, not on transient failures
+      try {
+        const verifyResp = await fetch(
+          (localStorage.getItem("authServerUrl") || "http://76.13.180.80:8000") + "/api/auth/me",
+          { headers: { Authorization: "Bearer " + authToken } }
+        );
+        if (verifyResp.status === 401 || verifyResp.status === 403) {
+          setAuthToken(null);
+          window.dispatchEvent(new CustomEvent("auth-logout"));
+        }
+      } catch {
+        // Auth server unreachable — don't logout, just throw
+      }
+    }
+    throw new Error("No autenticado");
   }
   if (r.status === 403) {
     const e = await r.json().catch(() => ({ detail: "Error" }));
+    // Only logout on 403 if it's a subscription/license issue
+    if (e.detail && e.detail.includes("Suscripción")) {
+      setAuthToken(null);
+      window.dispatchEvent(new CustomEvent("auth-logout"));
+    }
     throw new Error(e.detail || "Suscripción inactiva");
   }
   if (!r.ok) {
