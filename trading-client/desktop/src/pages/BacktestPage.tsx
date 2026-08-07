@@ -74,8 +74,10 @@ const symbols = [
 ];
 const intervals = ["5m", "15m", "1h", "4h", "1d"];
 const strategies = [
-  { id: "trend_momentum", label: "Trend Momentum", desc: "EMA crossover + RSI + volumen" },
-  { id: "mean_reversion", label: "Mean Reversion", desc: "RSI oversold + Bollinger Bands" },
+  { id: "trend_momentum", label: "Trend Momentum", desc: "EMA crossover + RSI + volumen — mercados con tendencia" },
+  { id: "mean_reversion", label: "Mean Reversion", desc: "RSI oversold + Bollinger Bands — mercados laterales" },
+  { id: "breakout", label: "Breakout", desc: "Donchian Channels + volumen — movimientos explosivos" },
+  { id: "grid", label: "Grid Trading", desc: "Rango ATR dinamico — income pasivo en sideways" },
 ];
 
 export function BacktestPage() {

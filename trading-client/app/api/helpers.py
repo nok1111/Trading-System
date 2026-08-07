@@ -85,6 +85,12 @@ def build_strategy(name: str, settings):
     if name in ("mean_reversion", "MeanReversionStrategy"):
         from app.strategies import MeanReversionConfig, MeanReversionStrategy
         return MeanReversionStrategy(MeanReversionConfig())
+    if name in ("breakout", "BreakoutStrategy"):
+        from app.strategies import BreakoutConfig, BreakoutStrategy
+        return BreakoutStrategy(BreakoutConfig())
+    if name in ("grid", "GridStrategy"):
+        from app.strategies import GridConfig, GridStrategy
+        return GridStrategy(GridConfig())
     # default: trend
     from app.strategies import TrendMomentumConfig, TrendMomentumStrategy
     return TrendMomentumStrategy(TrendMomentumConfig())

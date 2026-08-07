@@ -164,6 +164,10 @@ def run_backtest(
     """
     if strategy == "mean_reversion":
         return _run_mean_reversion(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    if strategy == "breakout":
+        return _run_breakout(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    if strategy == "grid":
+        return _run_grid(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
     return _run_trend_momentum(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
 
 
@@ -602,6 +606,329 @@ def _calculate_metrics(
     )
 
 
+# ─── Breakout Strategy Backtest ───────────────────────────────────────────────
+
+
+def _run_breakout(
+    symbol: str,
+    interval: str,
+    limit: int,
+    initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    donchian_period: int = 20,
+    volume_threshold: float = 1.5,
+    stop_loss_pct: float = 0.03,
+    take_profit_pct: float = 0.08,
+    trailing_pct: float = 0.025,
+    max_hold: int = 48,
+) -> BacktestResult:
+    """Backtest for Breakout strategy (Donchian Channels + volume)."""
+    df = _fetch_klines_df(symbol, interval, limit)
+
+    close = df["close"]
+    dc = ind.donchian_channels(df, donchian_period)
+    dc_upper = dc["upper"]
+    dc_middle = dc["middle"]
+    dc_lower = dc["lower"]
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+    vol_rel = ind.relative_volume(df["volume"], 20)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    highest_since_entry = 0.0
+    entry_time = None
+    bars_in_position = 0
+    total_fees = 0.0
+    total_slippage = 0.0
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = donchian_period + 1
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            dc_mid = float(dc_middle.iloc[i]) if not dc_middle.isna().iloc[i] else price
+
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            if price <= effective_stop:
+                exit_reason = "stop_loss" if price <= hard_stop else "trailing_stop"
+            elif price >= take_profit:
+                exit_reason = "take_profit"
+            elif price < dc_mid:
+                exit_reason = "below_channel_mid"
+            elif bars_in_position >= max_hold:
+                exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
+                trades.append({
+                    "entry_time": entry_time.isoformat() if entry_time else "",
+                    "exit_time": idx.isoformat(),
+                    "side": "SELL",
+                    "quantity": position_qty,
+                    "entry_price": entry_price,
+                    "exit_price": sell_price,
+                    "pnl": round(pnl, 2),
+                    "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2),
+                    "reason": exit_reason,
+                    "bars_held": bars_in_position,
+                })
+                position_qty = 0.0
+                entry_price = 0.0
+                highest_since_entry = 0.0
+                bars_in_position = 0
+
+        # Entry: price breaks above previous Donchian upper + volume
+        if position_qty == 0:
+            prev_upper = float(dc_upper.iloc[i - 1]) if i > 0 and not dc_upper.isna().iloc[i - 1] else 0
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            vr = float(vol_rel.iloc[i]) if not vol_rel.isna().iloc[i] else 1.0
+
+            if price > prev_upper and vr > volume_threshold and rsi_val > 40:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
+                    position_qty = qty
+                    highest_since_entry = price
+                    entry_time = idx
+                    bars_in_position = 0
+                    cash -= trade_value + fee
+                    total_fees += fee
+                    total_slippage += (fill_price - price) * qty
+                    trades.append({
+                        "entry_time": idx.isoformat(),
+                        "exit_time": "",
+                        "side": "BUY",
+                        "quantity": qty,
+                        "entry_price": entry_price,
+                        "exit_price": 0,
+                        "pnl": 0,
+                        "pnl_pct": 0,
+                        "fee": round(fee, 2),
+                        "reason": "donchian_breakout",
+                        "bars_held": 0,
+                    })
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
+        trades.append({
+            "entry_time": entry_time.isoformat() if entry_time else "",
+            "exit_time": df.index[-1].isoformat(),
+            "side": "SELL",
+            "quantity": position_qty,
+            "entry_price": entry_price,
+            "exit_price": sell_price,
+            "pnl": round(pnl, 2),
+            "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2),
+            "reason": "backtest_end",
+            "bars_held": bars_in_position,
+        })
+
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+    return _calculate_metrics(
+        symbol=symbol, strategy="breakout", interval=interval,
+        initial_cash=initial_cash, equity_curve=equity_curve, trades=trades,
+        total_fees=total_fees, total_slippage=total_slippage, buy_hold_return_pct=buy_hold_pct,
+    )
+
+
+# ─── Grid Strategy Backtest ───────────────────────────────────────────────────
+
+
+def _run_grid(
+    symbol: str,
+    interval: str,
+    limit: int,
+    initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    atr_multiplier: float = 2.0,
+    grid_levels: int = 5,
+    stop_loss_pct: float = 0.04,
+    max_hold: int = 72,
+) -> BacktestResult:
+    """Backtest for Grid strategy (range trading with ATR-based levels)."""
+    df = _fetch_klines_df(symbol, interval, limit)
+
+    close = df["close"]
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+    vol_rel = ind.relative_volume(df["volume"], 20)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    entry_time = None
+    bars_in_position = 0
+    total_fees = 0.0
+    total_slippage = 0.0
+    # Track grid center — recalculated when no position
+    grid_center = 0.0
+    grid_spacing = 0.0
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = 15
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        # Recalculate grid when not in position — use previous candle as center
+        if position_qty == 0 and i > 0:
+            atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+            grid_center = float(df.iloc[i - 1]["close"])
+            grid_spacing = (atr_val * atr_multiplier) / grid_levels
+
+        if position_qty > 0:
+            bars_in_position += 1
+
+            # Grid sell level = entry + spacing
+            sell_level = entry_price + grid_spacing
+            hard_stop = entry_price * (1 - stop_loss_pct)
+
+            exit_reason = None
+            if price >= sell_level:
+                exit_reason = "grid_sell_level"
+            elif price <= hard_stop:
+                exit_reason = "stop_loss"
+            elif bars_in_position >= max_hold:
+                exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
+                trades.append({
+                    "entry_time": entry_time.isoformat() if entry_time else "",
+                    "exit_time": idx.isoformat(),
+                    "side": "SELL",
+                    "quantity": position_qty,
+                    "entry_price": entry_price,
+                    "exit_price": sell_price,
+                    "pnl": round(pnl, 2),
+                    "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2),
+                    "reason": exit_reason,
+                    "bars_held": bars_in_position,
+                })
+                position_qty = 0.0
+                entry_price = 0.0
+                bars_in_position = 0
+
+        # Entry: price drops to grid buy level (one spacing below center)
+        if position_qty == 0:
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            is_ranging = abs(rsi_val - 50) < 25
+            buy_level = grid_center - grid_spacing
+
+            if is_ranging and price <= buy_level and grid_spacing > 0:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
+                    position_qty = qty
+                    entry_time = idx
+                    bars_in_position = 0
+                    cash -= trade_value + fee
+                    total_fees += fee
+                    total_slippage += (fill_price - price) * qty
+                    trades.append({
+                        "entry_time": idx.isoformat(),
+                        "exit_time": "",
+                        "side": "BUY",
+                        "quantity": qty,
+                        "entry_price": entry_price,
+                        "exit_price": 0,
+                        "pnl": 0,
+                        "pnl_pct": 0,
+                        "fee": round(fee, 2),
+                        "reason": "grid_buy_level",
+                        "bars_held": 0,
+                    })
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
+        trades.append({
+            "entry_time": entry_time.isoformat() if entry_time else "",
+            "exit_time": df.index[-1].isoformat(),
+            "side": "SELL",
+            "quantity": position_qty,
+            "entry_price": entry_price,
+            "exit_price": sell_price,
+            "pnl": round(pnl, 2),
+            "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2),
+            "reason": "backtest_end",
+            "bars_held": bars_in_position,
+        })
+
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+    return _calculate_metrics(
+        symbol=symbol, strategy="grid", interval=interval,
+        initial_cash=initial_cash, equity_curve=equity_curve, trades=trades,
+        total_fees=total_fees, total_slippage=total_slippage, buy_hold_return_pct=buy_hold_pct,
+    )
+
+
 # ─── Parameter Optimization (Grid Search) ─────────────────────────────────────
 
 
@@ -841,6 +1168,204 @@ def _run_mean_reversion_custom(
     return equity_curve, trades
 
 
+def _run_breakout_custom(
+    df: pd.DataFrame,
+    initial_cash: float,
+    donchian_period: int = 20,
+    volume_threshold: float = 1.5,
+    stop_loss_pct: float = 0.03,
+    take_profit_pct: float = 0.08,
+    trailing_pct: float = 0.025,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+) -> tuple[list[dict], list[dict]]:
+    """Run Breakout with custom params on pre-fetched data. Returns (equity_curve, trades)."""
+    close = df["close"]
+    dc = ind.donchian_channels(df, donchian_period)
+    dc_upper = dc["upper"]
+    dc_middle = dc["middle"]
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+    vol_rel = ind.relative_volume(df["volume"], 20)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    highest_since_entry = 0.0
+    entry_time = None
+    bars_in_position = 0
+    max_hold = 48
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = donchian_period + 1
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            dc_mid = float(dc_middle.iloc[i]) if not dc_middle.isna().iloc[i] else price
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            if price <= effective_stop:
+                exit_reason = "stop_loss"
+            elif price >= take_profit:
+                exit_reason = "take_profit"
+            elif price < dc_mid:
+                exit_reason = "below_mid"
+            elif bars_in_position >= max_hold:
+                exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": exit_reason})
+                position_qty = 0.0
+                entry_price = 0.0
+                highest_since_entry = 0.0
+                bars_in_position = 0
+
+        if position_qty == 0:
+            prev_upper = float(dc_upper.iloc[i - 1]) if i > 0 and not dc_upper.isna().iloc[i - 1] else 0
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            vr = float(vol_rel.iloc[i]) if not vol_rel.isna().iloc[i] else 1.0
+
+            if price > prev_upper and vr > volume_threshold and rsi_val > 40:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
+                    position_qty = qty
+                    highest_since_entry = price
+                    entry_time = idx
+                    bars_in_position = 0
+                    cash -= trade_value + fee
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": "end"})
+
+    return equity_curve, trades
+
+
+def _run_grid_custom(
+    df: pd.DataFrame,
+    initial_cash: float,
+    atr_multiplier: float = 2.0,
+    grid_levels: int = 5,
+    stop_loss_pct: float = 0.04,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+) -> tuple[list[dict], list[dict]]:
+    """Run Grid with custom params on pre-fetched data. Returns (equity_curve, trades)."""
+    close = df["close"]
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    entry_time = None
+    bars_in_position = 0
+    max_hold = 72
+    grid_center = 0.0
+    grid_spacing = 0.0
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = 15
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        if position_qty == 0 and i > 0:
+            atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+            grid_center = float(df.iloc[i - 1]["close"])
+            grid_spacing = (atr_val * atr_multiplier) / grid_levels
+
+        if position_qty > 0:
+            bars_in_position += 1
+            sell_level = entry_price + grid_spacing
+            hard_stop = entry_price * (1 - stop_loss_pct)
+
+            exit_reason = None
+            if price >= sell_level:
+                exit_reason = "grid_sell"
+            elif price <= hard_stop:
+                exit_reason = "stop_loss"
+            elif bars_in_position >= max_hold:
+                exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": exit_reason})
+                position_qty = 0.0
+                entry_price = 0.0
+                bars_in_position = 0
+
+        if position_qty == 0:
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            is_ranging = abs(rsi_val - 50) < 25
+            buy_level = grid_center - grid_spacing
+
+            if is_ranging and price <= buy_level and grid_spacing > 0:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
+                    position_qty = qty
+                    entry_time = idx
+                    bars_in_position = 0
+                    cash -= trade_value + fee
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": "end"})
+
+    return equity_curve, trades
+
+
 # Parameter grids for optimization
 _TREND_PARAMS = {
     "fast_ema": [5, 9, 12],
@@ -857,6 +1382,20 @@ _MEANREV_PARAMS = {
     "bb_std": [1.5, 2.0, 2.5],
     "stop_loss_pct": [0.02, 0.025, 0.03],
     "take_profit_pct": [0.03, 0.04, 0.05],
+}
+
+_BREAKOUT_PARAMS = {
+    "donchian_period": [10, 20, 30],
+    "volume_threshold": [1.0, 1.5, 2.0],
+    "stop_loss_pct": [0.02, 0.03, 0.04],
+    "take_profit_pct": [0.05, 0.08, 0.12],
+    "trailing_pct": [0.02, 0.025, 0.03],
+}
+
+_GRID_PARAMS = {
+    "atr_multiplier": [1.5, 2.0, 3.0],
+    "grid_levels": [3, 5, 8],
+    "stop_loss_pct": [0.03, 0.04, 0.05],
 }
 
 
@@ -880,12 +1419,14 @@ def run_optimization(
 
     if strategy == "mean_reversion":
         param_grid = _MEANREV_PARAMS
-        keys = list(param_grid.keys())
-        all_combos = list(itertools.product(*[param_grid[k] for k in keys]))
+    elif strategy == "breakout":
+        param_grid = _BREAKOUT_PARAMS
+    elif strategy == "grid":
+        param_grid = _GRID_PARAMS
     else:
         param_grid = _TREND_PARAMS
-        keys = list(param_grid.keys())
-        all_combos = list(itertools.product(*[param_grid[k] for k in keys]))
+    keys = list(param_grid.keys())
+    all_combos = list(itertools.product(*[param_grid[k] for k in keys]))
 
     # Limit combinations — pick evenly spaced subset if too many
     if len(all_combos) > max_combinations:
@@ -901,6 +1442,10 @@ def run_optimization(
 
         if strategy == "mean_reversion":
             eq, tr = _run_mean_reversion_custom(df, initial_cash, **params)
+        elif strategy == "breakout":
+            eq, tr = _run_breakout_custom(df, initial_cash, **params)
+        elif strategy == "grid":
+            eq, tr = _run_grid_custom(df, initial_cash, **params)
         else:
             eq, tr = _run_trend_momentum_custom(df, initial_cash, **params)
 

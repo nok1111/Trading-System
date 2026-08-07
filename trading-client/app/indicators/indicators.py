@@ -112,3 +112,36 @@ def crossover(
     if direction == "up":
         return (fast.shift(1) <= slow.shift(1)) & (fast > slow)
     return (fast.shift(1) >= slow.shift(1)) & (fast < slow)
+
+
+def donchian_channels(
+    df: pd.DataFrame,
+    window: int = 20,
+) -> pd.DataFrame:
+    """Donchian Channels — highest high and lowest low over N periods.
+
+    Returns DataFrame with 'upper', 'lower', and 'middle' columns.
+    The upper band is the highest high, lower is the lowest low,
+    and middle is the average of the two.
+    """
+    upper = df["high"].rolling(window=window, min_periods=window).max()
+    lower = df["low"].rolling(window=window, min_periods=window).min()
+    middle = (upper + lower) / 2
+    return pd.DataFrame({"upper": upper, "lower": lower, "middle": middle})
+
+
+def stochastic(
+    df: pd.DataFrame,
+    k_window: int = 14,
+    d_window: int = 3,
+) -> pd.DataFrame:
+    """Stochastic Oscillator (%K and %D).
+
+    %K = (Close - Lowest Low) / (Highest High - Lowest Low) * 100
+    %D = SMA of %K over d_window periods.
+    """
+    lowest = df["low"].rolling(window=k_window, min_periods=k_window).min()
+    highest = df["high"].rolling(window=k_window, min_periods=k_window).max()
+    k = (df["close"] - lowest) / (highest - lowest).replace(0, np.nan) * 100
+    d = k.rolling(window=d_window, min_periods=d_window).mean()
+    return pd.DataFrame({"k": k, "d": d})
