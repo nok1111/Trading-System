@@ -48,6 +48,178 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
+// ─── Multi-Symbol Selector (CCXT dropdown with chips) ───
+
+// Convert CCXT "BTC/USDT" → Binance "BTCUSDT"
+function toBinanceSymbol(ccxtSymbol: string): string {
+  return ccxtSymbol.replace("/", "").toUpperCase();
+}
+
+function MultiSymbolSelector({
+  label, description, value, onChange, symbols, loading, disabled,
+  quoteAsset, onQuoteChange, quoteAssets, pickerOpen, setPickerOpen,
+  search, setSearch,
+}: {
+  label: string;
+  description: string;
+  value: string; // comma-separated Binance format
+  onChange: (v: string) => void;
+  symbols: any[];
+  loading: boolean;
+  disabled: boolean;
+  quoteAsset: string;
+  onQuoteChange: (q: string) => void;
+  quoteAssets: string[];
+  pickerOpen: boolean;
+  setPickerOpen: (open: boolean) => void;
+  search: string;
+  setSearch: (s: string) => void;
+}) {
+  // Parse current value into array of Binance-format symbols
+  const selected: string[] = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+
+  const toggleSymbol = (ccxtSym: string) => {
+    const binanceSym = toBinanceSymbol(ccxtSym);
+    if (selected.includes(binanceSym)) {
+      onChange(selected.filter(s => s !== binanceSym).join(","));
+    } else {
+      onChange([...selected, binanceSym].join(","));
+    }
+  };
+
+  const removeSymbol = (binanceSym: string) => {
+    onChange(selected.filter(s => s !== binanceSym).join(","));
+  };
+
+  const filtered = symbols.filter(s =>
+    s.symbol.toLowerCase().includes(search.toLowerCase()) ||
+    s.base.toLowerCase().includes(search.toLowerCase())
+  ).slice(0, 50);
+
+  return (
+    <div>
+      <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+        {label}
+      </label>
+
+      {/* Selected symbols as chips */}
+      <div className="flex flex-wrap gap-1 mb-1.5 min-h-[28px] rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-1.5">
+        {selected.length === 0 && (
+          <span className="text-[10px] text-[var(--color-text-muted)] py-0.5 px-1">
+            {description}
+          </span>
+        )}
+        {selected.map(sym => (
+          <span
+            key={sym}
+            className="inline-flex items-center gap-1 rounded-[4px] bg-[var(--color-primary)]/15 px-1.5 py-0.5 text-[10px] font-bold text-[var(--color-text)]"
+          >
+            {sym}
+            {!disabled && (
+              <button
+                onClick={() => removeSymbol(sym)}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] text-[11px] leading-none"
+              >
+                ×
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+
+      {/* Add symbol button + dropdown */}
+      <div className="relative">
+        <button
+          onClick={() => !disabled && setPickerOpen(!pickerOpen)}
+          disabled={disabled}
+          className={cn(
+            "w-full flex items-center justify-between rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2.5 py-1.5 text-[10px]",
+            disabled ? "opacity-50 cursor-not-allowed" : "hover:border-[var(--color-primary)]"
+          )}
+        >
+          <span className="text-[var(--color-text-muted)]">
+            {loading ? "Cargando símbolos..." : "+ Añadir símbolo"}
+          </span>
+          <span className="text-[var(--color-text-muted)]">▼</span>
+        </button>
+
+        {pickerOpen && !disabled && (
+          <div className="absolute z-50 mt-1 w-full rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl max-h-[300px] flex flex-col">
+            {/* Quote asset selector */}
+            <div className="flex gap-1 p-1.5 border-b border-[var(--color-border)] flex-wrap">
+              {(quoteAssets.length > 0 ? quoteAssets.slice(0, 8) : ["USDT", "BTC", "ETH", "FDUSD", "BNB"]).map(q => (
+                <button
+                  key={q}
+                  onClick={() => onQuoteChange(q)}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold transition-colors",
+                    quoteAsset === q
+                      ? "bg-[var(--color-primary)] text-white"
+                      : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                  )}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+
+            {/* Search */}
+            <input
+              autoFocus
+              placeholder="Buscar (BTC, ETH, SOL...)"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-[var(--color-surface-2)] border-b border-[var(--color-border)] p-2 text-[11px] outline-none"
+            />
+
+            {/* Results */}
+            <div className="overflow-y-auto flex-1">
+              {loading && (
+                <div className="p-3 text-center text-[10px] text-[var(--color-text-muted)]">Cargando...</div>
+              )}
+              {!loading && filtered.length === 0 && (
+                <div className="p-3 text-center text-[10px] text-[var(--color-text-muted)]">Sin resultados</div>
+              )}
+              {!loading && filtered.map(s => {
+                const binanceSym = toBinanceSymbol(s.symbol);
+                const isSelected = selected.includes(binanceSym);
+                return (
+                  <button
+                    key={s.symbol}
+                    onClick={() => toggleSymbol(s.symbol)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-1.5 text-[11px] hover:bg-[var(--color-surface-2)] transition-colors text-left",
+                      isSelected && "bg-[var(--color-primary)]/10"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={cn("w-3 text-center", isSelected ? "text-[var(--color-success)]" : "text-transparent")}>✓</span>
+                      <span className="font-bold text-[var(--color-text)]">{s.base}</span>
+                      <span className="text-[var(--color-text-muted)] text-[9px]">/{s.quote}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-muted)]">
+                      {s.last_price > 0 && (
+                        <span>${s.last_price < 1 ? s.last_price.toFixed(6) : s.last_price.toLocaleString()}</span>
+                      )}
+                      {s.change_pct !== 0 && (
+                        <span className={s.change_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>
+                          {s.change_pct >= 0 ? "+" : ""}{s.change_pct.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className="text-[9px] text-[var(--color-text-muted)] mt-1">{description}</p>
+    </div>
+  );
+}
+
 export function AIAgentPage() {
   const [status, setStatus] = useState<any>(null);
   const [log, setLog] = useState<any[]>([]);
@@ -72,6 +244,15 @@ export function AIAgentPage() {
   // Nivel 1: Symbol controls + feature toggles
   const [whitelist, setWhitelist] = useState("");
   const [blacklist, setBlacklist] = useState("");
+  // Symbol dropdown state (from CCXT)
+  const [aiSymbols, setAiSymbols] = useState<any[]>([]);
+  const [aiSymbolsLoading, setAiSymbolsLoading] = useState(false);
+  const [aiQuoteAsset, setAiQuoteAsset] = useState("USDT");
+  const [aiQuoteAssets, setAiQuoteAssets] = useState<string[]>([]);
+  const [whitelistPickerOpen, setWhitelistPickerOpen] = useState(false);
+  const [blacklistPickerOpen, setBlacklistPickerOpen] = useState(false);
+  const [whitelistSearch, setWhitelistSearch] = useState("");
+  const [blacklistSearch, setBlacklistSearch] = useState("");
   const [useRegime, setUseRegime] = useState(true);
   const [useMtf, setUseMtf] = useState(true);
   const [useCorrelation, setUseCorrelation] = useState(true);
@@ -149,6 +330,19 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadAiSymbols = useCallback(async (quote: string = "USDT") => {
+    setAiSymbolsLoading(true);
+    try {
+      const r = await api<any>(`/api/bots/symbols?quote=${quote}&limit=300`);
+      if (r.status === "ok") {
+        setAiSymbols(r.symbols || []);
+        setAiQuoteAssets(r.quote_assets || []);
+      }
+    } catch {} finally {
+      setAiSymbolsLoading(false);
+    }
+  }, []);
+
   const loadPerfData = useCallback(async () => {
     try {
       const r = await api<any>("/api/ai-agent/performance-learning");
@@ -198,6 +392,7 @@ export function AIAgentPage() {
     loadBrokers();
     loadTradingMode();
     loadSymbolSettings();
+    loadAiSymbols("USDT");
     loadPerfData();
     loadLearningInsights();
     loadBacktest();
@@ -214,6 +409,11 @@ export function AIAgentPage() {
       clearInterval(id5);
     };
   }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings, loadPerfData, loadLearningInsights, loadBacktest]);
+
+  // Reload symbols when quote asset changes
+  useEffect(() => {
+    loadAiSymbols(aiQuoteAsset);
+  }, [aiQuoteAsset, loadAiSymbols]);
 
   useEffect(() => {
     loadBrokerBalance();
@@ -850,32 +1050,38 @@ export function AIAgentPage() {
 
               {/* Whitelist / Blacklist */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-                    Lista Blanca (solo estos símbolos)
-                  </label>
-                  <Input
-                    value={whitelist}
-                    onChange={(e) => setWhitelist(e.target.value)}
-                    placeholder="ej: BTCUSDT,ETHUSDT,SOLUSDT (vacío = todos)"
-                    disabled={isRunning}
-                    className="w-full"
-                  />
-                  <p className="text-[9px] text-[var(--color-text-muted)] mt-1">Si pones símbolos, la IA SOLO podrá tocar esos.</p>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-                    Lista Negra (nunca tocar)
-                  </label>
-                  <Input
-                    value={blacklist}
-                    onChange={(e) => setBlacklist(e.target.value)}
-                    placeholder="ej: SHIBUSDT,PEPEUSDT (símbolos a evitar)"
-                    disabled={isRunning}
-                    className="w-full"
-                  />
-                  <p className="text-[9px] text-[var(--color-text-muted)] mt-1">La IA nunca comprará estos símbolos.</p>
-                </div>
+                <MultiSymbolSelector
+                  label="Lista Blanca (solo estos símbolos)"
+                  description="Si pones símbolos, la IA SOLO podrá tocar esos. Vacío = todos."
+                  value={whitelist}
+                  onChange={setWhitelist}
+                  symbols={aiSymbols}
+                  loading={aiSymbolsLoading}
+                  disabled={isRunning}
+                  quoteAsset={aiQuoteAsset}
+                  onQuoteChange={setAiQuoteAsset}
+                  quoteAssets={aiQuoteAssets}
+                  pickerOpen={whitelistPickerOpen}
+                  setPickerOpen={setWhitelistPickerOpen}
+                  search={whitelistSearch}
+                  setSearch={setWhitelistSearch}
+                />
+                <MultiSymbolSelector
+                  label="Lista Negra (nunca tocar)"
+                  description="La IA nunca comprará estos símbolos."
+                  value={blacklist}
+                  onChange={setBlacklist}
+                  symbols={aiSymbols}
+                  loading={aiSymbolsLoading}
+                  disabled={isRunning}
+                  quoteAsset={aiQuoteAsset}
+                  onQuoteChange={setAiQuoteAsset}
+                  quoteAssets={aiQuoteAssets}
+                  pickerOpen={blacklistPickerOpen}
+                  setPickerOpen={setBlacklistPickerOpen}
+                  search={blacklistSearch}
+                  setSearch={setBlacklistSearch}
+                />
               </div>
 
               {/* Nivel 3: Custom Instructions */}
