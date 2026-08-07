@@ -25,6 +25,10 @@ class AIProviderConfig:
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
+    # OmniRoute — AI Gateway local (291 providers, 90+ free, auto-fallback)
+    omniroute_url: str = "http://localhost:20128/v1"
+    omniroute_api_key: str | None = None
+    omniroute_model: str = "auto"
     remote_ai_url: str | None = None
     remote_ai_token: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)

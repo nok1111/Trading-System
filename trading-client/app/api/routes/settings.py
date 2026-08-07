@@ -27,6 +27,7 @@ class SaveAIKeysRequest(BaseModel):
     premium_provider: str | None = None
     premium_base_url: str | None = None
     premium_model: str | None = None
+    omniroute_api_key: str | None = None
 
 
 class SaveAIConfigRequest(BaseModel):
@@ -37,6 +38,7 @@ class SaveAIConfigRequest(BaseModel):
     gemini_api_key: str | None = None
     premium_api_key: str | None = None
     premium_base_url: str | None = None
+    omniroute_api_key: str | None = None
 
 
 class SaveTelegramRequest(BaseModel):
@@ -69,6 +71,7 @@ def get_keys(
         "groq_api_key_set": s.ai_groq_key_enc is not None,
         "gemini_api_key_set": s.ai_gemini_key_enc is not None,
         "premium_api_key_set": s.ai_premium_key_enc is not None,
+        "omniroute_api_key_set": s.ai_omniroute_key_enc is not None,
         "premium_provider": s.ai_premium_provider,
         "premium_model": s.ai_premium_model,
         "ai_provider": s.ai_provider,
@@ -127,6 +130,8 @@ def save_ai_keys(
         s.ai_premium_base_url = req.premium_base_url or None
     if req.premium_model is not None:
         s.ai_premium_model = req.premium_model or None
+    if req.omniroute_api_key is not None:
+        s.ai_omniroute_key_enc = encrypt(req.omniroute_api_key) if req.omniroute_api_key else None
     db.commit()
     return {"saved": True, "message": "AI keys guardadas"}
 
@@ -165,6 +170,8 @@ def save_ai_config(
         s.ai_gemini_key_enc = encrypt(req.gemini_api_key) if req.gemini_api_key else None
     if req.premium_api_key is not None:
         s.ai_premium_key_enc = encrypt(req.premium_api_key) if req.premium_api_key else None
+    if req.omniroute_api_key is not None:
+        s.ai_omniroute_key_enc = encrypt(req.omniroute_api_key) if req.omniroute_api_key else None
 
     db.commit()
     return {

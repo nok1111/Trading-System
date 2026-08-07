@@ -51,6 +51,11 @@ def _load_user_keys(user_id: int) -> dict:
                 keys["premium"] = decrypt(s.ai_premium_key_enc)
             except Exception:
                 pass
+        if s.ai_omniroute_key_enc:
+            try:
+                keys["omniroute"] = decrypt(s.ai_omniroute_key_enc)
+            except Exception:
+                pass
         try:
             if s.ai_premium_provider:
                 keys["premium_provider"] = s.ai_premium_provider
@@ -119,6 +124,7 @@ class AIStartRequest(BaseModel):
     gemini_api_key: str | None = None
     premium_api_key: str | None = None
     premium_base_url: str | None = None
+    omniroute_api_key: str | None = None
     model: str | None = None
     interval_seconds: int | None = None
     auto_trade: bool | None = None
@@ -183,8 +189,10 @@ def ai_agent_start(
     # Resolve API keys: request body > user DB > server .env (only for paid)
     groq_key = (req.groq_api_key or user_keys.get("groq") or "").strip() or None
     gemini_key = (req.gemini_api_key or user_keys.get("gemini") or "").strip() or None
+    omniroute_key = (req.omniroute_api_key or user_keys.get("omniroute") or "").strip() or None
 
     # FREE users: must have their own key — no server fallback
+    # OmniRoute is FREE (works without key — free providers pre-wired)
     if is_free:
         if provider == "groq" and not groq_key:
             raise HTTPException(
@@ -198,6 +206,7 @@ def ai_agent_start(
                 detail="Usuarios FREE deben ingresar su propia Gemini API key. "
                        "Obtén una gratis en aistudio.google.com",
             )
+        # OmniRoute: no key required (free providers work without auth)
     else:
         # Paid users: fallback to server keys
         if not groq_key:
@@ -209,6 +218,8 @@ def ai_agent_start(
         agent.groq_api_key = groq_key
     if gemini_key:
         agent.gemini_api_key = gemini_key
+    if omniroute_key:
+        agent.omniroute_api_key = omniroute_key
 
     # Resolve model
     if req.model:
@@ -216,6 +227,8 @@ def ai_agent_start(
             agent.groq_model = req.model
         elif provider == "gemini":
             agent.gemini_model = req.model
+        elif provider == "omniroute":
+            agent.omniroute_model = req.model
         elif provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
             agent.openai_model = req.model
         else:
@@ -480,6 +493,8 @@ def ai_agent_analyze_positions(
         agent.gemini_api_key = user_keys["gemini"]
     if user_keys.get("premium"):
         agent.openai_api_key = user_keys["premium"]
+    if user_keys.get("omniroute"):
+        agent.omniroute_api_key = user_keys["omniroute"]
 
     has_key = False
     if provider == "groq":
@@ -488,6 +503,8 @@ def ai_agent_analyze_positions(
         has_key = bool(agent.gemini_api_key or user_keys.get("gemini") or getattr(settings, "GEMINI_API_KEY", None))
     elif provider == "ollama":
         has_key = True  # Ollama runs locally, no key needed
+    elif provider == "omniroute":
+        has_key = True  # OmniRoute works without key (free providers pre-wired)
     elif provider in PREMIUM_PROVIDERS:
         has_key = bool(agent.openai_api_key or user_keys.get("premium"))
     else:

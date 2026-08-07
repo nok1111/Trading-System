@@ -270,6 +270,9 @@ class AITradingAgent:
         openai_api_key: str | None = None,
         openai_base_url: str = "https://api.openai.com/v1",
         openai_model: str = "gpt-4o-mini",
+        omniroute_url: str = "http://localhost:20128/v1",
+        omniroute_api_key: str | None = None,
+        omniroute_model: str = "auto",
         api_base: str = "http://127.0.0.1:8080",
         interval_seconds: int = 30,
         auto_trade: bool = True,
@@ -288,6 +291,9 @@ class AITradingAgent:
         self.openai_api_key = openai_api_key
         self.openai_base_url = openai_base_url.rstrip("/")
         self.openai_model = openai_model
+        self.omniroute_url = omniroute_url.rstrip("/")
+        self.omniroute_api_key = omniroute_api_key
+        self.omniroute_model = omniroute_model
         self.api_base = api_base
         self.interval = interval_seconds
         self.auto_trade = auto_trade
@@ -324,6 +330,9 @@ class AITradingAgent:
                 openai_api_key=openai_api_key,
                 openai_base_url=openai_base_url,
                 openai_model=openai_model,
+                omniroute_url=omniroute_url,
+                omniroute_api_key=omniroute_api_key,
+                omniroute_model=omniroute_model,
             )
             try:
                 from app.config import get_settings
@@ -355,6 +364,9 @@ class AITradingAgent:
                         openai_api_key=openai_api_key,
                         openai_base_url=openai_base_url,
                         openai_model=openai_model,
+                        omniroute_url=omniroute_url,
+                        omniroute_api_key=omniroute_api_key,
+                        omniroute_model=omniroute_model,
                         remote_ai_url=settings.REMOTE_AI_URL,
                         remote_ai_token=settings.REMOTE_AI_TOKEN,
                     )
@@ -381,6 +393,9 @@ class AITradingAgent:
             openai_api_key=self.openai_api_key,
             openai_base_url=self.openai_base_url,
             openai_model=self.openai_model,
+            omniroute_url=self.omniroute_url,
+            omniroute_api_key=self.omniroute_api_key,
+            omniroute_model=self.omniroute_model,
         )
         try:
             from app.config import get_settings
@@ -398,6 +413,9 @@ class AITradingAgent:
                     openai_api_key=self.openai_api_key,
                     openai_base_url=self.openai_base_url,
                     openai_model=self.openai_model,
+                    omniroute_url=self.omniroute_url,
+                    omniroute_api_key=self.omniroute_api_key,
+                    omniroute_model=self.omniroute_model,
                     remote_ai_url=settings.REMOTE_AI_URL,
                     remote_ai_token=settings.REMOTE_AI_TOKEN,
                 )
@@ -437,7 +455,7 @@ class AITradingAgent:
         return {
             "is_running": self.is_running,
             "provider": self.provider,
-            "model": self.groq_model if self.provider == "groq" else (self.gemini_model if self.provider == "gemini" else (self.openai_model if self.provider in ("openai","deepseek","mistral","together","perplexity","grok") else self.ollama_model)),
+            "model": self.groq_model if self.provider == "groq" else (self.gemini_model if self.provider == "gemini" else (self.openai_model if self.provider in ("openai","deepseek","mistral","together","perplexity","grok") else (self.omniroute_model if self.provider == "omniroute" else self.ollama_model))),
             "interval_seconds": self.interval,
             "current_interval": self._current_interval,
             "hold_streak": self._hold_streak,
@@ -1797,6 +1815,8 @@ class AITradingAgent:
             return self.gemini_model
         elif self.provider == "ollama":
             return self.ollama_model
+        elif self.provider == "omniroute":
+            return self.omniroute_model
         elif self.provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
             return self.openai_model
         return ""

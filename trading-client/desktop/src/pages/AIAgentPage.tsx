@@ -9,6 +9,7 @@ import { CryptoIcon } from "../components/CryptoIcon";
 import { Tooltip } from "../components/common/Tooltip";
 
 const PROVIDERS = [
+  { value: "omniroute", label: "OmniRoute (Gateway 291 providers) - Gratis" },
   { value: "gemini", label: "Gemini (Google Cloud) - Gratis" },
   { value: "groq", label: "Groq (Cloud) - Gratis" },
   { value: "ollama", label: "Ollama (Local) - Gratis" },
@@ -18,6 +19,20 @@ const PROVIDERS = [
 ];
 
 const MODELS: Record<string, { value: string; label: string }[]> = {
+  omniroute: [
+    { value: "auto", label: "Auto (Smart Routing - recomendado)" },
+    { value: "auto/coding", label: "Auto/Coding (calidad primero)" },
+    { value: "auto/fast", label: "Auto/Fast (menor latencia)" },
+    { value: "auto/cheap", label: "Auto/Cheap (mas barato)" },
+    { value: "auto/offline", label: "Auto/Offline (mas quota)" },
+    { value: "auto/smart", label: "Auto/Smart (calidad + exploracion)" },
+    { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5 (via OmniRoute)" },
+    { value: "gpt-4o", label: "GPT-4o (via OmniRoute)" },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (via OmniRoute)" },
+    { value: "deepseek-v3", label: "DeepSeek V3 (via OmniRoute)" },
+    { value: "kimi-k3", label: "Kimi K3 (via OmniRoute)" },
+    { value: "llama-3.3-70b", label: "Llama 3.3 70B (via OmniRoute)" },
+  ],
   gemini: [
     { value: "gemini-flash-latest", label: "Gemini Flash Latest (recomendado)" },
     { value: "gemini-flash-lite-latest", label: "Gemini Flash Lite Latest" },
@@ -556,7 +571,7 @@ export function AIAgentPage() {
   const minInterval = plan?.min_interval_seconds ?? 120;
   const isPremiumProvider = PROVIDERS.find((p) => p.value === provider)?.premium ?? false;
   const needsByok = isFree && (provider === "groq" || provider === "gemini");
-  const byokReady = (provider === "groq" && (hasGroqKey || !!groqKey)) || (provider === "gemini" && (hasGeminiKey || !!geminiKey));
+  const byokReady = (provider === "groq" && (hasGroqKey || !!groqKey)) || (provider === "gemini" && (hasGeminiKey || !!geminiKey)) || provider === "omniroute" || provider === "ollama";
   const canStart = !isRunning && (!needsByok || byokReady) && (!isPremiumProvider || isPaid);
   const totalTrades = stats?.total_trades ?? 0;
   const winRate = stats?.win_rate ?? 0;
@@ -1009,6 +1024,33 @@ export function AIAgentPage() {
                   {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key -</a>}
                   {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key -</a>}
                   {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key -</a>}
+                </div>
+              )}
+              {provider === "omniroute" && (
+                <div className="md:col-span-3">
+                  <div className="rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-3">
+                    <div className="flex items-start gap-2">
+                      <span className="text-[var(--color-success)] text-[14px]">✓</span>
+                      <div className="flex-1">
+                        <p className="text-[11px] text-[var(--color-text)] font-bold mb-1">
+                          OmniRoute — 291 providers de IA, 90+ gratis, auto-fallback + compresion de tokens
+                        </p>
+                        <p className="text-[10px] text-[var(--color-text-muted)] mb-2">
+                          Funciona sin API key (providers free pre-wired). Para usar providers premium (Claude, GPT-4o, etc.),
+                          copia tu key del dashboard de OmniRoute.
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-[var(--color-text-muted)]">Instalar:</span>
+                          <code className="text-[10px] bg-[var(--color-surface)] px-2 py-0.5 rounded-[4px] text-[var(--color-success)]">
+                            npm i -g omniroute && omniroute
+                          </code>
+                          <a href="https://github.com/diegosouzapw/OmniRoute" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80">
+                            Docs -
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

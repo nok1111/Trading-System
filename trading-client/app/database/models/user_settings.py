@@ -24,6 +24,7 @@ class UserSettings(Base):
     ai_groq_key_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ai_gemini_key_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ai_premium_key_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ai_omniroute_key_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ai_premium_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ai_premium_base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ai_premium_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
