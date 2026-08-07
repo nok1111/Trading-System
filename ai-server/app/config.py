@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"
+    # OmniRoute — AI Gateway local (291 providers, 90+ free, auto-fallback + compression)
+    OMNIROUTE_URL: str = "http://localhost:20128/v1"
+    OMNIROUTE_API_KEY: str | None = None
+    OMNIROUTE_MODEL: str = "auto"
 
     # Cache
     CACHE_TTL_SECONDS: int = 60

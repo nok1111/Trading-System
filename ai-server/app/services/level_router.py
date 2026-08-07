@@ -30,7 +30,12 @@ def get_model_for_plan(plan: str) -> ModelConfig:
     provider = settings.AI_PROVIDER
 
     # Pick model name based on provider
-    if provider == "gemini":
+    if provider == "omniroute":
+        # OmniRoute: 'auto' smart routing handles model selection across 291 providers
+        model_economic = settings.OMNIROUTE_MODEL
+        model_medium = settings.OMNIROUTE_MODEL
+        model_advanced = settings.OMNIROUTE_MODEL
+    elif provider == "gemini":
         model_economic = settings.GEMINI_MODEL
         model_medium = settings.GEMINI_MODEL
         model_advanced = settings.GEMINI_MODEL

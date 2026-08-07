@@ -111,6 +111,42 @@ def _call_llm(
             logger.error("LLM call failed (gemini): %s", exc)
             return None, 0
 
+    elif provider == "omniroute":
+        # OmniRoute gateway — 291 providers, 90+ free, auto-fallback + token compression
+        # Works without API key (free providers pre-wired). Model 'auto' = smart routing.
+        key = api_key or s.OMNIROUTE_API_KEY or "omniroute"
+        url = s.OMNIROUTE_URL.rstrip("/")
+        try:
+            resp = httpx.post(
+                f"{url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model or s.OMNIROUTE_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message + "\n\nReturn ONLY valid JSON."},
+                    ],
+                    "temperature": model_config.temperature,
+                    "max_tokens": max_tokens,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=s.AGENT_TIMEOUT_SECONDS,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            tokens = data.get("usage", {}).get("total_tokens", 0)
+            return content, tokens
+        except httpx.ConnectError as exc:
+            logger.error("OmniRoute no disponible en %s: %s. Instala: npm i -g omniroute && omniroute", url, exc)
+            return None, 0
+        except Exception as exc:  # noqa: BLE001
+            logger.error("LLM call failed (omniroute): %s", exc)
+            return None, 0
+
     logger.warning("No LLM provider available for %s", provider)
     return None, 0
 
