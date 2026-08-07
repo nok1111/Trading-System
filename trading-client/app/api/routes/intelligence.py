@@ -630,6 +630,93 @@ def profile_recommendations_endpoint(
 # Alerts & Notifications Endpoints
 # ---------------------------------------------------------------------------
 
+# ─── Multi-Timeframe (MTF) Endpoints ──────────────────────────────────────────
+
+class MTFRequest(_BaseModel):
+    symbol: str
+    primary_interval: str = "1h"
+    strategy_name: str = "trend_momentum"
+
+
+@router.post("/mtf/confirm")
+def mtf_confirm_endpoint(req: MTFRequest) -> dict:
+    """Get multi-timeframe confirmation for a trading signal."""
+    from app.services.multi_timeframe import confirm_entry_mtf
+
+    try:
+        result = confirm_entry_mtf(req.symbol, req.primary_interval, req.strategy_name)
+        return result
+    except Exception as exc:
+        logger.warning("MTF confirm failed: %s", exc)
+        return {"error": str(exc)}
+
+
+@router.get("/mtf/trend")
+def mtf_trend_endpoint(symbol: str, interval: str = "4h") -> dict:
+    """Get trend direction for a specific timeframe."""
+    from app.services.multi_timeframe import get_mtf_trend
+
+    try:
+        return get_mtf_trend(symbol, interval)
+    except Exception as exc:
+        logger.warning("MTF trend failed: %s", exc)
+        return {"error": str(exc)}
+
+
+class MTFBatchRequest(_BaseModel):
+    symbols: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    primary_interval: str = "1h"
+
+
+@router.post("/mtf/confirm-batch")
+def mtf_confirm_batch_endpoint(req: MTFBatchRequest) -> dict:
+    """Get MTF confirmation for multiple symbols."""
+    from app.services.multi_timeframe import confirm_entry_mtf
+
+    results = []
+    for sym in req.symbols:
+        try:
+            r = confirm_entry_mtf(sym, req.primary_interval, "trend_momentum")
+            r["symbol"] = sym
+            results.append(r)
+        except Exception as exc:
+            results.append({"symbol": sym, "error": str(exc)})
+    return {"results": results, "total": len(results)}
+
+
+# ─── Walk-Forward Endpoints ───────────────────────────────────────────────────
+
+class WalkForwardRequest(_BaseModel):
+    symbol: str
+    strategy: str = "trend_momentum"
+    interval: str = "1h"
+    limit: int = 1000
+    initial_cash: float = 10000.0
+    num_windows: int = 5
+    train_ratio: float = 0.7
+
+
+@router.post("/backtest/walk-forward")
+def walk_forward_endpoint(req: WalkForwardRequest) -> dict:
+    """Run walk-forward optimization to validate strategy robustness."""
+    from app.services.walk_forward import run_walk_forward
+
+    try:
+        result = run_walk_forward(
+            symbol=req.symbol,
+            strategy=req.strategy,
+            interval=req.interval,
+            limit=req.limit,
+            initial_cash=req.initial_cash,
+            num_windows=req.num_windows,
+            train_ratio=req.train_ratio,
+        )
+        return result.to_dict()
+    except Exception as exc:
+        logger.warning("Walk-forward failed: %s", exc)
+        return {"error": str(exc)}
+
+
 class PriceAlertRequest(_BaseModel):
     symbol: str
     condition: str  # "above" or "below"

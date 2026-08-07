@@ -124,6 +124,10 @@ export function BacktestPage() {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [optResult, setOptResult] = useState<OptimizationResult | null>(null);
   const [autoResult, setAutoResult] = useState<AutoAssignResult | null>(null);
+  const [mtfResult, setMtfResult] = useState<any>(null);
+  const [wfResult, setWfResult] = useState<any>(null);
+  const [mtfLoading, setMtfLoading] = useState(false);
+  const [wfLoading, setWfLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleRun = async () => {
@@ -211,6 +215,39 @@ export function BacktestPage() {
       setError(e.message || "Error al auto-asignar");
     }
     setAutoAssigning(false);
+  };
+
+  const handleMTF = async () => {
+    setMtfLoading(true);
+    setMtfResult(null);
+    try {
+      const r = await api<any>("/api/intelligence/mtf/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, primary_interval: interval, strategy_name: strategy }),
+      });
+      if (r.error) { setError(r.error); } else { setMtfResult(r); }
+    } catch (e: any) { setError(e.message || "Error MTF"); }
+    setMtfLoading(false);
+  };
+
+  const handleWalkForward = async () => {
+    setWfLoading(true);
+    setWfResult(null);
+    try {
+      const r = await api<any>("/api/intelligence/backtest/walk-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol, strategy, interval,
+          limit: Math.max(parseInt(limit), 1000),
+          initial_cash: parseFloat(initialCash),
+          num_windows: 5, train_ratio: 0.7,
+        }),
+      });
+      if (r.error) { setError(r.error); } else { setWfResult(r); }
+    } catch (e: any) { setError(e.message || "Error Walk-Forward"); }
+    setWfLoading(false);
   };
 
   return (
@@ -311,9 +348,30 @@ export function BacktestPage() {
           >
             {autoAssigning ? "Analizando..." : "Auto-Asignar Estrategias"}
           </button>
-          <span className="text-[12px] text-[var(--color-text-muted)]">
-            {strategies.find((s) => s.id === strategy)?.desc}
-          </span>
+          <button
+            onClick={handleMTF}
+            disabled={mtfLoading}
+            className={cn(
+              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+              mtfLoading
+                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                : "bg-[var(--color-warning)]/20 text-[var(--color-warning)] hover:opacity-90 border border-[var(--color-warning)]/30"
+            )}
+          >
+            {mtfLoading ? "Confirmando..." : "MTF Confirm"}
+          </button>
+          <button
+            onClick={handleWalkForward}
+            disabled={wfLoading}
+            className={cn(
+              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+              wfLoading
+                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                : "bg-[var(--color-success)]/20 text-[var(--color-success)] hover:opacity-90 border border-[var(--color-success)]/30"
+            )}
+          >
+            {wfLoading ? "Validando..." : "Walk-Forward"}
+          </button>
         </div>
 
         {error && (
@@ -526,6 +584,182 @@ export function BacktestPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* MTF Confirmation results */}
+      {mtfResult && !mtfResult.error && (
+        <div className="panel p-5">
+          <h2 className="text-[16px] font-extrabold text-[var(--color-text)] mb-3">Multi-Timeframe Confirmation</h2>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3 text-center">
+              <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Higher TF</div>
+              <div className={cn(
+                "text-[14px] font-extrabold",
+                mtfResult.higher_tf_trend === "bullish" && "text-[var(--color-success)]",
+                mtfResult.higher_tf_trend === "bearish" && "text-[var(--color-danger)]",
+                mtfResult.higher_tf_trend === "neutral" && "text-[var(--color-text-muted)]",
+              )}>
+                {mtfResult.higher_interval} {mtfResult.higher_tf_trend.toUpperCase()}
+              </div>
+              <div className="text-[10px] text-[var(--color-text-muted)] mt-1">ADX {mtfResult.higher_tf_adx}</div>
+            </div>
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3 text-center">
+              <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Lower TF RSI</div>
+              <div className={cn(
+                "text-[14px] font-extrabold",
+                mtfResult.lower_tf_rsi > 70 && "text-[var(--color-danger)]",
+                mtfResult.lower_tf_rsi < 30 && "text-[var(--color-success)]",
+                "text-[var(--color-text)]",
+              )}>
+                {mtfResult.lower_interval} {mtfResult.lower_tf_rsi.toFixed(1)}
+              </div>
+              <div className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                {mtfResult.lower_tf_rsi > 70 ? "Overbought" : mtfResult.lower_tf_rsi < 30 ? "Oversold" : "Normal"}
+              </div>
+            </div>
+            <div className={cn(
+              "rounded-[8px] p-3 text-center border",
+              mtfResult.confirmed
+                ? "bg-[var(--color-success)]/10 border-[var(--color-success)]/30"
+                : "bg-[var(--color-danger)]/10 border-[var(--color-danger)]/30"
+            )}>
+              <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Confirmado</div>
+              <div className={cn(
+                "text-[14px] font-extrabold",
+                mtfResult.confirmed ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
+              )}>
+                {mtfResult.confirmed ? "SI" : "NO"}
+              </div>
+              <div className={cn(
+                "text-[10px] mt-1 font-bold",
+                mtfResult.confidence_boost >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
+              )}>
+                Boost {mtfResult.confidence_boost >= 0 ? "+" : ""}{mtfResult.confidence_boost}
+              </div>
+            </div>
+          </div>
+          <div className="space-y-1">
+            {mtfResult.reasons?.map((r: string, i: number) => (
+              <div key={i} className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1">
+                <span className="text-[var(--color-primary)]">•</span> {r}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Walk-Forward results */}
+      {wfResult && !wfResult.error && (
+        <div className="panel p-5">
+          <h2 className="text-[16px] font-extrabold text-[var(--color-text)] mb-2">Walk-Forward Validation</h2>
+          <div className="text-[12px] text-[var(--color-text-muted)] mb-4">
+            {wfResult.num_windows} ventanas · {wfResult.total_bars} velas · Train ratio {wfResult.train_ratio}
+          </div>
+
+          {/* Robustness score gauge */}
+          <div className="flex items-center gap-4 mb-4">
+            <div className={cn(
+              "rounded-[12px] px-4 py-3 border",
+              wfResult.robustness_score > 70 && "bg-[var(--color-success)]/10 border-[var(--color-success)]/30",
+              wfResult.robustness_score > 50 && wfResult.robustness_score <= 70 && "bg-[var(--color-warning)]/10 border-[var(--color-warning)]/30",
+              wfResult.robustness_score <= 50 && "bg-[var(--color-danger)]/10 border-[var(--color-danger)]/30",
+            )}>
+              <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Robustness</div>
+              <div className={cn(
+                "text-[24px] font-extrabold",
+                wfResult.robustness_score > 70 && "text-[var(--color-success)]",
+                wfResult.robustness_score > 50 && wfResult.robustness_score <= 70 && "text-[var(--color-warning)]",
+                wfResult.robustness_score <= 50 && "text-[var(--color-danger)]",
+              )}>
+                {wfResult.robustness_score}<span className="text-[14px] text-[var(--color-text-muted)]">/100</span>
+              </div>
+            </div>
+            <div className="flex-1">
+              {wfResult.is_overfit ? (
+                <div className="text-[12px] font-bold text-[var(--color-danger)] flex items-center gap-1">
+                  OVERFIT — No usar en vivo
+                </div>
+              ) : wfResult.robustness_score > 70 ? (
+                <div className="text-[12px] font-bold text-[var(--color-success)]">
+                  ROBUSTO — Apto para vivo
+                </div>
+              ) : (
+                <div className="text-[12px] font-bold text-[var(--color-warning)]">
+                  MODERADO — Usar con caution
+                </div>
+              )}
+              <div className="text-[11px] text-[var(--color-text-muted)] mt-1">{wfResult.recommendation}</div>
+            </div>
+          </div>
+
+          {/* OOS metrics */}
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2 text-center">
+              <div className="text-[9px] text-[var(--color-text-muted)] uppercase">OOS Sharpe</div>
+              <div className={cn("text-[14px] font-bold", wfResult.avg_oos_sharpe >= 1 ? "text-[var(--color-success)]" : wfResult.avg_oos_sharpe < 0 ? "text-[var(--color-danger)]" : "text-[var(--color-text)]")}>
+                {wfResult.avg_oos_sharpe.toFixed(2)}
+              </div>
+            </div>
+            <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2 text-center">
+              <div className="text-[9px] text-[var(--color-text-muted)] uppercase">OOS Return</div>
+              <div className={cn("text-[14px] font-bold", wfResult.avg_oos_return_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                {wfResult.avg_oos_return_pct > 0 ? "+" : ""}{wfResult.avg_oos_return_pct.toFixed(2)}%
+              </div>
+            </div>
+            <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2 text-center">
+              <div className="text-[9px] text-[var(--color-text-muted)] uppercase">Degradation</div>
+              <div className={cn("text-[14px] font-bold", wfResult.avg_degradation_pct > 50 ? "text-[var(--color-danger)]" : wfResult.avg_degradation_pct > 25 ? "text-[var(--color-warning)]" : "text-[var(--color-success)]")}>
+                {wfResult.avg_degradation_pct.toFixed(0)}%
+              </div>
+            </div>
+            <div className="rounded-[6px] bg-[var(--color-surface-2)] p-2 text-center">
+              <div className="text-[9px] text-[var(--color-text-muted)] uppercase">OOS Trades</div>
+              <div className="text-[14px] font-bold text-[var(--color-text)]">{wfResult.total_oos_trades}</div>
+            </div>
+          </div>
+
+          {/* Per-window table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                  <th className="text-left pb-2">Window</th>
+                  <th className="text-left pb-2">Train Bars</th>
+                  <th className="text-left pb-2">Test Bars</th>
+                  <th className="text-right pb-2">Train Sharpe</th>
+                  <th className="text-right pb-2">Test Sharpe</th>
+                  <th className="text-right pb-2">Test Return</th>
+                  <th className="text-right pb-2">Degradation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wfResult.windows?.map((w: any) => (
+                  <tr key={w.window} className="border-b border-[var(--color-border)]/30">
+                    <td className="py-2 font-bold text-[var(--color-text)]">W{w.window}</td>
+                    <td className="py-2 text-[var(--color-text-muted)]">{w.train_bars}</td>
+                    <td className="py-2 text-[var(--color-text-muted)]">{w.test_bars}</td>
+                    <td className={cn("text-right py-2 font-bold", w.train_sharpe >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                      {w.train_sharpe.toFixed(2)}
+                    </td>
+                    <td className={cn("text-right py-2 font-bold", w.test_sharpe >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                      {w.test_sharpe.toFixed(2)}
+                    </td>
+                    <td className={cn("text-right py-2", w.test_return_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                      {w.test_return_pct > 0 ? "+" : ""}{w.test_return_pct.toFixed(2)}%
+                    </td>
+                    <td className={cn("text-right py-2 font-bold", w.degradation_pct > 50 ? "text-[var(--color-danger)]" : w.degradation_pct > 25 ? "text-[var(--color-warning)]" : "text-[var(--color-success)]")}>
+                      {w.degradation_pct.toFixed(0)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 text-[12px] text-[var(--color-text)] font-semibold">
+            {wfResult.summary}
+          </div>
+        </div>
       )}
 
       {/* Auto-assignment results */}
