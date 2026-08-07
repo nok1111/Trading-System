@@ -2407,6 +2407,37 @@ def ai_agent_performance_learning(
         return {"status": "error", "error": str(exc)}
 
 
+@router.get("/ai-agent/learning-insights")
+def ai_agent_learning_insights(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Nivel 3: Performance learning insights — factores que funcionaron/fallaron, evolución semanal."""
+    try:
+        from app.services.performance_learner import PerformanceLearner
+        uid = current_user.id if current_user else 0
+        learner = PerformanceLearner(uid)
+        # First evaluate any pending predictions
+        learner.evaluate_pending_predictions()
+        # Then return insights
+        return learner.get_learning_insights()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@router.post("/ai-agent/evaluate-predictions")
+def ai_agent_evaluate_predictions(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Nivel 3: Force evaluation of pending predictions."""
+    try:
+        from app.services.performance_learner import PerformanceLearner
+        uid = current_user.id if current_user else 0
+        learner = PerformanceLearner(uid)
+        return learner.evaluate_pending_predictions()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
 @router.get("/ai-agent/stats")
 def ai_agent_stats() -> dict:
     """Estadísticas de trading del AI Agent: trades, señales, PnL, decisiones."""

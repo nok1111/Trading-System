@@ -77,6 +77,7 @@ export function AIAgentPage() {
   const [useCorrelation, setUseCorrelation] = useState(true);
   // Nivel 2: Performance learning
   const [perfData, setPerfData] = useState<any>(null);
+  const [learningInsights, setLearningInsights] = useState<any>(null);
   // Nivel 3: Custom instructions + backtest comparison
   const [customInstructions, setCustomInstructions] = useState("");
   const [backtestData, setBacktestData] = useState<any>(null);
@@ -155,6 +156,13 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadLearningInsights = useCallback(async () => {
+    try {
+      const r = await api<any>("/api/ai-agent/learning-insights");
+      setLearningInsights(r);
+    } catch {}
+  }, []);
+
   const loadBacktest = useCallback(async () => {
     try {
       const r = await api<any>(`/api/ai-agent/backtest-comparison?days=${backtestDays}`);
@@ -191,18 +199,21 @@ export function AIAgentPage() {
     loadTradingMode();
     loadSymbolSettings();
     loadPerfData();
+    loadLearningInsights();
     loadBacktest();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
     const id4 = setInterval(loadPerfData, 60000);
+    const id5 = setInterval(loadLearningInsights, 60000);
     return () => {
       clearInterval(id1);
       clearInterval(id2);
       clearInterval(id3);
       clearInterval(id4);
+      clearInterval(id5);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings, loadPerfData, loadBacktest]);
+  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings, loadPerfData, loadLearningInsights, loadBacktest]);
 
   useEffect(() => {
     loadBrokerBalance();
@@ -1050,6 +1061,99 @@ export function AIAgentPage() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {/* Nivel 3: Learning Insights avanzado — evolución + recomendaciones */}
+      {learningInsights && learningInsights.status === "ok" && (
+        <Card>
+          <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">🧠 IA Aprende de sus errores — Insights avanzados</h3>
+
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5 text-center">
+              <div className="text-[10px] text-[var(--color-text-muted)]">Win Rate General</div>
+              <div className={cn(
+                "text-[16px] font-bold",
+                learningInsights.overall_win_rate >= 0.6 ? "text-[var(--color-success)]" :
+                learningInsights.overall_win_rate >= 0.4 ? "text-[var(--color-warning)]" : "text-[var(--color-danger)]"
+              )}>
+                {(learningInsights.overall_win_rate * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5 text-center">
+              <div className="text-[10px] text-[var(--color-text-muted)]">Operaciones</div>
+              <div className="text-[16px] font-bold text-[var(--color-text)]">{learningInsights.total_records}</div>
+            </div>
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5 text-center">
+              <div className="text-[10px] text-[var(--color-text-muted)]">Aciertos</div>
+              <div className="text-[16px] font-bold text-[var(--color-success)]">{learningInsights.total_correct}</div>
+            </div>
+          </div>
+
+          {/* Weekly evolution chart */}
+          {learningInsights.weekly_evolution && learningInsights.weekly_evolution.length > 1 && (
+            <div className="mb-3">
+              <div className="text-[11px] font-bold text-[var(--color-text)] mb-2">📈 Evolución semanal del win rate</div>
+              <div className="flex items-end gap-1 h-20 bg-[var(--color-surface-2)] rounded-[8px] p-2">
+                {learningInsights.weekly_evolution.map((week: any, i: number) => (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={`${week.week}: ${(week.win_rate * 100).toFixed(0)}% (${week.total} ops)`}>
+                    <div
+                      className={cn(
+                        "w-full rounded-t-[2px] min-h-[2px]",
+                        week.win_rate >= 0.6 ? "bg-[var(--color-success)]" :
+                        week.win_rate >= 0.4 ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"
+                      )}
+                      style={{ height: `${week.win_rate * 100}%` }}
+                    />
+                    <div className="text-[7px] text-[var(--color-text-muted)] mt-0.5 truncate w-full text-center">{week.week.split("-")[1]}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Best factors */}
+          {learningInsights.best_factors && Object.keys(learningInsights.best_factors).length > 0 && (
+            <div className="mb-3">
+              <div className="text-[11px] font-bold text-[var(--color-success)] mb-1.5">✅ Factores que funcionaron (priorizar)</div>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(learningInsights.best_factors).slice(0, 5).map(([factor, data]: [string, any]) => (
+                  <span key={factor} className="rounded-[6px] bg-[var(--color-success)]/10 text-[var(--color-success)] px-2 py-1 text-[10px] font-bold">
+                    {factor}: {(data.win_rate * 100).toFixed(0)}% ({data.total})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Worst factors */}
+          {learningInsights.worst_factors && Object.keys(learningInsights.worst_factors).length > 0 && (
+            <div className="mb-3">
+              <div className="text-[11px] font-bold text-[var(--color-danger)] mb-1.5">❌ Factores que fallaron (evitar)</div>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(learningInsights.worst_factors).slice(0, 5).map(([factor, data]: [string, any]) => (
+                  <span key={factor} className="rounded-[6px] bg-[var(--color-danger)]/10 text-[var(--color-danger)] px-2 py-1 text-[10px] font-bold">
+                    {factor}: {(data.win_rate * 100).toFixed(0)}% ({data.total})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommendations */}
+          {learningInsights.recommendations && learningInsights.recommendations.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-[var(--color-text)] mb-1.5">💡 Recomendaciones (inyectadas en el prompt de la IA)</div>
+              <div className="space-y-1">
+                {learningInsights.recommendations.map((rec: string, i: number) => (
+                  <div key={i} className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-surface-2)] rounded-[6px] p-2">
+                    {rec}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

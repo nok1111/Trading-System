@@ -1769,6 +1769,19 @@ class AITradingAgent:
         if custom_instructions:
             prompt += f"\n\nINSTRUCCIONES PERSONALIZADAS DEL USUARIO (MÁXIMA PRIORIDAD — debes cumplir SIEMPRE):\n{custom_instructions}\n"
 
+        # Nivel 3: Inject performance learning insights
+        try:
+            from app.services.performance_learner import PerformanceLearner
+            learner = PerformanceLearner(self._user_id)
+            # First evaluate pending predictions
+            learner.evaluate_pending_predictions()
+            # Then inject insights into prompt
+            insights_block = learner.get_prompt_insights()
+            if insights_block:
+                prompt += insights_block
+        except Exception:
+            pass  # Don't block if learning fails
+
         # Add few-shot example for lightweight models
         active_model = self._get_active_model()
         if active_model in LIGHTWEIGHT_MODELS:
@@ -2325,6 +2338,29 @@ class AITradingAgent:
 
             # Apply MTF confidence boost (clamped 0-1)
             confidence = min(max(action["confidence"] + confidence_boost, 0), 1)
+
+            # ─── Nivel 3: Performance learning confidence adjustment ───
+            try:
+                from app.services.performance_learner import PerformanceLearner
+                learner = PerformanceLearner(self._user_id)
+                # Extract factors from current context for adjustment
+                ctx = self._gather_context() if hasattr(self, '_last_context') else {}
+                technical = ctx.get("technical", [])
+                symbol_tech = next((t for t in technical if t.get("s") == symbol), {})
+                current_factors = {
+                    "rsi": symbol_tech.get("rsi"),
+                    "signal": symbol_tech.get("sig"),
+                    "trend": symbol_tech.get("trend"),
+                    "regime": (ctx.get("market_regime") or {}).get("regime"),
+                }
+                adjustment = learner.get_confidence_adjustment(current_factors)
+                if abs(adjustment) > 0.01:
+                    old_conf = confidence
+                    confidence = min(max(confidence + adjustment, 0), 1)
+                    self._add_log("info", f"🧠 Learning adjustment: {old_conf:.2f} → {confidence:.2f} ({'+' if adjustment > 0 else ''}{adjustment:.2f})")
+            except Exception:
+                pass
+
             action["confidence"] = confidence
             sl_pct = action["stop_loss_pct"]
             tp_pct = action["take_profit_pct"]
