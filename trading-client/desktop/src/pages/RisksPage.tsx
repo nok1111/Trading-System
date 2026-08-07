@@ -9,6 +9,7 @@ import { api } from "../lib/api";
 import type { IntelligenceAlert, WhaleActivity, NewsItem } from "../lib/intelligenceTypes";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
+import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 import { PriceAlertsContent } from "./AlertsPage";
 
 interface RiskConfig {
@@ -52,44 +53,57 @@ export function RisksPage() {
 
   return (
     <div className="p-5 space-y-4 max-w-[900px] mx-auto">
+      <InfoPanel title="Que puedes hacer aqui" className="mb-4">
+        <p><strong>Riesgos de Mercado:</strong> Monitorea crash risk, movimientos whale, y noticias de alto impacto que pueden afectar tus posiciones.</p>
+        <p><strong>Portfolio Risk:</strong> Analiza correlacion entre posiciones, Value at Risk (VaR), y exposure por categoria. Muestra un risk score 0-100.</p>
+        <p><strong>Alertas de Precio:</strong> Crea alertas que te avisan cuando un precio sube o baja de un nivel especifico.</p>
+        <p><strong>Gestion de Riesgo:</strong> Configura stop loss automatico, circuit breaker, y indicadores tecnicos de auto-venta.</p>
+      </InfoPanel>
+
       {/* Inner Tabs */}
       <div className="flex gap-1 border-b border-[var(--color-border)]">
-        <button
-          onClick={() => setInnerTab("risk")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
-            innerTab === "risk"
-              ? "border-[var(--color-primary)] text-[var(--color-text)]"
-              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          )}
-        >
-          <ShieldAlert size={14} />
-          Riesgos de Mercado
-        </button>
-        <button
-          onClick={() => setInnerTab("portfolio")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
-            innerTab === "portfolio"
-              ? "border-[var(--color-primary)] text-[var(--color-text)]"
-              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          )}
-        >
-          <Shield size={14} />
-          Portfolio Risk
-        </button>
-        <button
-          onClick={() => setInnerTab("price-alerts")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
-            innerTab === "price-alerts"
-              ? "border-[var(--color-primary)] text-[var(--color-text)]"
-              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          )}
-        >
-          <Bell size={14} />
-          Alertas de Precio
-        </button>
+        <Tooltip text="Crash risk, whales, noticias de alto impacto">
+          <button
+            onClick={() => setInnerTab("risk")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+              innerTab === "risk"
+                ? "border-[var(--color-primary)] text-[var(--color-text)]"
+                : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            )}
+          >
+            <ShieldAlert size={14} />
+            Riesgos de Mercado
+          </button>
+        </Tooltip>
+        <Tooltip text="Correlacion, VaR, exposure por categoria, risk score">
+          <button
+            onClick={() => setInnerTab("portfolio")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+              innerTab === "portfolio"
+                ? "border-[var(--color-primary)] text-[var(--color-text)]"
+                : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            )}
+          >
+            <Shield size={14} />
+            Portfolio Risk
+          </button>
+        </Tooltip>
+        <Tooltip text="Crea y gestiona alertas de precio">
+          <button
+            onClick={() => setInnerTab("price-alerts")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+              innerTab === "price-alerts"
+                ? "border-[var(--color-primary)] text-[var(--color-text)]"
+                : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            )}
+          >
+            <Bell size={14} />
+            Alertas de Precio
+          </button>
+        </Tooltip>
       </div>
 
       {innerTab === "risk" ? (
@@ -599,12 +613,14 @@ function PortfolioRiskContent() {
             <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Nivel</div>
             <div className="text-[20px] font-bold" style={{ color: riskColor }}>{riskLabel}</div>
           </div>
-          <button
-            onClick={load}
-            className="ml-auto h-8 px-3 rounded-[8px] bg-[var(--color-surface-2)] text-[11px] font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          >
-            Actualizar
-          </button>
+          <Tooltip text="Recarga todos los datos de riesgo desde el servidor">
+            <button
+              onClick={load}
+              className="ml-auto h-8 px-3 rounded-[8px] bg-[var(--color-surface-2)] text-[11px] font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            >
+              Actualizar
+            </button>
+          </Tooltip>
         </div>
         {/* Risk score bar */}
         <div className="h-2 rounded-full bg-[var(--color-surface-2)] overflow-hidden">

@@ -6,6 +6,7 @@ import { Input, Select } from "../components/ui/Input";
 import { toast } from "../components/ui/Toast";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
+import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 
 const PROVIDERS = [
   { value: "gemini", label: "Gemini (Google Cloud) — Gratis" },
@@ -324,11 +325,27 @@ export function AIAgentPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9">▶ Start</Button>
-            <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9">⏹ Stop</Button>
-            <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9">⚙ Config</Button>
+            <Tooltip text="Inicia el agente de IA. Analiza el mercado y genera senales automaticamente.">
+              <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9">▶ Start</Button>
+            </Tooltip>
+            <Tooltip text="Detiene el agente. Las posiciones abiertas se mantienen hasta SL/TP.">
+              <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9">⏹ Stop</Button>
+            </Tooltip>
+            <Tooltip text="Muestra u oculta configuracion: API key, broker, capital asignado.">
+              <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9">⚙ Config</Button>
+            </Tooltip>
           </div>
         </div>
+
+        <InfoPanel title="Como usar el AI Trading Agent" className="mb-4">
+          <p><strong>Start:</strong> Inicia el agente de IA que analiza el mercado y genera senales de trading automaticamente.</p>
+          <p><strong>Stop:</strong> Detiene el agente. Las posiciones abiertas se mantienen.</p>
+          <p><strong>Config:</strong> Muestra/oculta el panel de configuracion (API key, broker, capital).</p>
+          <p><strong>Modo Conservative/Balanced/Aggressive:</strong> Controla cuantas operaciones hace y que tan agresivos son los stops.</p>
+          <p><strong>Auto-trade:</strong> Si activado, el agente ejecuta operaciones reales. Si desactivado, solo genera senales en paper trading.</p>
+          <p><strong>Broker:</strong> Selecciona el exchange. Conecta tu cuenta en la pagina Connections primero.</p>
+          <p><strong>Test API Key:</strong> Verifica que tu API key del proveedor de IA funcione correctamente.</p>
+        </InfoPanel>
 
         {/* Plan badge + quota info */}
         <div className="mt-3 flex items-center gap-3 flex-wrap">
@@ -539,12 +556,16 @@ export function AIAgentPage() {
                 className="flex-1"
                 min={0}
               />
-              <Button variant="primary" size="sm" onClick={assignCapital} disabled={isRunning || !capitalInput}>
-                Asignar
-              </Button>
-              <Button variant="ghost" size="sm" onClick={useAllBalance} disabled={isRunning}>
-                Auto
-              </Button>
+              <Tooltip text="Asigna el capital ingresado para trading en vivo.">
+                <Button variant="primary" size="sm" onClick={assignCapital} disabled={isRunning || !capitalInput}>
+                  Asignar
+                </Button>
+              </Tooltip>
+              <Tooltip text="Usa todo el balance disponible de tu cuenta del broker.">
+                <Button variant="ghost" size="sm" onClick={useAllBalance} disabled={isRunning}>
+                  Auto
+                </Button>
+              </Tooltip>
             </div>
             <div className="text-[10px] text-[var(--color-text-muted)]">
               💡 <strong>Auto</strong> = la IA usa todo el USDT disponible. <strong>Asignar</strong> = la IA solo usa el monto fijo que indiques.
@@ -573,7 +594,9 @@ export function AIAgentPage() {
                 <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Interval (sec)</label>
                 <div className="flex gap-1">
                   <Input type="number" value={interval} onChange={(e) => setIntervalVal(parseInt(e.target.value) || 30)} min={10} disabled={isRunning} className="w-20" />
-                  <Button variant="primary" size="sm" onClick={setIntervalApi} disabled={isRunning}>Set</Button>
+                  <Tooltip text="Configura cada cuantos segundos el agente analiza el mercado.">
+                    <Button variant="primary" size="sm" onClick={setIntervalApi} disabled={isRunning}>Set</Button>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -621,7 +644,9 @@ export function AIAgentPage() {
                   <span className="text-[var(--color-danger)]">Live</span>
                 </label>
               </div>
-              <Button variant="default" size="sm" onClick={testKey} disabled={isRunning}>Test API Key</Button>
+              <Tooltip text="Verifica que tu API key del proveedor de IA (OpenAI, Anthropic, etc) funcione.">
+                <Button variant="default" size="sm" onClick={testKey} disabled={isRunning}>Test API Key</Button>
+              </Tooltip>
               {testResult && <span className="text-[12px] font-bold">{testResult}</span>}
             </div>
             {tradeMode === "live" && (

@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
+import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 
 interface PriceAlert {
   id: number;
@@ -90,6 +91,13 @@ export function PriceAlertsContent() {
       {/* Price Alert Creator */}
       <div className="panel p-5">
         <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-4">Crear Alerta de Precio</h3>
+        <InfoPanel title="Como crear una alerta" className="mb-4">
+          <p>1. <strong>Simbolo:</strong> Elige que criptomoneda monitorear.</p>
+          <p>2. <strong>Condicion:</strong> "above" para avisarte cuando suba encima del precio, "below" para cuando baje debajo.</p>
+          <p>3. <strong>Precio objetivo:</strong> El nivel de precio que disparara la alerta.</p>
+          <p>4. <strong>Nota (opcional):</strong> Agrega un recordatorio para ti mismo.</p>
+          <p>Las alertas se verifican automaticamente. Tambien puedes clickear "Verificar Ahora" para revisar manualmente.</p>
+        </InfoPanel>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Símbolo</label>
@@ -134,24 +142,28 @@ export function PriceAlertsContent() {
           </div>
         </div>
         <div className="mt-3 flex gap-2">
-          <button
-            onClick={handleCreateAlert}
-            disabled={creating || !alertPrice}
-            className={cn(
-              "h-9 px-4 rounded-[8px] text-[13px] font-bold transition-all",
-              creating || !alertPrice
-                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : "bg-[var(--color-primary)] text-white hover:opacity-90"
-            )}
-          >
-            {creating ? "Creando..." : "Crear Alerta"}
-          </button>
-          <button
-            onClick={handleCheckAlerts}
-            className="h-9 px-4 rounded-[8px] text-[13px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            Verificar Ahora
-          </button>
+          <Tooltip text="Crea la alerta con los datos ingresados. Se activara cuando el precio alcance el objetivo.">
+            <button
+              onClick={handleCreateAlert}
+              disabled={creating || !alertPrice}
+              className={cn(
+                "h-9 px-4 rounded-[8px] text-[13px] font-bold transition-all",
+                creating || !alertPrice
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                  : "bg-[var(--color-primary)] text-white hover:opacity-90"
+              )}
+            >
+              {creating ? "Creando..." : "Crear Alerta"}
+            </button>
+          </Tooltip>
+          <Tooltip text="Revisa inmediatamente si alguna alerta se ha disparado.">
+            <button
+              onClick={handleCheckAlerts}
+              className="h-9 px-4 rounded-[8px] text-[13px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+              Verificar Ahora
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -186,12 +198,14 @@ export function PriceAlertsContent() {
                   )}
                   {a.note && <span className="text-[11px] text-[var(--color-text-muted)]">— {a.note}</span>}
                 </div>
-                <button
-                  onClick={() => handleDeleteAlert(a.id)}
-                  className="text-[11px] font-bold text-[var(--color-danger)] hover:opacity-80"
-                >
-                  Eliminar
-                </button>
+                <Tooltip text="Elimina esta alerta permanentemente.">
+                  <button
+                    onClick={() => handleDeleteAlert(a.id)}
+                    className="text-[11px] font-bold text-[var(--color-danger)] hover:opacity-80"
+                  >
+                    Eliminar
+                  </button>
+                </Tooltip>
               </div>
             ))}
           </div>

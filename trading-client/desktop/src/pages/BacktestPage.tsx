@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
+import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 
 interface BacktestResult {
   symbol: string;
@@ -255,6 +256,13 @@ export function BacktestPage() {
       {/* Config panel */}
       <div className="panel p-5">
         <h2 className="text-[16px] font-extrabold text-[var(--color-text)] mb-4">Configuración del Backtest</h2>
+        <InfoPanel title="Como usar el Backtest" className="mb-4">
+          <p><strong>Ejecutar Backtest:</strong> Simula una estrategia con datos historicos reales de Binance. Muestra la curva de equity, trades, y metricas (Sharpe, win rate, drawdown).</p>
+          <p><strong>Optimizar Parametros:</strong> Prueba 50 combinaciones de parametros automaticamente y muestra la mejor.</p>
+          <p><strong>Auto-Asignar:</strong> Corre las 8 estrategias en 10 simbolos y asigna la mejor a cada uno segun Sharpe ratio.</p>
+          <p><strong>MTF Confirm:</strong> Confirma la señal con el timeframe mayor (2h) y menor (30m). Reduce falsas senales.</p>
+          <p><strong>Walk-Forward:</strong> Valida que la estrategia no este sobreajustada (overfit). Divide en 5 ventanas y prueba out-of-sample.</p>
+        </InfoPanel>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">Estrategia</label>
@@ -312,66 +320,76 @@ export function BacktestPage() {
         </div>
 
         <div className="mt-4 flex items-center gap-4">
-          <button
-            onClick={handleRun}
-            disabled={running || optimizing}
-            className={cn(
-              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              running || optimizing
-                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : "bg-[var(--color-primary)] text-white hover:opacity-90"
-            )}
-          >
-            {running ? "Ejecutando..." : "Ejecutar Backtest"}
-          </button>
-          <button
-            onClick={handleOptimize}
-            disabled={running || optimizing || autoAssigning}
-            className={cn(
-              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              running || optimizing || autoAssigning
-                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : "bg-[var(--color-surface-3)] text-[var(--color-text)] hover:opacity-90"
-            )}
-          >
-            {optimizing ? "Optimizando..." : "Optimizar Parametros"}
-          </button>
-          <button
-            onClick={handleAutoAssign}
-            disabled={running || optimizing || autoAssigning}
-            className={cn(
-              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              running || optimizing || autoAssigning
-                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : "bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:opacity-90 border border-[var(--color-primary)]/30"
-            )}
-          >
-            {autoAssigning ? "Analizando..." : "Auto-Asignar Estrategias"}
-          </button>
-          <button
-            onClick={handleMTF}
-            disabled={mtfLoading}
-            className={cn(
-              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              mtfLoading
-                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : "bg-[var(--color-warning)]/20 text-[var(--color-warning)] hover:opacity-90 border border-[var(--color-warning)]/30"
-            )}
-          >
-            {mtfLoading ? "Confirmando..." : "MTF Confirm"}
-          </button>
-          <button
-            onClick={handleWalkForward}
-            disabled={wfLoading}
-            className={cn(
-              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              wfLoading
-                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
-                : "bg-[var(--color-success)]/20 text-[var(--color-success)] hover:opacity-90 border border-[var(--color-success)]/30"
-            )}
-          >
-            {wfLoading ? "Validando..." : "Walk-Forward"}
-          </button>
+          <Tooltip text="Simula la estrategia elegida con datos historicos reales. Muestra curva de equity, trades, Sharpe, win rate y drawdown.">
+            <button
+              onClick={handleRun}
+              disabled={running || optimizing}
+              className={cn(
+                "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+                running || optimizing
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                  : "bg-[var(--color-primary)] text-white hover:opacity-90"
+              )}
+            >
+              {running ? "Ejecutando..." : "Ejecutar Backtest"}
+            </button>
+          </Tooltip>
+          <Tooltip text="Prueba 50 combinaciones de parametros automaticamente y muestra la mejor segun Sharpe ratio.">
+            <button
+              onClick={handleOptimize}
+              disabled={running || optimizing || autoAssigning}
+              className={cn(
+                "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+                running || optimizing || autoAssigning
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                  : "bg-[var(--color-surface-3)] text-[var(--color-text)] hover:opacity-90"
+              )}
+            >
+              {optimizing ? "Optimizando..." : "Optimizar Parametros"}
+            </button>
+          </Tooltip>
+          <Tooltip text="Corre las 8 estrategias en 10 simbolos (80 backtests) y asigna la mejor a cada uno segun Sharpe.">
+            <button
+              onClick={handleAutoAssign}
+              disabled={running || optimizing || autoAssigning}
+              className={cn(
+                "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+                running || optimizing || autoAssigning
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                  : "bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:opacity-90 border border-[var(--color-primary)]/30"
+              )}
+            >
+              {autoAssigning ? "Analizando..." : "Auto-Asignar Estrategias"}
+            </button>
+          </Tooltip>
+          <Tooltip text="Confirma la señal con timeframe mayor (2h tendencia) y menor (30m RSI). Reduce falsas senales.">
+            <button
+              onClick={handleMTF}
+              disabled={mtfLoading}
+              className={cn(
+                "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+                mtfLoading
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                  : "bg-[var(--color-warning)]/20 text-[var(--color-warning)] hover:opacity-90 border border-[var(--color-warning)]/30"
+              )}
+            >
+              {mtfLoading ? "Confirmando..." : "MTF Confirm"}
+            </button>
+          </Tooltip>
+          <Tooltip text="Valida que la estrategia no este sobreajustada (overfit). Divide en 5 ventanas y prueba out-of-sample. Robustness score 0-100.">
+            <button
+              onClick={handleWalkForward}
+              disabled={wfLoading}
+              className={cn(
+                "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+                wfLoading
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                  : "bg-[var(--color-success)]/20 text-[var(--color-success)] hover:opacity-90 border border-[var(--color-success)]/30"
+              )}
+            >
+              {wfLoading ? "Validando..." : "Walk-Forward"}
+            </button>
+          </Tooltip>
         </div>
 
         {error && (

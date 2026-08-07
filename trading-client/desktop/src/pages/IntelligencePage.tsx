@@ -7,6 +7,7 @@ import { MacroCalendar } from "../components/intelligence/MacroCalendar";
 import { WhaleFeed } from "../components/intelligence/WhaleFeed";
 import { AISuggestionsPanel } from "../components/intelligence/AISuggestionsPanel";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
+import { InfoPanel } from "../components/common/Tooltip";
 import {
   getMarketOverview,
   getFearGreed,
@@ -59,6 +60,14 @@ export function IntelligencePage() {
 
   return (
     <div className="p-5 space-y-4 max-w-[1200px] mx-auto">
+      <InfoPanel title="Market Intelligence - Que ver aqui" className="mb-4">
+        <p><strong>Regime Banner:</strong> Muestra si el mercado esta en tendencia, lateral, o volatil. Te ayuda a elegir la estrategia correcta.</p>
+        <p><strong>Fear & Greed:</strong> Indicador de sentimiento del mercado. Extremo fear = posible compra, extreme greed = posible venta.</p>
+        <p><strong>BTC Dominance:</strong> Que porcentaje del mercado es BTC. Si sube, los altcoins suelen bajar.</p>
+        <p><strong>Noticias y Eventos Macro:</strong> Eventos economicos que pueden mover precios (Fed, CPI, etc).</p>
+        <p><strong>Actividad Whale:</strong> Grandes movimientos de ballenas que pueden indicar acumulacion o distribucion.</p>
+      </InfoPanel>
+
       <RegimeBanner overview={overview} loading={loading} />
 
       <AISuggestionsPanel />
