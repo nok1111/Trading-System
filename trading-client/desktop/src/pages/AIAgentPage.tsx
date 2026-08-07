@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -6,15 +6,15 @@ import { Input, Select } from "../components/ui/Input";
 import { toast } from "../components/ui/Toast";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
-import { Tooltip, InfoPanel } from "../components/common/Tooltip";
+import { Tooltip } from "../components/common/Tooltip";
 
 const PROVIDERS = [
-  { value: "gemini", label: "Gemini (Google Cloud) — Gratis" },
-  { value: "groq", label: "Groq (Cloud) — Gratis" },
-  { value: "ollama", label: "Ollama (Local) — Gratis" },
-  { value: "openai", label: "OpenAI (GPT-4o) — Premium", premium: true },
-  { value: "deepseek", label: "DeepSeek — Premium", premium: true },
-  { value: "mistral", label: "Mistral AI — Premium", premium: true },
+  { value: "gemini", label: "Gemini (Google Cloud) â€” Gratis" },
+  { value: "groq", label: "Groq (Cloud) â€” Gratis" },
+  { value: "ollama", label: "Ollama (Local) â€” Gratis" },
+  { value: "openai", label: "OpenAI (GPT-4o) â€” Premium", premium: true },
+  { value: "deepseek", label: "DeepSeek â€” Premium", premium: true },
+  { value: "mistral", label: "Mistral AI â€” Premium", premium: true },
 ];
 
 const MODELS: Record<string, { value: string; label: string }[]> = {
@@ -31,7 +31,7 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
   ],
   ollama: [
     { value: "qwen2.5:14b", label: "Qwen 2.5 14B" },
-    { value: "qwen2.5:7b", label: "Qwen 2.5 7B (rápido)" },
+    { value: "qwen2.5:7b", label: "Qwen 2.5 7B (rÃ¡pido)" },
     { value: "llama3.2:3b", label: "Llama 3.2 3B" },
   ],
   openai: [
@@ -194,10 +194,10 @@ export function AIAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      setTestResult(r.ok ? "✓ API Key válida" : "✗ " + (r.error || "API Key inválida"));
-      toast(r.ok ? "API Key válida" : (r.error || "API Key inválida"), r.ok);
+      setTestResult(r.ok ? "âœ“ API Key vÃ¡lida" : "âœ— " + (r.error || "API Key invÃ¡lida"));
+      toast(r.ok ? "API Key vÃ¡lida" : (r.error || "API Key invÃ¡lida"), r.ok);
     } catch (e: any) {
-      setTestResult("✗ Error: " + e.message);
+      setTestResult("âœ— Error: " + e.message);
       toast(e.message, false);
     }
   };
@@ -300,52 +300,53 @@ export function AIAgentPage() {
 
   return (
     <div className="p-5 space-y-4 max-w-[1200px] mx-auto">
-      {/* Header with status + controls */}
+      {/* Hero card â€” que es, estado, controles principales */}
       <Card className="border-l-4 border-l-[var(--color-accent)]">
         <div className="flex justify-between items-start flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className={cn(
-              "w-10 h-10 rounded-[10px] flex items-center justify-center text-[20px]",
+              "w-12 h-12 rounded-[12px] flex items-center justify-center text-[24px]",
               isRunning ? "bg-[var(--color-success)]/15" : "bg-[var(--color-surface-2)]"
             )}>
-              {isRunning ? "🤖" : "💤"}
+              {isRunning ? "ðŸ¤–" : "ðŸ’¤"}
             </div>
             <div>
-              <h2 className="text-[18px] font-extrabold text-[var(--color-text)]">AI Trading Agent</h2>
+              <h2 className="text-[18px] font-extrabold text-[var(--color-text)]">Asistente de Trading con IA</h2>
               <p className="text-[12px] text-[var(--color-text-muted)]">
                 {isRunning ? (
                   <>
                     <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)] mr-1.5 animate-pulse" />
-                    Analyzing market · Cycle {cycles} · {status?.model || "AI"}
+                    Analizando mercado Â· Ciclo {cycles} Â· {status?.model || "IA"}
                   </>
                 ) : (
-                  "Stopped — click Start to begin"
+                  "Detenido â€” clic en Activar para empezar"
                 )}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Tooltip text="Inicia el agente de IA. Analiza el mercado y genera senales automaticamente.">
-              <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9">▶ Start</Button>
+            <Tooltip text="Inicia el asistente. Analiza el mercado y genera senales de compra/venta automaticamente.">
+              <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9">â–¶ Activar</Button>
             </Tooltip>
-            <Tooltip text="Detiene el agente. Las posiciones abiertas se mantienen hasta SL/TP.">
-              <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9">⏹ Stop</Button>
+            <Tooltip text="Detiene el asistente. Las posiciones abiertas se mantienen hasta SL/TP.">
+              <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9">â¹ Detener</Button>
             </Tooltip>
-            <Tooltip text="Muestra u oculta configuracion: API key, broker, capital asignado.">
-              <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9">⚙ Config</Button>
+            <Tooltip text="Muestra u oculta opciones avanzadas: proveedor de IA, API key, intervalo.">
+              <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9">âš™ Avanzado</Button>
             </Tooltip>
           </div>
         </div>
 
-        <InfoPanel title="Como usar el AI Trading Agent" className="mb-4">
-          <p><strong>Start:</strong> Inicia el agente de IA que analiza el mercado y genera senales de trading automaticamente.</p>
-          <p><strong>Stop:</strong> Detiene el agente. Las posiciones abiertas se mantienen.</p>
-          <p><strong>Config:</strong> Muestra/oculta el panel de configuracion (API key, broker, capital).</p>
-          <p><strong>Modo Conservative/Balanced/Aggressive:</strong> Controla cuantas operaciones hace y que tan agresivos son los stops.</p>
-          <p><strong>Auto-trade:</strong> Si activado, el agente ejecuta operaciones reales. Si desactivado, solo genera senales en paper trading.</p>
-          <p><strong>Broker:</strong> Selecciona el exchange. Conecta tu cuenta en la pagina Connections primero.</p>
-          <p><strong>Test API Key:</strong> Verifica que tu API key del proveedor de IA funcione correctamente.</p>
-        </InfoPanel>
+        {/* Que es esto â€” explicacion clara para principiantes */}
+        <div className="mt-4 rounded-[10px] bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/15 p-4">
+          <p className="text-[12px] text-[var(--color-text)] leading-relaxed">
+            <strong>Â¿Que hace?</strong> El asistente analiza el mercado de criptomonedas cada {interval} segundos usando inteligencia artificial.
+            Cuando detecta una oportunidad de compra o venta, te avisa y â€”si tu lo permitesâ€” ejecuta la operacion automaticamente con stop loss y take profit para proteger tu capital.
+          </p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
+            Solo opera criptomonedas (no stocks). Nunca opera con mas capital del que tu permitas.
+          </p>
+        </div>
 
         {/* Plan badge + quota info */}
         <div className="mt-3 flex items-center gap-3 flex-wrap">
@@ -355,10 +356,10 @@ export function AIAgentPage() {
               ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)]"
               : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
           )}>
-            {isPaid ? "⭐ " : ""}{subscription}
+            {isPaid ? "â­ " : ""}{subscription}
           </span>
           <span className="text-[11px] text-[var(--color-text-muted)]">
-            {maxRequestsPerDay === 99999 ? "Unlimited" : `${maxRequestsPerDay} req/day`} · min interval {minInterval}s
+            {maxRequestsPerDay === 99999 ? "Ilimitado" : `${maxRequestsPerDay} analisis/dia`} Â· min intervalo {minInterval}s
           </span>
         </div>
 
@@ -366,13 +367,13 @@ export function AIAgentPage() {
         {needsByok && !byokReady && (
           <div className="mt-3 p-3 rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30">
             <p className="text-[12px] font-bold text-[var(--color-warning)]">
-              🔑 Bring Your Own Key required for FREE plan
+              ðŸ”‘ Necesitas una API key gratuita para usar este proveedor de IA
             </p>
             <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
               {provider === "groq" ? (
-                <>Get a free Groq API key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">console.groq.com/keys</a> and paste it in Config below.</>
+                <>Obten una key gratis en <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">console.groq.com/keys</a> y pegala en Opciones Avanzadas abajo.</>
               ) : (
-                <>Get a free Gemini API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">aistudio.google.com/apikey</a> and paste it in Config below.</>
+                <>Obten una key gratis en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">aistudio.google.com/apikey</a> y pegala en Opciones Avanzadas abajo.</>
               )}
             </p>
           </div>
@@ -382,121 +383,222 @@ export function AIAgentPage() {
         {isPremiumProvider && isFree && (
           <div className="mt-3 p-3 rounded-lg bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
             <p className="text-[12px] font-bold text-[var(--color-danger)]">
-              🔒 {provider} requires PRO or PREMIUM subscription
+              ðŸ”’ {provider} requiere suscripcion PRO o PREMIUM
             </p>
             <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
-              Upgrade to use premium AI providers, or switch to Groq/Gemini (free) with your own key.
+              Mejora tu plan para usar proveedores de IA premium, o usa Groq/Gemini (gratis) con tu propia key.
             </p>
           </div>
         )}
 
-        {/* AI Mode selector */}
-        <div className="mt-4 flex gap-2 flex-wrap">
-          {([
-            { value: "conservative", label: "🛡 Conservative", desc: "Fewer trades, tight stops" },
-            { value: "balanced", label: "⚖ Balanced", desc: "Mix of swing & momentum" },
-            { value: "aggressive", label: "🚀 Aggressive", desc: "More trades, wider stops" },
-          ] as const).map((m) => (
+        {/* â”€â”€â”€ Paso 1: Modo de operacion â”€â”€â”€ */}
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">1</span>
+            <span className="text-[12px] font-bold text-[var(--color-text)]">Â¿Como quieres operar?</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <button
-              key={m.value}
-              onClick={() => !isRunning && setAiMode(m.value)}
+              onClick={() => !isRunning && setTradeMode("paper")}
+              disabled={isRunning}
               className={cn(
-                "px-3 h-9 rounded-[8px] text-[12px] font-bold transition-all border",
-                aiMode === m.value
-                  ? "bg-[var(--color-accent)]/15 border-[var(--color-accent)] text-[var(--color-accent)]"
-                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                "rounded-[10px] p-3 text-left border transition-all",
+                tradeMode === "paper"
+                  ? "bg-[var(--color-success)]/10 border-[var(--color-success)]/40"
+                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
               )}
-              title={m.desc}
             >
-              {m.label}
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[16px]">ðŸŽ¯</span>
+                <span className={cn("text-[13px] font-extrabold", tradeMode === "paper" ? "text-[var(--color-success)]" : "text-[var(--color-text)]")}>
+                  Practica (sin dinero real)
+                </span>
+              </div>
+              <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+                La IA simula operaciones con dinero ficticio. Ideal para aprender y probar sin riesgo. <strong>Recomendado para principiantes.</strong>
+              </p>
             </button>
-          ))}
-          <div className="flex items-center gap-2 ml-auto">
-            <label className="flex items-center gap-2 text-[12px] font-bold cursor-pointer">
-              <input type="checkbox" checked={autoTrade} onChange={toggleAutoTrade} disabled={isRunning} className="w-4 h-4 accent-[var(--color-accent)]" />
-              <span className="text-[var(--color-accent)]">Auto-trade</span>
-            </label>
-            <span className={cn(
-              "text-[11px] font-bold px-2 h-5 rounded flex items-center",
-              tradeMode === "live"
-                ? "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
-                : "bg-[var(--color-success)]/10 text-[var(--color-success)]"
-            )}>
-              {tradeMode.toUpperCase()}
-            </span>
+            <button
+              onClick={() => !isRunning && setTradeMode("live")}
+              disabled={isRunning}
+              className={cn(
+                "rounded-[10px] p-3 text-left border transition-all",
+                tradeMode === "live"
+                  ? "bg-[var(--color-danger)]/10 border-[var(--color-danger)]/40"
+                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
+              )}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[16px]">ðŸ’°</span>
+                <span className={cn("text-[13px] font-extrabold", tradeMode === "live" ? "text-[var(--color-danger)]" : "text-[var(--color-text)]")}>
+                  Dinero Real
+                </span>
+              </div>
+              <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+                La IA ejecuta operaciones reales en tu cuenta del broker. <strong>Puedes ganar o perder dinero real.</strong> Solo para usuarios con experiencia.
+              </p>
+            </button>
+          </div>
+          {tradeMode === "live" && (
+            <div className="mt-2 p-2.5 rounded-[8px] bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
+              <p className="text-[11px] font-bold text-[var(--color-danger)]">
+                âš ï¸ Modo Dinero Real activado. La IA usara tu saldo del broker para comprar y vender.
+              </p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                Puedes limitar cuanto dinero usa en la seccion "Presupuesto" abajo. La IA nunca usara mas de lo que tu permitas.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* â”€â”€â”€ Paso 2: Estilo de trading â”€â”€â”€ */}
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">2</span>
+            <span className="text-[12px] font-bold text-[var(--color-text)]">Â¿Que tan agresivo quieres que sea?</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: "conservative", label: "Cauteloso", desc: "Menos operaciones, stops ajustados. Prioriza proteger tu capital.", icon: "ðŸ›¡ï¸" },
+              { value: "balanced", label: "Balanceado", desc: "Mezcla de operaciones seguras y oportunidades. Recomendado.", icon: "âš–ï¸" },
+              { value: "aggressive", label: "Agresivo", desc: "Mas operaciones, stops amplios. Busca maximizar ganancias pero con mas riesgo.", icon: "ðŸš€" },
+            ] as const).map((m) => (
+              <button
+                key={m.value}
+                onClick={() => !isRunning && setAiMode(m.value)}
+                disabled={isRunning}
+                className={cn(
+                  "rounded-[10px] p-3 text-center border transition-all",
+                  aiMode === m.value
+                    ? "bg-[var(--color-accent)]/15 border-[var(--color-accent)] text-[var(--color-accent)]"
+                    : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                )}
+              >
+                <div className="text-[20px] mb-1">{m.icon}</div>
+                <div className="text-[12px] font-bold">{m.label}</div>
+                <div className="text-[9px] mt-1 leading-tight opacity-80">{m.desc}</div>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Broker selector */}
-        <div className="mt-3">
-          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">
-            🏦 Broker — ¿Dónde debe ejecutar la IA?
-          </label>
-          <div className="flex gap-2 flex-wrap">
-            {brokers.filter((b) => b.id !== "paper").map((b) => {
-              const isSelected = selectedBroker === b.id;
-              const isDisabled = !b.implemented;
-              const brokerColors: Record<string, string> = {
-                binance: "#F0B90B",
-                bybit: "#F7A600",
-                coinbase: "#0052FF",
-                kraken: "#5841D8",
-                okx: "#000000",
-              };
-              const color = brokerColors[b.id] || "var(--color-accent)";
-              return (
-                <button
-                  key={b.id}
-                  onClick={() => !isDisabled && !isRunning && selectBroker(b.id)}
-                  disabled={isDisabled || isRunning}
-                  className={cn(
-                    "px-3 h-9 rounded-[8px] text-[12px] font-bold transition-all border flex items-center gap-2",
-                    isSelected
-                      ? "text-white"
-                      : isDisabled
-                        ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] opacity-50 cursor-not-allowed"
+        {/* â”€â”€â”€ Paso 3: Ejecucion automatica â”€â”€â”€ */}
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">3</span>
+            <span className="text-[12px] font-bold text-[var(--color-text)]">Â¿Quieres que la IA ejecute operaciones sola?</span>
+          </div>
+          <div className="rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-[12px] font-bold text-[var(--color-text)]">
+                  Ejecucion automatica {autoTrade ? "(Activada)" : "(Desactivada)"}
+                </p>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-1 leading-relaxed">
+                  {autoTrade ? (
+                    <>
+                      âœ… La IA comprara y vendera automaticamente cuando detecte oportunidades.<br />
+                      <span className="text-[var(--color-warning)]">Solo usara el dinero que le asignes en el Presupuesto.</span>
+                    </>
+                  ) : (
+                    <>
+                      â¸ï¸ La IA solo te mostrara senales de compra/venta. <strong>Tu decides</strong> si ejecutarlas manualmente.
+                    </>
+                  )}
+                </p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer ml-3">
+                <input type="checkbox" checked={autoTrade} onChange={toggleAutoTrade} disabled={isRunning} className="w-5 h-5 accent-[var(--color-accent)]" />
+              </label>
+            </div>
+            {autoTrade && tradeMode === "live" && (
+              <div className="mt-2 p-2 rounded-[6px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/20">
+                <p className="text-[10px] text-[var(--color-warning)] font-bold">
+                  âš ï¸ La IA operara con dinero real automaticamente. Asegurate de haber configurado un presupuesto limite.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* â”€â”€â”€ Paso 4: Broker (solo si live) â”€â”€â”€ */}
+        {tradeMode === "live" && (
+          <div className="mt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">4</span>
+              <span className="text-[12px] font-bold text-[var(--color-text)]">Â¿En que exchange tienes tu cuenta?</span>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {brokers.filter((b) => b.id !== "paper").map((b) => {
+                const isSelected = selectedBroker === b.id;
+                const isDisabled = !b.implemented;
+                const brokerColors: Record<string, string> = {
+                  binance: "#F0B90B",
+                  bybit: "#F7A600",
+                  coinbase: "#0052FF",
+                  kraken: "#5841D8",
+                  okx: "#000000",
+                };
+                const color = brokerColors[b.id] || "var(--color-accent)";
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => !isDisabled && !isRunning && selectBroker(b.id)}
+                    disabled={isDisabled || isRunning}
+                    className={cn(
+                      "px-3 h-9 rounded-[8px] text-[12px] font-bold transition-all border flex items-center gap-2",
+                      isSelected
+                        ? "text-white"
+                        : isDisabled
+                          ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] opacity-50 cursor-not-allowed"
+                          : !b.connected
+                            ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                            : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                    )}
+                    style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
+                    title={
+                      isDisabled
+                        ? "Proximamente"
                         : !b.connected
-                          ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-                          : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
-                  )}
-                  style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
-                  title={
-                    isDisabled
-                      ? "No implementado todavía"
-                      : !b.connected
-                        ? "Conecta tu cuenta en Connections primero"
-                        : b.name
-                  }
-                >
-                  {b.id === "binance" && "🟡"}
-                  {b.id === "bybit" && "🟠"}
-                  {b.id === "coinbase" && "🔵"}
-                  {b.id === "kraken" && "🟣"}
-                  {b.id === "okx" && "⚫"}
-                  {b.name}
-                  {b.connected && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-                  )}
-                  {!b.connected && b.implemented && (
-                    <span className="text-[8px] opacity-60">no conectado</span>
-                  )}
-                  {!b.implemented && (
-                    <span className="text-[8px] opacity-60">próximamente</span>
-                  )}
-                </button>
-              );
-            })}
+                          ? "Conecta tu cuenta en la pagina Connections primero"
+                          : b.name
+                    }
+                  >
+                    {b.id === "binance" && "ðŸŸ¡"}
+                    {b.id === "bybit" && "ðŸŸ "}
+                    {b.id === "coinbase" && "ðŸ”µ"}
+                    {b.id === "kraken" && "ðŸŸ£"}
+                    {b.id === "okx" && "âš«"}
+                    {b.name}
+                    {b.connected && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+                    )}
+                    {!b.connected && b.implemented && (
+                      <span className="text-[8px] opacity-60">no conectado</span>
+                    )}
+                    {!b.implemented && (
+                      <span className="text-[8px] opacity-60">proximamente</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {!brokers.some((b) => b.connected) && (
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
+                ðŸ’¡ No tienes ningun broker conectado. Ve a <strong>Connections</strong> para conectar tu cuenta de Binance u otro exchange.
+              </p>
+            )}
           </div>
-        </div>
+        )}
 
-        {/* Budget allocation panel — only for live mode with a real broker */}
+        {/* Budget allocation panel â€” only for live mode with a real broker */}
         {tradeMode === "live" && selectedBroker !== "paper" && selectedBroker !== "mock" && (
           <div className="mt-3 rounded-[10px] border border-green-500/30 bg-green-500/5 p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="text-[12px] font-bold text-green-400">💰 Presupuesto de Trading</span>
+              <span className="text-[12px] font-bold text-green-400">ðŸ’° Presupuesto de Trading</span>
               {allocatedCapital > 0 ? (
                 <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">
-                  ASIGNADO: ${allocatedCapital.toFixed(2)}
+                  LIMITE: ${allocatedCapital.toFixed(2)}
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">
@@ -551,51 +653,51 @@ export function AIAgentPage() {
                 type="number"
                 value={capitalInput}
                 onChange={(e) => setCapitalInput(e.target.value)}
-                placeholder="Asignar presupuesto fijo (USD)"
+                placeholder="Pon un limite (USD) â€” ej: 100"
                 disabled={isRunning}
                 className="flex-1"
-                min={0}
               />
-              <Tooltip text="Asigna el capital ingresado para trading en vivo.">
+              <Tooltip text="Fija un limite maximo de dinero que la IA puede usar. Ej: $100 = la IA nunca usara mas de $100.">
                 <Button variant="primary" size="sm" onClick={assignCapital} disabled={isRunning || !capitalInput}>
-                  Asignar
+                  Fijar limite
                 </Button>
               </Tooltip>
-              <Tooltip text="Usa todo el balance disponible de tu cuenta del broker.">
+              <Tooltip text="La IA usara todo el USDT disponible en tu cuenta. Sin limite fijo.">
                 <Button variant="ghost" size="sm" onClick={useAllBalance} disabled={isRunning}>
-                  Auto
+                  Sin limite
                 </Button>
               </Tooltip>
             </div>
             <div className="text-[10px] text-[var(--color-text-muted)]">
-              💡 <strong>Auto</strong> = la IA usa todo el USDT disponible. <strong>Asignar</strong> = la IA solo usa el monto fijo que indiques.
-              El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja automáticamente en tu broker.
+              ðŸ’¡ <strong>Fijar limite</strong> = la IA solo usa ese monto. <strong>Sin limite</strong> = usa todo el USDT disponible.
+              El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja en tu broker.
             </div>
           </div>
         )}
 
-        {/* Config panel (collapsible) */}
+        {/* Config panel (collapsible â€” opciones avanzadas) */}
         {showConfig && (
           <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-3">
+            <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2">âš™ Opciones Avanzadas</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Provider</label>
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Proveedor de IA</label>
                 <Select value={provider} onChange={(e) => { setProvider(e.target.value); const ms = MODELS[e.target.value]; if (ms) setModel(ms[0].value); }} disabled={isRunning} className="w-full">
                   {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </Select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Model</label>
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Modelo</label>
                 <Select value={model} onChange={(e) => setModel(e.target.value)} disabled={isRunning} className="w-full">
                   {(MODELS[provider] || []).map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </Select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Interval (sec)</label>
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Intervalo (segundos)</label>
                 <div className="flex gap-1">
                   <Input type="number" value={interval} onChange={(e) => setIntervalVal(parseInt(e.target.value) || 30)} min={10} disabled={isRunning} className="w-20" />
-                  <Tooltip text="Configura cada cuantos segundos el agente analiza el mercado.">
-                    <Button variant="primary" size="sm" onClick={setIntervalApi} disabled={isRunning}>Set</Button>
+                  <Tooltip text="Cada cuantos segundos la IA analiza el mercado. Menos = mas frecuente pero gasta mas cuota.">
+                    <Button variant="primary" size="sm" onClick={setIntervalApi} disabled={isRunning}>Aplicar</Button>
                   </Tooltip>
                 </div>
               </div>
@@ -604,89 +706,74 @@ export function AIAgentPage() {
               {provider === "groq" && (
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-                    Groq API Key {isFree && <span className="text-[var(--color-warning)]">*required</span>}
-                    {hasGroqKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
+                    Groq API Key {isFree && <span className="text-[var(--color-warning)]">*requerido</span>}
+                    {hasGroqKey && <span className="text-[var(--color-success)] ml-1">âœ“ guardada</span>}
                   </label>
-                  <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Using saved key" : isFree ? "Paste your free Groq key" : "Server key available"} disabled={isRunning} className="w-full" />
-                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis → console.groq.com/keys</a>
+                  <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Usando key guardada" : isFree ? "Pega tu key gratis de Groq" : "Key del servidor disponible"} disabled={isRunning} className="w-full" />
+                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis â†’</a>
                 </div>
               )}
               {provider === "gemini" && (
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-                    Gemini API Key {isFree && <span className="text-[var(--color-warning)]">*required</span>}
-                    {hasGeminiKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
+                    Gemini API Key {isFree && <span className="text-[var(--color-warning)]">*requerido</span>}
+                    {hasGeminiKey && <span className="text-[var(--color-success)] ml-1">âœ“ guardada</span>}
                   </label>
-                  <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Using saved key" : isFree ? "Paste your free Gemini key" : "Server key available"} disabled={isRunning} className="w-full" />
-                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis → aistudio.google.com/apikey</a>
+                  <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Usando key guardada" : isFree ? "Pega tu key gratis de Gemini" : "Key del servidor disponible"} disabled={isRunning} className="w-full" />
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis â†’</a>
                 </div>
               )}
               {PROVIDERS.find((p) => p.value === provider)?.premium && (
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
-                    Premium API Key {hasPremiumKey && <span className="text-[var(--color-success)] ml-1">✓ saved</span>}
+                    API Key Premium {hasPremiumKey && <span className="text-[var(--color-success)] ml-1">âœ“ guardada</span>}
                   </label>
-                  <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Using saved key" : "Enter your API key"} disabled={isRunning} className="w-full" />
-                  {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → platform.openai.com/api-keys</a>}
-                  {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → platform.deepseek.com/api_keys</a>}
-                  {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key → console.mistral.ai/api-keys</a>}
+                  <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Usando key guardada" : "Pega tu API key"} disabled={isRunning} className="w-full" />
+                  {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key â†’</a>}
+                  {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key â†’</a>}
+                  {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key â†’</a>}
                 </div>
               )}
             </div>
             <div className="flex gap-3 items-center flex-wrap">
-              <div className="flex gap-2">
-                <label className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] font-bold", isRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                  <input type="radio" name="tradeMode" checked={tradeMode === "paper"} onChange={() => setTradeMode("paper")} disabled={isRunning} className="accent-[var(--color-success)]" />
-                  <span className="text-[var(--color-success)]">Paper</span>
-                </label>
-                <label className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] font-bold", isRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer")}>
-                  <input type="radio" name="tradeMode" checked={tradeMode === "live"} onChange={() => setTradeMode("live")} disabled={isRunning} className="accent-[var(--color-danger)]" />
-                  <span className="text-[var(--color-danger)]">Live</span>
-                </label>
-              </div>
-              <Tooltip text="Verifica que tu API key del proveedor de IA (OpenAI, Anthropic, etc) funcione.">
-                <Button variant="default" size="sm" onClick={testKey} disabled={isRunning}>Test API Key</Button>
+              <Tooltip text="Verifica que tu API key del proveedor de IA funcione correctamente.">
+                <Button variant="default" size="sm" onClick={testKey} disabled={isRunning}>Probar API Key</Button>
               </Tooltip>
               {testResult && <span className="text-[12px] font-bold">{testResult}</span>}
             </div>
-            {tradeMode === "live" && (
-              <div className="p-3 rounded-lg bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
-                <p className="text-[12px] font-bold text-[var(--color-danger)]">⚠️ Live Trading: Orders will execute with real money.</p>
-              </div>
-            )}
           </div>
         )}
       </Card>
 
-      {/* Stats Dashboard */}
+      {/* Stats Dashboard â€” en espaÃ±ol */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Card>
-          <CardLabel>Total Trades</CardLabel>
+          <CardLabel>Operaciones</CardLabel>
           <CardValue className="text-[var(--color-primary)]">{totalTrades}</CardValue>
         </Card>
         <Card>
-          <CardLabel>Win Rate</CardLabel>
+          <CardLabel>% Aciertos</CardLabel>
           <CardValue className={winRate >= 50 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>
             {winRate.toFixed(1)}%
           </CardValue>
-          <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{wins}W / {losses}L</div>
+          <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{wins} ganadas / {losses} perdidas</div>
         </Card>
         <Card>
-          <CardLabel>Total PnL</CardLabel>
+          <CardLabel>Ganancia Total</CardLabel>
           <CardValue className={totalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>
             {totalPnl >= 0 ? "+" : ""}{totalPnl.toFixed(2)} USDT
           </CardValue>
         </Card>
         <Card>
-          <CardLabel>Open Positions</CardLabel>
+          <CardLabel>Posiciones Abiertas</CardLabel>
           <CardValue className="text-[var(--color-accent)]">{openPositions}</CardValue>
         </Card>
         <Card>
-          <CardLabel>Cycles</CardLabel>
+          <CardLabel>Ciclos</CardLabel>
           <CardValue>{cycles}</CardValue>
         </Card>
         <Card>
-          <CardLabel>Decisions</CardLabel>
+          <CardLabel>Decisiones</CardLabel>
           <CardValue>
             <span className="text-[var(--color-success)]">{decisionsWithActions}</span>
             <span className="text-[var(--color-text-muted)] mx-1">/</span>
@@ -699,7 +786,7 @@ export function AIAgentPage() {
       {/* PnL Chart */}
       {cumulativePnl.length > 1 && (
         <Card>
-          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Cumulative PnL (closed trades)</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Ganancia Acumulada (operaciones cerradas)</h3>
           <PnlSparkline data={cumulativePnl} />
         </Card>
       )}
@@ -707,7 +794,7 @@ export function AIAgentPage() {
       {/* By symbol breakdown */}
       {stats?.by_symbol && Object.keys(stats.by_symbol).length > 0 && (
         <Card>
-          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Performance by Symbol</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Resultado por Moneda</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {Object.entries(stats.by_symbol).map(([sym, data]: [string, any]) => (
               <div key={sym} className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5">
@@ -724,7 +811,7 @@ export function AIAgentPage() {
                   </span>
                 </div>
                 <div className="text-[10px] text-[var(--color-text-muted)]">
-                  {data.buys}B / {data.sells}S · {data.wins}W/{data.losses}L
+                  {data.buys} compras / {data.sells} ventas Â· {data.wins}G/{data.losses}P
                 </div>
               </div>
             ))}
@@ -735,7 +822,7 @@ export function AIAgentPage() {
       {/* Reasoning Cards */}
       {decisions.length > 0 && (
         <Card>
-          <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">🧠 AI Reasoning — Latest Decisions</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">ðŸ§  Razonamiento de la IA â€” Ultimas Decisiones</h3>
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {decisions.slice(0, 10).map((d, i) => (
               <ReasoningCard key={i} entry={d} defaultExpanded={i < 3} />
@@ -748,12 +835,12 @@ export function AIAgentPage() {
       <Card>
         <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">
           {isRunning && <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-success)] mr-2 animate-pulse" />}
-          Activity Feed — Real Time
+          Actividad en Tiempo Real
         </h3>
         <div className="bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)] p-3 max-h-80 overflow-y-auto font-mono text-[11px] space-y-0.5">
           {activityLog.length === 0 ? (
             <p className="text-[var(--color-text-muted)] text-center py-8 text-[12px]">
-              Start the AI Agent to see its real-time activity.
+              Activa el asistente para ver su actividad en tiempo real.
             </p>
           ) : (
             activityLog.map((entry, i) => {
@@ -847,7 +934,7 @@ function ReasoningCard({ entry, defaultExpanded = false }: { entry: any; default
           ) : (
             <span className="text-[10px] font-bold text-[var(--color-text-muted)]">HOLD</span>
           )}
-          <span className="text-[10px] text-[var(--color-text-muted)]">{expanded ? "▲" : "▼"}</span>
+          <span className="text-[10px] text-[var(--color-text-muted)]">{expanded ? "â–²" : "â–¼"}</span>
         </div>
       </div>
       {expanded && (
