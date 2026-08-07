@@ -457,6 +457,35 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict:
         return {"error": str(exc)}
 
 
+class OptimizeRequest(_BaseModel):
+    symbol: str
+    strategy: str = "trend_momentum"
+    interval: str = "1h"
+    limit: int = 500
+    initial_cash: float = 10000.0
+    max_combinations: int = 50
+
+
+@router.post("/backtest/optimize")
+def optimize_endpoint(req: OptimizeRequest) -> dict:
+    """Run parameter optimization (grid search) and return best params."""
+    from app.services.backtest_service import run_optimization
+
+    try:
+        result = run_optimization(
+            symbol=req.symbol,
+            strategy=req.strategy,
+            interval=req.interval,
+            limit=req.limit,
+            initial_cash=req.initial_cash,
+            max_combinations=req.max_combinations,
+        )
+        return result.to_dict()
+    except Exception as exc:
+        logger.warning("Optimization failed: %s", exc)
+        return {"error": str(exc)}
+
+
 # ---------------------------------------------------------------------------
 # Alerts & Notifications Endpoints
 # ---------------------------------------------------------------------------

@@ -26,8 +26,37 @@ interface BacktestResult {
     exit_price: number;
     pnl: number;
     pnl_pct: number;
+    fee?: number;
     reason: string;
     bars_held: number;
+  }[];
+  buy_hold_return_pct: number;
+  total_fees: number;
+  total_slippage_cost: number;
+  net_return_pct: number;
+  alpha_pct: number;
+  error?: string;
+}
+
+interface OptimizationResult {
+  symbol: string;
+  strategy: string;
+  interval: string;
+  total_combinations: number;
+  best_params: Record<string, number>;
+  best_sharpe: number;
+  best_return_pct: number;
+  best_win_rate: number;
+  best_max_drawdown: number;
+  best_alpha: number;
+  all_results: {
+    params: Record<string, number>;
+    total_return_pct: number;
+    sharpe: number;
+    max_drawdown_pct: number;
+    win_rate: number;
+    total_trades: number;
+    alpha: number;
   }[];
   error?: string;
 }
@@ -46,12 +75,15 @@ export function BacktestPage() {
   const [limit, setLimit] = useState("500");
   const [initialCash, setInitialCash] = useState("10000");
   const [running, setRunning] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
+  const [optResult, setOptResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState("");
 
   const handleRun = async () => {
     setError("");
     setResult(null);
+    setOptResult(null);
     setRunning(true);
     try {
       const r = await api<BacktestResult>("/api/intelligence/backtest/run", {
@@ -74,6 +106,35 @@ export function BacktestPage() {
       setError(e.message || "Error al ejecutar backtest");
     }
     setRunning(false);
+  };
+
+  const handleOptimize = async () => {
+    setError("");
+    setResult(null);
+    setOptResult(null);
+    setOptimizing(true);
+    try {
+      const r = await api<OptimizationResult>("/api/intelligence/backtest/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol,
+          strategy,
+          interval,
+          limit: parseInt(limit),
+          initial_cash: parseFloat(initialCash),
+          max_combinations: 50,
+        }),
+      });
+      if (r.error) {
+        setError(r.error);
+      } else {
+        setOptResult(r);
+      }
+    } catch (e: any) {
+      setError(e.message || "Error al optimizar");
+    }
+    setOptimizing(false);
   };
 
   return (
@@ -140,18 +201,30 @@ export function BacktestPage() {
         <div className="mt-4 flex items-center gap-4">
           <button
             onClick={handleRun}
-            disabled={running}
+            disabled={running || optimizing}
             className={cn(
               "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              running
+              running || optimizing
                 ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
                 : "bg-[var(--color-primary)] text-white hover:opacity-90"
             )}
           >
             {running ? "Ejecutando..." : "Ejecutar Backtest"}
           </button>
+          <button
+            onClick={handleOptimize}
+            disabled={running || optimizing}
+            className={cn(
+              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+              running || optimizing
+                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                : "bg-[var(--color-surface-3)] text-[var(--color-text)] hover:opacity-90"
+            )}
+          >
+            {optimizing ? "Optimizando..." : "Optimizar Parametros"}
+          </button>
           <span className="text-[12px] text-[var(--color-text-muted)]">
-            Estrategia: TrendMomentum (EMA9/21 + RSI + Volume + ATR trailing stop)
+            {strategies.find((s) => s.id === strategy)?.desc}
           </span>
         </div>
 
@@ -207,7 +280,35 @@ export function BacktestPage() {
               value={`${result.annualized_return_pct > 0 ? "+" : ""}${result.annualized_return_pct.toFixed(2)}%`}
               color={result.annualized_return_pct >= 0 ? "success" : "danger"}
             />
+            <MetricCard
+              label="Buy & Hold"
+              value={`${result.buy_hold_return_pct > 0 ? "+" : ""}${result.buy_hold_return_pct.toFixed(2)}%`}
+              color={result.buy_hold_return_pct >= 0 ? "success" : "danger"}
+            />
+            <MetricCard
+              label="Alpha vs B&H"
+              value={`${result.alpha_pct > 0 ? "+" : ""}${result.alpha_pct.toFixed(2)}%`}
+              color={result.alpha_pct >= 0 ? "success" : "danger"}
+            />
+            <MetricCard
+              label="Total Fees"
+              value={`$${result.total_fees.toFixed(2)}`}
+              color="danger"
+            />
           </div>
+
+          {/* Alpha interpretation */}
+          {result.alpha_pct < 0 && (
+            <div className="mt-3 rounded-[8px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 p-3 text-[11px] text-[var(--color-text-muted)]">
+              <span className="font-bold text-[var(--color-warning)]">Alpha negativo:</span> Tu estrategia rinde {result.alpha_pct.toFixed(2)}% vs buy-and-hold.
+              Seria mas rentable simplemente comprar y mantener el activo.
+            </div>
+          )}
+          {result.alpha_pct >= 0 && result.total_trades > 0 && (
+            <div className="mt-3 rounded-[8px] bg-[var(--color-success)]/10 border border-[var(--color-success)]/30 p-3 text-[11px] text-[var(--color-text-muted)]">
+              <span className="font-bold text-[var(--color-success)]">Alpha positivo:</span> Tu estrategia supera a buy-and-hold por {result.alpha_pct.toFixed(2)}%.
+            </div>
+          )}
 
           {/* Equity curve chart */}
           <div className="panel p-4">
@@ -231,6 +332,7 @@ export function BacktestPage() {
                     <th className="text-right pb-2">Exit</th>
                     <th className="text-right pb-2">PnL</th>
                     <th className="text-right pb-2">PnL %</th>
+                    <th className="text-right pb-2">Fee</th>
                     <th className="text-right pb-2">Razón</th>
                     <th className="text-right pb-2">Barras</th>
                   </tr>
@@ -253,8 +355,82 @@ export function BacktestPage() {
                       <td className={cn("text-right py-1.5 font-bold", t.pnl_pct > 0 ? "text-[var(--color-success)]" : t.pnl_pct < 0 ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]")}>
                         {t.pnl_pct !== 0 ? `${t.pnl_pct.toFixed(2)}%` : "—"}
                       </td>
+                      <td className="text-right py-1.5 text-[var(--color-text-muted)]">{t.fee ? `$${t.fee.toFixed(2)}` : "—"}</td>
                       <td className="text-right py-1.5 text-[var(--color-text-muted)]">{t.reason}</td>
                       <td className="text-right py-1.5 text-[var(--color-text-muted)]">{t.bars_held}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Optimization results */}
+      {optResult && !optResult.error && (
+        <>
+          <div className="panel p-5">
+            <h2 className="text-[16px] font-extrabold text-[var(--color-text)] mb-2">Optimizacion de Parametros</h2>
+            <div className="text-[12px] text-[var(--color-text-muted)] mb-4">
+              {optResult.total_combinations} combinaciones probadas para {optResult.strategy} en {optResult.symbol}
+            </div>
+
+            {/* Best params */}
+            <div className="rounded-[8px] bg-[var(--color-success)]/10 border border-[var(--color-success)]/30 p-4 mb-4">
+              <div className="text-[12px] font-bold text-[var(--color-success)] mb-2">Mejores parametros (por Sharpe)</div>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                {Object.entries(optResult.best_params).map(([k, v]) => (
+                  <div key={k}>
+                    <div className="text-[10px] text-[var(--color-text-muted)] uppercase">{k}</div>
+                    <div className="text-[14px] font-bold text-[var(--color-text)]">{typeof v === "number" ? v.toFixed(2) : v}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
+                <MetricCard label="Sharpe" value={optResult.best_sharpe.toFixed(2)} color={optResult.best_sharpe >= 1 ? "success" : undefined} />
+                <MetricCard label="Retorno" value={`${optResult.best_return_pct > 0 ? "+" : ""}${optResult.best_return_pct.toFixed(2)}%`} color={optResult.best_return_pct >= 0 ? "success" : "danger"} />
+                <MetricCard label="Win Rate" value={`${optResult.best_win_rate.toFixed(1)}%`} color={optResult.best_win_rate >= 50 ? "success" : undefined} />
+                <MetricCard label="Max DD" value={`${optResult.best_max_drawdown.toFixed(2)}%`} color="danger" />
+                <MetricCard label="Alpha" value={`${optResult.best_alpha > 0 ? "+" : ""}${optResult.best_alpha.toFixed(2)}%`} color={optResult.best_alpha >= 0 ? "success" : "danger"} />
+              </div>
+            </div>
+
+            {/* Top results table */}
+            <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-3">Top combinaciones</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                    <th className="text-left pb-2">#</th>
+                    <th className="text-left pb-2">Parametros</th>
+                    <th className="text-right pb-2">Retorno %</th>
+                    <th className="text-right pb-2">Sharpe</th>
+                    <th className="text-right pb-2">Max DD %</th>
+                    <th className="text-right pb-2">Win %</th>
+                    <th className="text-right pb-2">Alpha %</th>
+                    <th className="text-right pb-2">Trades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optResult.all_results.map((r, i) => (
+                    <tr key={i} className={cn("border-b border-[var(--color-border)]/30", i === 0 && "bg-[var(--color-success)]/5")}>
+                      <td className="py-1.5 text-[var(--color-text-muted)]">{i + 1}</td>
+                      <td className="py-1.5 text-[10px] text-[var(--color-text-muted)]">
+                        {Object.entries(r.params).map(([k, v]) => `${k}=${typeof v === "number" ? v.toFixed(1) : v}`).join(", ")}
+                      </td>
+                      <td className={cn("text-right py-1.5 font-bold", r.total_return_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                        {r.total_return_pct > 0 ? "+" : ""}{r.total_return_pct.toFixed(2)}%
+                      </td>
+                      <td className={cn("text-right py-1.5 font-bold", r.sharpe >= 1 ? "text-[var(--color-success)]" : r.sharpe < 0 ? "text-[var(--color-danger)]" : "text-[var(--color-text)]")}>
+                        {r.sharpe.toFixed(2)}
+                      </td>
+                      <td className="text-right py-1.5 text-[var(--color-danger)]">{r.max_drawdown_pct.toFixed(2)}%</td>
+                      <td className="text-right py-1.5">{r.win_rate.toFixed(1)}%</td>
+                      <td className={cn("text-right py-1.5 font-bold", r.alpha >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                        {r.alpha > 0 ? "+" : ""}{r.alpha.toFixed(2)}%
+                      </td>
+                      <td className="text-right py-1.5 text-[var(--color-text-muted)]">{r.total_trades}</td>
                     </tr>
                   ))}
                 </tbody>

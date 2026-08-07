@@ -39,6 +39,12 @@ class BacktestResult:
     equity_curve: list[dict]
     trades: list[dict]
     timestamp: str = ""
+    # New fields
+    buy_hold_return_pct: float = 0.0
+    total_fees: float = 0.0
+    total_slippage_cost: float = 0.0
+    net_return_pct: float = 0.0
+    alpha_pct: float = 0.0  # strategy return minus buy-and-hold
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +64,11 @@ class BacktestResult:
             "equity_curve": self.equity_curve,
             "trades": self.trades,
             "timestamp": self.timestamp,
+            "buy_hold_return_pct": round(self.buy_hold_return_pct, 2),
+            "total_fees": round(self.total_fees, 2),
+            "total_slippage_cost": round(self.total_slippage_cost, 2),
+            "net_return_pct": round(self.net_return_pct, 2),
+            "alpha_pct": round(self.alpha_pct, 2),
         }
 
 
@@ -85,12 +96,57 @@ def _fetch_klines_df(symbol: str, interval: str, limit: int = 500) -> pd.DataFra
     return df[["open", "high", "low", "close", "volume"]]
 
 
+# ─── Fees & Slippage ──────────────────────────────────────────────────────────
+
+# Binance spot: 0.1% taker fee per trade (0.075% with BNB discount)
+DEFAULT_FEE_PCT = 0.001  # 0.1%
+# Simulate slippage: buy at slightly above close, sell at slightly below
+DEFAULT_SLIPPAGE_PCT = 0.0005  # 0.05%
+
+
+def _apply_slippage_buy(price: float, slippage_pct: float = DEFAULT_SLIPPAGE_PCT) -> float:
+    """Simulate buying at a slightly worse price."""
+    return price * (1 + slippage_pct)
+
+
+def _apply_slippage_sell(price: float, slippage_pct: float = DEFAULT_SLIPPAGE_PCT) -> float:
+    """Simulate selling at a slightly worse price."""
+    return price * (1 - slippage_pct)
+
+
+def _calculate_fee(trade_value: float, fee_pct: float = DEFAULT_FEE_PCT) -> float:
+    """Calculate exchange fee for a trade."""
+    return trade_value * fee_pct
+
+
+def _calculate_buy_hold(df: pd.DataFrame, initial_cash: float) -> float:
+    """Calculate buy-and-hold return percentage.
+
+    Buys at the first close, holds until the last close.
+    Returns the return percentage.
+    """
+    if len(df) < 2:
+        return 0.0
+    first_price = float(df.iloc[0]["close"])
+    last_price = float(df.iloc[-1]["close"])
+    # Account for the fee to buy and the fee to sell
+    buy_price = first_price * (1 + DEFAULT_FEE_PCT)
+    sell_price = last_price * (1 - DEFAULT_FEE_PCT)
+    qty = initial_cash / buy_price
+    final_value = qty * sell_price
+    # Subtract sell fee
+    final_value -= final_value * DEFAULT_FEE_PCT
+    return (final_value - initial_cash) / initial_cash * 100
+
+
 def run_backtest(
     symbol: str,
     strategy: str = "trend_momentum",
     interval: str = "1h",
     limit: int = 500,
     initial_cash: float = 10000.0,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
 ) -> BacktestResult:
     """Run a backtest for a symbol using the specified strategy.
 
@@ -100,13 +156,15 @@ def run_backtest(
         interval: Kline interval
         limit: Number of candles
         initial_cash: Starting capital
+        fee_pct: Exchange fee per trade (default 0.1%)
+        slippage_pct: Slippage per trade (default 0.05%)
 
     Returns:
         BacktestResult with equity curve, trades, and metrics.
     """
     if strategy == "mean_reversion":
-        return _run_mean_reversion(symbol, interval, limit, initial_cash)
-    return _run_trend_momentum(symbol, interval, limit, initial_cash)
+        return _run_mean_reversion(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    return _run_trend_momentum(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
 
 
 def _run_trend_momentum(
@@ -114,6 +172,8 @@ def _run_trend_momentum(
     interval: str,
     limit: int,
     initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
 ) -> BacktestResult:
     """Backtest for TrendMomentum strategy."""
     df = _fetch_klines_df(symbol, interval, limit)
@@ -129,10 +189,12 @@ def _run_trend_momentum(
     # Simulate trades
     cash = initial_cash
     position_qty = 0.0
-    entry_price = 0.0
+    entry_price = 0.0  # actual fill price (with slippage)
     highest_since_entry = 0.0
     entry_time = None
     bars_in_position = 0
+    total_fees = 0.0
+    total_slippage = 0.0
 
     equity_curve: list[dict] = []
     trades: list[dict] = []
@@ -158,10 +220,14 @@ def _run_trend_momentum(
             effective_stop = max(trailing_stop, hard_stop)
 
             if price <= effective_stop or price >= take_profit:
-                # Close position
-                sell_price = price
-                pnl = (sell_price - entry_price) * position_qty
-                cash += position_qty * sell_price
+                # Close position — apply slippage and fees
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
                 trades.append({
                     "entry_time": entry_time.isoformat() if entry_time else "",
                     "exit_time": idx.isoformat(),
@@ -171,6 +237,7 @@ def _run_trend_momentum(
                     "exit_price": sell_price,
                     "pnl": round(pnl, 2),
                     "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2),
                     "reason": "take_profit" if price >= take_profit else "stop_loss",
                     "bars_held": bars_in_position,
                 })
@@ -194,13 +261,20 @@ def _run_trend_momentum(
                 stop_distance = max(atr_val * 1.5, price * 0.03)
                 qty = risk_amount / stop_distance
 
-                if qty > 0 and cash > qty * price:
-                    entry_price = price
+                # Apply slippage to buy price
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
                     position_qty = qty
                     highest_since_entry = price
                     entry_time = idx
                     bars_in_position = 0
-                    cash -= qty * price
+                    cash -= trade_value + fee
+                    total_fees += fee
+                    total_slippage += (fill_price - price) * qty
                     trades.append({
                         "entry_time": idx.isoformat(),
                         "exit_time": "",
@@ -210,6 +284,7 @@ def _run_trend_momentum(
                         "exit_price": 0,
                         "pnl": 0,
                         "pnl_pct": 0,
+                        "fee": round(fee, 2),
                         "reason": "ema_cross_rsi_volume",
                         "bars_held": 0,
                     })
@@ -225,21 +300,30 @@ def _run_trend_momentum(
     # Close any remaining position at final price
     if position_qty > 0:
         final_price = float(df.iloc[-1]["close"])
-        pnl = (final_price - entry_price) * position_qty
-        cash += position_qty * final_price
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
         trades.append({
             "entry_time": entry_time.isoformat() if entry_time else "",
             "exit_time": df.index[-1].isoformat(),
             "side": "SELL",
             "quantity": position_qty,
             "entry_price": entry_price,
-            "exit_price": final_price,
+            "exit_price": sell_price,
             "pnl": round(pnl, 2),
             "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2),
             "reason": "backtest_end",
             "bars_held": bars_in_position,
         })
         position_qty = 0.0
+
+    # Buy-and-hold comparison
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
 
     return _calculate_metrics(
         symbol=symbol,
@@ -248,6 +332,9 @@ def _run_trend_momentum(
         initial_cash=initial_cash,
         equity_curve=equity_curve,
         trades=trades,
+        total_fees=total_fees,
+        total_slippage=total_slippage,
+        buy_hold_return_pct=buy_hold_pct,
     )
 
 
@@ -256,6 +343,8 @@ def _run_mean_reversion(
     interval: str,
     limit: int,
     initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
 ) -> BacktestResult:
     """Backtest for MeanReversion strategy (RSI + Bollinger Bands)."""
     df = _fetch_klines_df(symbol, interval, limit)
@@ -286,6 +375,8 @@ def _run_mean_reversion(
     highest_since_entry = 0.0
     entry_time = None
     bars_in_position = 0
+    total_fees = 0.0
+    total_slippage = 0.0
 
     equity_curve: list[dict] = []
     trades: list[dict] = []
@@ -324,17 +415,24 @@ def _run_mean_reversion(
                 exit_reason = "max_hold"
 
             if exit_reason:
-                pnl = (price - entry_price) * position_qty
-                cash += position_qty * price
+                # Apply slippage and fees
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
                 trades.append({
                     "entry_time": entry_time.isoformat() if entry_time else "",
                     "exit_time": idx.isoformat(),
                     "side": "SELL",
                     "quantity": position_qty,
                     "entry_price": entry_price,
-                    "exit_price": price,
+                    "exit_price": sell_price,
                     "pnl": round(pnl, 2),
                     "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2),
                     "reason": exit_reason,
                     "bars_held": bars_in_position,
                 })
@@ -358,13 +456,20 @@ def _run_mean_reversion(
                 stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
                 qty = risk_amount / stop_distance
 
-                if qty > 0 and cash > qty * price:
-                    entry_price = price
+                # Apply slippage to buy price
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
                     position_qty = qty
                     highest_since_entry = price
                     entry_time = idx
                     bars_in_position = 0
-                    cash -= qty * price
+                    cash -= trade_value + fee
+                    total_fees += fee
+                    total_slippage += (fill_price - price) * qty
                     trades.append({
                         "entry_time": idx.isoformat(),
                         "exit_time": "",
@@ -374,6 +479,7 @@ def _run_mean_reversion(
                         "exit_price": 0,
                         "pnl": 0,
                         "pnl_pct": 0,
+                        "fee": round(fee, 2),
                         "reason": "rsi_oversold_bb_lower",
                         "bars_held": 0,
                     })
@@ -389,23 +495,31 @@ def _run_mean_reversion(
     # Close any remaining position at final price
     if position_qty > 0:
         final_price = float(df.iloc[-1]["close"])
-        pnl = (final_price - entry_price) * position_qty
-        cash += position_qty * final_price
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
         trades.append({
             "entry_time": entry_time.isoformat() if entry_time else "",
             "exit_time": df.index[-1].isoformat(),
             "side": "SELL",
             "quantity": position_qty,
             "entry_price": entry_price,
-            "exit_price": final_price,
+            "exit_price": sell_price,
             "pnl": round(pnl, 2),
             "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2),
             "reason": "backtest_end",
             "bars_held": bars_in_position,
         })
         position_qty = 0.0
 
-    # Calculate metrics (shared logic)
+    # Buy-and-hold comparison
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+
     return _calculate_metrics(
         symbol=symbol,
         strategy="mean_reversion",
@@ -413,6 +527,9 @@ def _run_mean_reversion(
         initial_cash=initial_cash,
         equity_curve=equity_curve,
         trades=trades,
+        total_fees=total_fees,
+        total_slippage=total_slippage,
+        buy_hold_return_pct=buy_hold_pct,
     )
 
 
@@ -423,6 +540,9 @@ def _calculate_metrics(
     initial_cash: float,
     equity_curve: list[dict],
     trades: list[dict],
+    total_fees: float = 0.0,
+    total_slippage: float = 0.0,
+    buy_hold_return_pct: float = 0.0,
 ) -> BacktestResult:
     """Calculate backtest metrics from equity curve and trades."""
     equity_series = pd.Series([e["equity"] for e in equity_curve])
@@ -453,6 +573,10 @@ def _calculate_metrics(
 
     avg_trade = sum(t["pnl"] for t in sell_trades) / total_closed if total_closed else 0.0
 
+    # Net return already accounts for fees (they were deducted from cash)
+    # Alpha = strategy return - buy-and-hold return
+    alpha = total_return_pct - buy_hold_return_pct
+
     return BacktestResult(
         symbol=symbol.upper(),
         strategy=strategy,
@@ -470,4 +594,370 @@ def _calculate_metrics(
         equity_curve=equity_curve,
         trades=trades,
         timestamp=datetime.now(UTC).isoformat(),
+        buy_hold_return_pct=buy_hold_return_pct,
+        total_fees=total_fees,
+        total_slippage_cost=total_slippage,
+        net_return_pct=total_return_pct,  # fees already deducted from equity
+        alpha_pct=alpha,
+    )
+
+
+# ─── Parameter Optimization (Grid Search) ─────────────────────────────────────
+
+
+@dataclass
+class OptimizationResult:
+    """Result of a parameter optimization run."""
+    symbol: str
+    strategy: str
+    interval: str
+    total_combinations: int
+    best_params: dict
+    best_sharpe: float
+    best_return_pct: float
+    best_win_rate: float
+    best_max_drawdown: float
+    best_alpha: float
+    all_results: list[dict]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "strategy": self.strategy,
+            "interval": self.interval,
+            "total_combinations": self.total_combinations,
+            "best_params": self.best_params,
+            "best_sharpe": round(self.best_sharpe, 2),
+            "best_return_pct": round(self.best_return_pct, 2),
+            "best_win_rate": round(self.best_win_rate * 100, 1),
+            "best_max_drawdown": round(self.best_max_drawdown, 2),
+            "best_alpha": round(self.best_alpha, 2),
+            "all_results": self.all_results,
+        }
+
+
+def _run_trend_momentum_custom(
+    df: pd.DataFrame,
+    initial_cash: float,
+    fast_ema: int,
+    slow_ema: int,
+    rsi_upper: float,
+    vol_threshold: float,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+) -> tuple[list[dict], list[dict]]:
+    """Run TrendMomentum with custom params on pre-fetched data. Returns (equity_curve, trades)."""
+    close = df["close"]
+    ema_fast = ind.ema(close, fast_ema)
+    ema_slow = ind.ema(close, slow_ema)
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+    vol_rel = ind.relative_volume(df["volume"], 20)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    highest_since_entry = 0.0
+    entry_time = None
+    bars_in_position = 0
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = max(slow_ema, 21) + 1
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            trailing_stop = highest_since_entry * 0.98
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            if price <= effective_stop or price >= take_profit:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": "exit"})
+                position_qty = 0.0
+                entry_price = 0.0
+                highest_since_entry = 0.0
+                bars_in_position = 0
+
+        if position_qty == 0:
+            ema_f = float(ema_fast.iloc[i])
+            ema_s = float(ema_slow.iloc[i])
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            vr = float(vol_rel.iloc[i]) if not vol_rel.isna().iloc[i] else 1.0
+
+            if ema_f > ema_s and rsi_val < rsi_upper and vr > vol_threshold:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
+                    position_qty = qty
+                    highest_since_entry = price
+                    entry_time = idx
+                    bars_in_position = 0
+                    cash -= trade_value + fee
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": "end"})
+
+    return equity_curve, trades
+
+
+def _run_mean_reversion_custom(
+    df: pd.DataFrame,
+    initial_cash: float,
+    rsi_oversold: float,
+    rsi_overbought: float,
+    bb_std: float,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+) -> tuple[list[dict], list[dict]]:
+    """Run MeanReversion with custom params on pre-fetched data. Returns (equity_curve, trades)."""
+    close = df["close"]
+    bb = ind.bollinger_bands(close, 20, bb_std)
+    bb_upper = bb["upper"]
+    bb_middle = bb["middle"]
+    bb_lower = bb["lower"]
+    bb_width = (bb["upper"] - bb["lower"]) / bb["middle"].replace(0, np.nan)
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+    vol_rel = ind.relative_volume(df["volume"], 20)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    highest_since_entry = 0.0
+    entry_time = None
+    bars_in_position = 0
+    max_hold = 24
+    trailing_pct = 0.015
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = 21
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            bb_mid = float(bb_middle.iloc[i]) if not bb_middle.isna().iloc[i] else price
+
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            if price <= effective_stop:
+                exit_reason = "stop_loss"
+            elif price >= take_profit:
+                exit_reason = "take_profit"
+            elif rsi_val > rsi_overbought:
+                exit_reason = "rsi_overbought"
+            elif price >= bb_mid:
+                exit_reason = "reverted_to_mean"
+            elif bars_in_position >= max_hold:
+                exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": exit_reason})
+                position_qty = 0.0
+                entry_price = 0.0
+                highest_since_entry = 0.0
+                bars_in_position = 0
+
+        if position_qty == 0:
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50.0
+            bb_low = float(bb_lower.iloc[i]) if not bb_lower.isna().iloc[i] else price
+            bw = float(bb_width.iloc[i]) if not bb_width.isna().iloc[i] else 0
+            vr = float(vol_rel.iloc[i]) if not vol_rel.isna().iloc[i] else 1.0
+
+            if rsi_val < rsi_oversold and price <= bb_low and vr > 1.0 and bw > 0.02:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price
+                    position_qty = qty
+                    highest_since_entry = price
+                    entry_time = idx
+                    bars_in_position = 0
+                    cash -= trade_value + fee
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee
+        trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": "end"})
+
+    return equity_curve, trades
+
+
+# Parameter grids for optimization
+_TREND_PARAMS = {
+    "fast_ema": [5, 9, 12],
+    "slow_ema": [21, 26, 50],
+    "rsi_upper": [55, 60, 65],
+    "vol_threshold": [0.8, 1.0, 1.5],
+    "stop_loss_pct": [0.02, 0.03, 0.04],
+    "take_profit_pct": [0.04, 0.06, 0.08],
+}
+
+_MEANREV_PARAMS = {
+    "rsi_oversold": [25, 30, 35],
+    "rsi_overbought": [65, 70, 75],
+    "bb_std": [1.5, 2.0, 2.5],
+    "stop_loss_pct": [0.02, 0.025, 0.03],
+    "take_profit_pct": [0.03, 0.04, 0.05],
+}
+
+
+def run_optimization(
+    symbol: str,
+    strategy: str = "trend_momentum",
+    interval: str = "1h",
+    limit: int = 500,
+    initial_cash: float = 10000.0,
+    max_combinations: int = 50,
+) -> OptimizationResult:
+    """Run grid search optimization for a strategy.
+
+    Tries multiple parameter combinations and returns the best one by Sharpe ratio.
+    Limits to max_combinations to avoid excessive runtime.
+    """
+    import itertools
+
+    df = _fetch_klines_df(symbol, interval, limit)
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+
+    if strategy == "mean_reversion":
+        param_grid = _MEANREV_PARAMS
+        keys = list(param_grid.keys())
+        all_combos = list(itertools.product(*[param_grid[k] for k in keys]))
+    else:
+        param_grid = _TREND_PARAMS
+        keys = list(param_grid.keys())
+        all_combos = list(itertools.product(*[param_grid[k] for k in keys]))
+
+    # Limit combinations — pick evenly spaced subset if too many
+    if len(all_combos) > max_combinations:
+        step = len(all_combos) / max_combinations
+        all_combos = [all_combos[int(i * step)] for i in range(max_combinations)]
+
+    all_results: list[dict] = []
+    best_sharpe = -999.0
+    best_result = None
+
+    for combo in all_combos:
+        params = dict(zip(keys, combo))
+
+        if strategy == "mean_reversion":
+            eq, tr = _run_mean_reversion_custom(df, initial_cash, **params)
+        else:
+            eq, tr = _run_trend_momentum_custom(df, initial_cash, **params)
+
+        # Calculate metrics
+        if not eq:
+            continue
+        equity_series = pd.Series([e["equity"] for e in eq])
+        final_equity = float(equity_series.iloc[-1])
+        total_return = (final_equity - initial_cash) / initial_cash * 100
+
+        bars_per_year = {"1m": 525600, "5m": 105120, "15m": 35040, "1h": 8760, "4h": 2190, "1d": 365}
+        bpy = bars_per_year.get(interval, 8760)
+        returns = equity_series.pct_change().dropna()
+        sharpe = float(returns.mean() / returns.std() * np.sqrt(bpy)) if len(returns) > 1 and returns.std() != 0 else 0.0
+
+        rolling_max = equity_series.cummax()
+        drawdown = (equity_series - rolling_max) / rolling_max
+        max_dd = float(drawdown.min()) * 100 if len(drawdown) > 0 else 0.0
+
+        sell_trades = [t for t in tr if t["side"] == "SELL" and t["pnl"] != 0]
+        total_closed = len(sell_trades)
+        wins = sum(1 for t in sell_trades if t["pnl"] > 0)
+        win_rate = wins / total_closed if total_closed else 0.0
+
+        alpha = total_return - buy_hold_pct
+
+        result_entry = {
+            "params": params,
+            "total_return_pct": round(total_return, 2),
+            "sharpe": round(sharpe, 2),
+            "max_drawdown_pct": round(max_dd, 2),
+            "win_rate": round(win_rate * 100, 1),
+            "total_trades": total_closed,
+            "alpha": round(alpha, 2),
+        }
+        all_results.append(result_entry)
+
+        if sharpe > best_sharpe:
+            best_sharpe = sharpe
+            best_result = result_entry
+
+    # Sort all results by Sharpe descending
+    all_results.sort(key=lambda x: x["sharpe"], reverse=True)
+
+    if best_result is None:
+        best_result = {"params": {}, "total_return_pct": 0, "sharpe": 0, "max_drawdown_pct": 0, "win_rate": 0, "total_trades": 0, "alpha": 0}
+
+    return OptimizationResult(
+        symbol=symbol.upper(),
+        strategy=strategy,
+        interval=interval,
+        total_combinations=len(all_combos),
+        best_params=best_result["params"],
+        best_sharpe=best_result["sharpe"],
+        best_return_pct=best_result["total_return_pct"],
+        best_win_rate=best_result["win_rate"] / 100,
+        best_max_drawdown=best_result["max_drawdown_pct"],
+        best_alpha=best_result["alpha"],
+        all_results=all_results[:20],  # Top 20
     )
