@@ -131,6 +131,9 @@ class AIExecuteRequest(BaseModel):
     reason: str = ""
     stop_loss_pct: float | None = None
     take_profit_pct: float | None = None
+    position_size_usd: float | None = None  # Nivel 2: risk-based position sizing
+    partial_exit: bool = False  # Nivel 2: partial exit flag
+    partial_pct: float | None = None  # Nivel 2: percentage to sell (for partial exits)
 
 
 @router.post("/ai-agent/start")
@@ -1925,6 +1928,10 @@ def ai_agent_execute(
             # Calculate effective position size: divide available by remaining slots
             remaining_slots = max(1, dynamic_max - open_count)
             position_budget = available / remaining_slots
+
+            # Nivel 2: Use risk-based position size if provided by AI agent
+            if req.position_size_usd and req.position_size_usd > 0:
+                position_budget = min(req.position_size_usd, available)
             from app.database.models.account_snapshot import AccountSnapshot as AcctModel
             acct = AcctModel(
                 timestamp=datetime.now(tz=UTC),
@@ -1981,6 +1988,52 @@ def ai_agent_execute(
             if not pos:
                 return {"status": "no_position", "action": "sell", "symbol": symbol, "reason": f"No hay posición abierta en {symbol}"}
 
+            # ─── Nivel 2: Partial exit support ───
+            # If partial_exit=True, sell only a percentage and keep the rest open
+            if req.partial_exit and req.partial_pct and 0 < req.partial_pct < 1:
+                sell_qty = float(pos.quantity) * req.partial_pct
+                # Execute partial sell via broker directly
+                try:
+                    order_result = broker.sell(symbol, Decimal(str(sell_qty)), live_price)
+                    if order_result:
+                        # Update position: reduce quantity, mark partial exit taken
+                        pos.quantity = pos.quantity - Decimal(str(sell_qty))
+                        meta = pos.metadata_json or {}
+                        meta["partial_exit_taken"] = True
+                        meta["partial_exit_price"] = float(live_price)
+                        meta["partial_exit_pct"] = req.partial_pct
+                        pos.metadata_json = meta
+                        # Record trade
+                        from app.database.models.trade import Trade as TradeModel
+                        trade = TradeModel(
+                            user_id=current_user.id,
+                            broker_id=getattr(pos, "broker_id", "binance"),
+                            timestamp=datetime.now(tz=UTC),
+                            symbol=symbol,
+                            side="SELL",
+                            quantity=Decimal(str(sell_qty)),
+                            price=live_price,
+                            strategy_name="AI-Agent-Partial",
+                            position_id=pos.id,
+                            metadata_json={"source": "ai_agent", "partial_exit": True, "pct": req.partial_pct},
+                        )
+                        session.add(trade)
+                        session.commit()
+                        create_ai_snapshot(broker)
+                        return {
+                            "status": "executed",
+                            "action": "sell",
+                            "symbol": symbol,
+                            "quantity": str(sell_qty),
+                            "price": str(live_price),
+                            "partial": True,
+                            "remaining_qty": str(pos.quantity),
+                        }
+                    else:
+                        return {"status": "rejected", "action": "sell", "symbol": symbol, "reason": "Partial sell falló en broker"}
+                except Exception as exc:
+                    return {"status": "error", "action": "sell", "symbol": symbol, "reason": f"Partial sell error: {exc}"}
+
             signal = SignalCreate(
                 timestamp=datetime.now(tz=UTC),
                 symbol=symbol,
@@ -2022,6 +2075,64 @@ def ai_agent_execute(
         return {"status": "error", "reason": str(exc)}
     finally:
         session.close()
+
+
+@router.get("/ai-agent/performance-learning")
+def ai_agent_performance_learning(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Nivel 2: Performance learning stats — which decision factors correlate with success."""
+    try:
+        from sqlalchemy import select
+        from app.database.models.prediction_record import PredictionRecord
+        from app.database.session import SessionLocal
+
+        uid = current_user.id if current_user else 0
+        db = SessionLocal()
+        try:
+            records = db.execute(
+                select(PredictionRecord).where(
+                    PredictionRecord.user_id == uid,
+                    PredictionRecord.evaluated == True,
+                ).limit(200)
+            ).scalars().all()
+
+            ai_records = [r for r in records if (r.metadata_json or {}).get("source") == "ai_agent"]
+
+            if len(ai_records) < 5:
+                return {"status": "insufficient_data", "total": len(ai_records), "message": "Necesita más operaciones para aprender"}
+
+            # Aggregate by factor
+            factor_stats: dict[str, dict] = {}
+            for r in ai_records:
+                factors = (r.metadata_json or {}).get("factors", {})
+                correct = r.correct
+                if correct is None:
+                    continue
+                for fkey, fval in factors.items():
+                    if fval is None or fkey in ("reason", "confidence", "sl_pct", "tp_pct"):
+                        continue
+                    bucket = str(fval)[:20]
+                    key = f"{fkey}={bucket}"
+                    if key not in factor_stats:
+                        factor_stats[key] = {"wins": 0, "losses": 0}
+                    if correct:
+                        factor_stats[key]["wins"] += 1
+                    else:
+                        factor_stats[key]["losses"] += 1
+
+            result = {}
+            for key, stats in factor_stats.items():
+                total = stats["wins"] + stats["losses"]
+                if total >= 3:
+                    result[key] = {"win_rate": round(stats["wins"] / total, 2), "total": total}
+
+            sorted_result = dict(sorted(result.items(), key=lambda x: x[1]["win_rate"], reverse=True))
+            return {"status": "ok", "factors": sorted_result, "total_records": len(ai_records)}
+        finally:
+            db.close()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
 
 
 @router.get("/ai-agent/stats")

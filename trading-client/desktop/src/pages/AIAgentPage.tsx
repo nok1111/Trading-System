@@ -75,6 +75,8 @@ export function AIAgentPage() {
   const [useRegime, setUseRegime] = useState(true);
   const [useMtf, setUseMtf] = useState(true);
   const [useCorrelation, setUseCorrelation] = useState(true);
+  // Nivel 2: Performance learning
+  const [perfData, setPerfData] = useState<any>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -138,6 +140,13 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadPerfData = useCallback(async () => {
+    try {
+      const r = await api<any>("/api/ai-agent/performance-learning");
+      setPerfData(r);
+    } catch {}
+  }, []);
+
   const saveSymbolSettings = async () => {
     try {
       await api("/api/ai-agent/symbol-settings", {
@@ -165,15 +174,18 @@ export function AIAgentPage() {
     loadBrokers();
     loadTradingMode();
     loadSymbolSettings();
+    loadPerfData();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
+    const id4 = setInterval(loadPerfData, 60000);
     return () => {
       clearInterval(id1);
       clearInterval(id2);
       clearInterval(id3);
+      clearInterval(id4);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings]);
+  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings, loadPerfData]);
 
   useEffect(() => {
     loadBrokerBalance();
@@ -913,6 +925,42 @@ export function AIAgentPage() {
                 </div>
                 <div className="text-[10px] text-[var(--color-text-muted)]">
                   {data.buys} compras / {data.sells} ventas ? {data.wins}G/{data.losses}P
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Nivel 2: Performance Learning — que factores funcionan mejor */}
+      {perfData && perfData.status === "ok" && Object.keys(perfData.factors || {}).length > 0 && (
+        <Card>
+          <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">🎓 Aprendizaje de la IA — Que estrategias funcionan mejor</h3>
+          <p className="text-[11px] text-[var(--color-text-muted)] mb-3">
+            La IA trackea que factores (RSI, regimen, tendencia) correlatean con operaciones ganadoras.
+            Basado en {perfData.total_records} operaciones evaluadas.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {Object.entries(perfData.factors).slice(0, 9).map(([factor, data]: [string, any]) => (
+              <div key={factor} className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-[var(--color-text)]">{factor}</span>
+                  <span className={cn(
+                    "text-[11px] font-bold",
+                    data.win_rate >= 0.6 ? "text-[var(--color-success)]" : data.win_rate >= 0.4 ? "text-[var(--color-warning)]" : "text-[var(--color-danger)]"
+                  )}>
+                    {(data.win_rate * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="text-[9px] text-[var(--color-text-muted)]">{data.total} operaciones</div>
+                <div className="mt-1 h-1 rounded-full bg-[var(--color-border)] overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      data.win_rate >= 0.6 ? "bg-[var(--color-success)]" : data.win_rate >= 0.4 ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"
+                    )}
+                    style={{ width: `${data.win_rate * 100}%` }}
+                  />
                 </div>
               </div>
             ))}

@@ -617,11 +617,42 @@ class AITradingAgent:
                         reason = f"Auto trailing-stop: peak fue ${peak:.4f}, vendiendo a ${current_price}"
                         self._create_notif("trailing_stop_update", f"Trailing stop: {symbol}", f"Peak fue ${peak:.4f}, vendiendo a ${current_price:.4f}", severity="info", asset=self._extract_asset(symbol), action_url="/broker")
                     elif result.close_type == "take_profit":
-                        self._add_log("info", f"TAKE-PROFIT {symbol}: precio ${current_price:.4f} >= TP ${float(take_profit):.4f}. Vendiendo.", {
-                            "phase": "auto_take_profit", "symbol": symbol, "price": current_price, "take_profit": float(take_profit),
-                        })
-                        reason = f"Auto take-profit: precio subió a ${current_price}"
-                        self._create_notif("take_profit_hit", f"Take-profit: {symbol}", f"Precio alcanzó TP. Vendiendo con profit.", severity="info", asset=self._extract_asset(symbol), action_url="/broker")
+                        # ─── Nivel 2: Partial exits (escalar out) ───
+                        # First TP hit: sell 50%, raise TP for remaining 50%
+                        # Second TP hit: sell remaining 50% with trailing
+                        pos_id = pos.get("id")
+                        partial_taken = pos.get("metadata_json", {}).get("partial_exit_taken", False) if isinstance(pos.get("metadata_json"), dict) else False
+
+                        if not partial_taken and pos_id:
+                            # First TP: sell 50%, keep 50% with raised TP
+                            self._add_log("info", f"🎯 PARTIAL EXIT {symbol}: TP1 alcanzado (${current_price:.4f}). Vendiendo 50%, manteniendo 50% con trailing.", {
+                                "phase": "partial_exit_tp1", "symbol": symbol, "price": current_price, "take_profit": float(take_profit),
+                            })
+                            partial_reason = f"Partial exit TP1: vendiendo 50% a ${current_price}"
+                            self._create_notif("take_profit_hit", f"Partial exit: {symbol}", f"TP1 alcanzado. Vendiendo 50%, manteniendo 50% con trailing.", severity="info", asset=self._extract_asset(symbol), action_url="/broker")
+
+                            sell_result = self._api_post("/api/ai-agent/execute", {
+                                "action_type": "sell",
+                                "symbol": symbol,
+                                "confidence": 1.0,
+                                "reason": partial_reason,
+                                "partial_exit": True,
+                                "partial_pct": 0.5,
+                            })
+                            if sell_result and sell_result.get("status") == "executed":
+                                pnl_pct = ((current_price - entry) / entry) * 100
+                                self._add_log("info", f"🎯 50% de {symbol} vendido @ ${current_price:.4f} (PnL: {pnl_pct:+.2f}%). Resto con trailing.")
+                                # Don't clear peak — keep tracking for trailing stop on remaining 50%
+                            else:
+                                self._add_log("error", f"Partial sell falló para {symbol}: {sell_result}")
+                            continue  # Don't do full sell — position still open with 50%
+                        else:
+                            # Second TP or already took partial: sell all remaining
+                            self._add_log("info", f"TAKE-PROFIT {symbol}: precio ${current_price:.4f} >= TP ${float(take_profit):.4f}. Vendiendo resto.", {
+                                "phase": "auto_take_profit", "symbol": symbol, "price": current_price, "take_profit": float(take_profit),
+                            })
+                            reason = f"Auto take-profit: precio subió a ${current_price}"
+                            self._create_notif("take_profit_hit", f"Take-profit: {symbol}", f"Precio alcanzó TP. Vendiendo con profit.", severity="info", asset=self._extract_asset(symbol), action_url="/broker")
                     else:
                         self._add_log("warn", f"STOP-LOSS {symbol}: precio ${current_price:.4f} <= SL ${float(result.effective_sl):.4f}. Vendiendo.", {
                             "phase": "auto_stop_loss", "symbol": symbol, "price": current_price, "stop_loss": float(result.effective_sl),
@@ -1952,6 +1983,219 @@ class AITradingAgent:
 
         return True, ""
 
+    # ─── Nivel 2: Inteligencia real ────────────────────────────────────────────
+
+    def _check_news_sentiment(self, symbol: str) -> tuple[bool, str]:
+        """Check if there's negative news for this symbol.
+        Returns (allowed, reason)."""
+        try:
+            asset = self._extract_asset(symbol)
+            news = self._api_get(f"/api/intelligence/news?asset={asset}&hours=6&limit=5")
+            if not isinstance(news, dict):
+                return True, ""
+            articles = news.get("news", [])
+            if not articles:
+                return True, ""
+
+            # Check for critical/negative news
+            negative_count = 0
+            critical_count = 0
+            for article in articles[:5]:
+                impact = (article.get("impact") or "").lower()
+                sentiment = (article.get("sentiment") or "").lower()
+                if impact == "critical":
+                    critical_count += 1
+                elif impact == "high" and sentiment in ("negative", "bearish"):
+                    negative_count += 1
+                elif sentiment in ("very_negative", "strongly_bearish"):
+                    critical_count += 1
+
+            if critical_count > 0:
+                return False, f"Noticia crítica detectada para {asset} — no se compra por seguridad"
+            if negative_count >= 2:
+                return False, f"Múltiples noticias negativas para {asset} — no se compra por seguridad"
+
+            return True, f"News OK para {asset} ({len(articles)} artículos, sin alertas críticas)"
+        except Exception:
+            return True, ""  # If news API fails, don't block trades
+
+    def _check_whale_activity(self, symbol: str) -> tuple[bool, str]:
+        """Check if whales are selling this symbol.
+        Returns (allowed, reason)."""
+        try:
+            asset = self._extract_asset(symbol)
+            whales = self._api_get("/api/intelligence/whale-activity?limit=10")
+            if not isinstance(whales, list):
+                return True, ""
+
+            # Filter for this asset
+            asset_whales = [w for w in whales if w.get("asset") == asset]
+            if not asset_whales:
+                return True, ""
+
+            # Count sell vs buy pressure from whales
+            sell_volume = sum(w.get("amountUsd", 0) for w in asset_whales if w.get("direction") == "outflow")
+            buy_volume = sum(w.get("amountUsd", 0) for w in asset_whales if w.get("direction") == "inflow")
+            total = sell_volume + buy_volume
+
+            if total < 1:
+                return True, ""
+
+            sell_ratio = sell_volume / total
+            if sell_ratio > 0.7 and sell_volume > 100000:
+                return False, f"Ballenas vendiendo {asset} ({sell_ratio:.0%} sell, ${sell_volume:,.0f}) — no se compra"
+
+            return True, f"Whale OK para {asset} (sell ratio: {sell_ratio:.0%})"
+        except Exception:
+            return True, ""
+
+    def _calculate_position_size(self, symbol: str, sl_pct: float, available_capital: float) -> tuple[float, str]:
+        """Calculate position size using risk-based approach.
+
+        Risk 1% of capital per trade. Position size = risk_amount / sl_pct.
+        Example: $1000 capital, SL 3% → risk $10 → position = $10/0.03 = $333.
+
+        Returns (position_size_usd, reason).
+        """
+        try:
+            # Get user profile for risk per trade
+            profile = self._get_user_profile() or {}
+            risk_tol = profile.get("risk_tolerance", "moderate")
+
+            # Risk per trade based on profile
+            risk_per_trade = {
+                "conservative": 0.005,  # 0.5% per trade
+                "moderate": 0.01,       # 1% per trade
+                "aggressive": 0.02,     # 2% per trade
+            }.get(risk_tol, 0.01)
+
+            risk_amount = available_capital * risk_per_trade
+            sl_decimal = max(sl_pct / 100, 0.005)  # min 0.5% SL
+            position_size = risk_amount / sl_decimal
+
+            # Cap at available capital (don't use more than 50% in one trade)
+            max_position = available_capital * 0.5
+            if position_size > max_position:
+                position_size = max_position
+                risk_amount = position_size * sl_decimal
+
+            reason = f"Position sizing: ${position_size:.2f} (riesgo ${risk_amount:.2f} = {risk_per_trade:.1%} de ${available_capital:.2f}, SL {sl_pct}%)"
+            return position_size, reason
+        except Exception as exc:
+            # Fallback: use 20% of available
+            fallback = available_capital * 0.2
+            return fallback, f"Position sizing fallback: ${fallback:.2f}"
+
+    def _record_decision_for_learning(self, symbol: str, action: dict, context: dict) -> None:
+        """Record the decision factors for performance learning.
+
+        Stores the decision in prediction_records with metadata about
+        what factors triggered the buy (RSI level, regime, MTF, etc.)
+        so we can later evaluate which factors correlate with success.
+        """
+        try:
+            from datetime import datetime, UTC
+            from app.database.models.prediction_record import PredictionRecord
+            from app.database.session import SessionLocal
+
+            # Extract decision factors from context
+            technical = context.get("technical", [])
+            symbol_tech = next((t for t in technical if t.get("s") == symbol), {})
+
+            factors = {
+                "rsi": symbol_tech.get("rsi"),
+                "signal": symbol_tech.get("sig"),
+                "trend": symbol_tech.get("trend"),
+                "volume_relative": symbol_tech.get("vol_rel"),
+                "atr_pct": symbol_tech.get("atr_pct"),
+                "confidence": action.get("confidence"),
+                "sl_pct": action.get("stop_loss_pct"),
+                "tp_pct": action.get("take_profit_pct"),
+                "regime": (context.get("market_regime") or {}).get("regime"),
+                "reason": action.get("reason", "")[:200],
+            }
+
+            db = SessionLocal()
+            try:
+                record = PredictionRecord(
+                    user_id=self._user_id,
+                    timestamp=datetime.now(tz=UTC),
+                    symbol=symbol,
+                    signal_type="BUY",
+                    probability=Decimal(str(action.get("confidence", 0.5))),
+                    price_at_prediction=Decimal(str(action.get("_entry_price", 0))),
+                    forward_window=24,  # evaluate 24h forward
+                    evaluated=False,
+                    metadata_json={
+                        "source": "ai_agent",
+                        "factors": factors,
+                        "decision_factors": list(factors.keys()),
+                    },
+                )
+                db.add(record)
+                db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass  # Don't block trades if learning fails
+
+    def _get_performance_stats(self) -> dict[str, Any]:
+        """Get performance learning stats — which factors correlate with success.
+
+        Returns dict with factor → win_rate mapping.
+        """
+        try:
+            from app.database.models.prediction_record import PredictionRecord
+            from app.database.session import SessionLocal
+
+            db = SessionLocal()
+            try:
+                records = db.query(PredictionRecord).filter(
+                    PredictionRecord.user_id == self._user_id,
+                    PredictionRecord.evaluated == True,
+                    PredictionRecord.metadata_json["source"].astext == "ai_agent",
+                ).limit(200).all()
+
+                if not records or len(records) < 5:
+                    return {"status": "insufficient_data", "count": len(records)}
+
+                # Aggregate by factor value
+                factor_stats: dict[str, dict[str, int]] = {}
+                for r in records:
+                    factors = (r.metadata_json or {}).get("factors", {})
+                    correct = r.correct
+                    if correct is None:
+                        continue
+                    for fkey, fval in factors.items():
+                        if fval is None or fkey in ("reason", "confidence", "sl_pct", "tp_pct"):
+                            continue
+                        bucket = str(fval)[:20]  # truncate for grouping
+                        key = f"{fkey}={bucket}"
+                        if key not in factor_stats:
+                            factor_stats[key] = {"wins": 0, "losses": 0}
+                        if correct:
+                            factor_stats[key]["wins"] += 1
+                        else:
+                            factor_stats[key]["losses"] += 1
+
+                # Calculate win rates
+                result = {}
+                for key, stats in factor_stats.items():
+                    total = stats["wins"] + stats["losses"]
+                    if total >= 3:  # min 3 samples
+                        result[key] = {
+                            "win_rate": stats["wins"] / total,
+                            "total": total,
+                        }
+
+                # Sort by win rate
+                sorted_result = dict(sorted(result.items(), key=lambda x: x[1]["win_rate"], reverse=True))
+                return {"status": "ok", "factors": sorted_result, "total_records": len(records)}
+            finally:
+                db.close()
+        except Exception as exc:
+            return {"status": "error", "error": str(exc)}
+
     def _execute_action(self, action: dict) -> None:
         """Ejecuta una acción de trading directamente via execution engine."""
         action_type = action.get("type", "").lower()
@@ -2001,12 +2245,63 @@ class AITradingAgent:
                 self._add_log("info", f"❌ {symbol} rechazado por correlación: {corr_reason}")
                 return
 
+            # ─── Nivel 2 gates: news sentiment → whale activity ───
+            # 5. News sentiment gate
+            news_ok, news_reason = self._check_news_sentiment(symbol)
+            if not news_ok:
+                self._add_log("info", f"❌ {symbol} rechazado por noticias: {news_reason}")
+                return
+            if news_reason:
+                self._add_log("info", f"📰 {news_reason}")
+
+            # 6. Whale activity gate
+            whale_ok, whale_reason = self._check_whale_activity(symbol)
+            if not whale_ok:
+                self._add_log("info", f"❌ {symbol} rechazado por whale activity: {whale_reason}")
+                return
+            if whale_reason:
+                self._add_log("info", f"🐋 {whale_reason}")
+
             # Apply MTF confidence boost (clamped 0-1)
             confidence = min(max(action["confidence"] + confidence_boost, 0), 1)
             action["confidence"] = confidence
             sl_pct = action["stop_loss_pct"]
             tp_pct = action["take_profit_pct"]
+
+            # ─── Nivel 2: Position sizing inteligente ───
+            # Calculate risk-based position size and pass it to the execute endpoint
+            # Get available capital from context
+            try:
+                positions = self._api_get("/api/positions?status=open&limit=20")
+                open_count = len(positions) if isinstance(positions, list) else 0
+                snapshots = self._api_get("/api/snapshots?limit=1")
+                equity = 0
+                if isinstance(snapshots, list) and snapshots:
+                    equity = float(snapshots[0].get("equity", 0))
+                # Estimate available capital (simplified)
+                allocated_capital = 0
+                try:
+                    trading_mode = self._api_get("/api/trading-mode")
+                    allocated_capital = float(trading_mode.get("allocated_capital", 0))
+                except Exception:
+                    pass
+                available = equity if allocated_capital <= 0 else allocated_capital
+                position_size, size_reason = self._calculate_position_size(symbol, sl_pct, available)
+                action["position_size_usd"] = position_size
+                self._add_log("info", f"💰 Position sizing: {size_reason}")
+            except Exception:
+                pass  # Fallback to default sizing
+
             self._add_log("info", f"Comprando {symbol} (confianza: {confidence:.2f}, SL: {sl_pct}%, TP: {tp_pct}%): {reason}")
+
+            # ─── Nivel 2: Record decision for performance learning ───
+            try:
+                # Get current context for learning
+                ctx = self._gather_context() if hasattr(self, '_last_context') else {}
+                action["_entry_price"] = 0  # will be filled after execution
+                self._record_decision_for_learning(symbol, action, ctx)
+            except Exception:
+                pass
             result = self._api_post("/api/ai-agent/execute", {
                 "action_type": "buy",
                 "symbol": symbol,
@@ -2014,6 +2309,7 @@ class AITradingAgent:
                 "reason": reason,
                 "stop_loss_pct": sl_pct,
                 "take_profit_pct": tp_pct,
+                "position_size_usd": action.get("position_size_usd"),
             })
             if isinstance(result, dict) and result.get("status") == "executed":
                 self._add_log("info", f"Compra {symbol} ejecutada: {result.get('quantity')} @ ${result.get('price')}")
