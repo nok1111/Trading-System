@@ -1686,6 +1686,81 @@ def toggle_kill_switch(enabled: bool = Query(True)) -> dict:
     }
 
 
+# ─── Nivel 1: Symbol whitelist/blacklist + feature toggles ────────────────────
+
+class AISymbolSettings(BaseModel):
+    """User's AI Agent symbol controls and feature toggles."""
+    whitelist: str = ""
+    blacklist: str = ""
+    use_market_regime: bool = True
+    use_mtf_confirm: bool = True
+    use_correlation_filter: bool = True
+
+
+@router.get("/ai-agent/symbol-settings")
+def get_ai_symbol_settings(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Get the user's AI Agent symbol whitelist/blacklist and feature toggles."""
+    uid = current_user.id if current_user else 0
+    try:
+        from sqlalchemy import select
+        from app.database.models.user_settings import UserSettings
+        from app.database.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            row = db.execute(
+                select(UserSettings).where(UserSettings.user_id == uid)
+            ).scalars().first()
+            if row:
+                return {
+                    "whitelist": row.ai_symbol_whitelist or "",
+                    "blacklist": row.ai_symbol_blacklist or "",
+                    "use_market_regime": row.ai_use_market_regime if row.ai_use_market_regime is not None else True,
+                    "use_mtf_confirm": row.ai_use_mtf_confirm if row.ai_use_mtf_confirm is not None else True,
+                    "use_correlation_filter": row.ai_use_correlation_filter if row.ai_use_correlation_filter is not None else True,
+                }
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return {"whitelist": "", "blacklist": "", "use_market_regime": True, "use_mtf_confirm": True, "use_correlation_filter": True}
+
+
+@router.patch("/ai-agent/symbol-settings")
+def update_ai_symbol_settings(
+    settings: AISymbolSettings,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Update the user's AI Agent symbol whitelist/blacklist and feature toggles."""
+    uid = current_user.id if current_user else 0
+    try:
+        from sqlalchemy import select
+        from app.database.models.user_settings import UserSettings
+        from app.database.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            row = db.execute(
+                select(UserSettings).where(UserSettings.user_id == uid)
+            ).scalars().first()
+            if not row:
+                row = UserSettings(user_id=uid)
+                db.add(row)
+            row.ai_symbol_whitelist = settings.whitelist.strip() or None
+            row.ai_symbol_blacklist = settings.blacklist.strip() or None
+            row.ai_use_market_regime = settings.use_market_regime
+            row.ai_use_mtf_confirm = settings.use_mtf_confirm
+            row.ai_use_correlation_filter = settings.use_correlation_filter
+            db.commit()
+        finally:
+            db.close()
+        return {"ok": True, "message": "Configuración guardada"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @router.post("/ai-agent/execute")
 def ai_agent_execute(
     req: AIExecuteRequest,

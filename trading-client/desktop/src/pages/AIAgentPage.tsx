@@ -69,6 +69,12 @@ export function AIAgentPage() {
   const [brokerBalance, setBrokerBalance] = useState<any>(null);
   const [allocatedCapital, setAllocatedCapital] = useState<number>(0);
   const [capitalInput, setCapitalInput] = useState<string>("");
+  // Nivel 1: Symbol controls + feature toggles
+  const [whitelist, setWhitelist] = useState("");
+  const [blacklist, setBlacklist] = useState("");
+  const [useRegime, setUseRegime] = useState(true);
+  const [useMtf, setUseMtf] = useState(true);
+  const [useCorrelation, setUseCorrelation] = useState(true);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -121,6 +127,36 @@ export function AIAgentPage() {
     } catch {}
   }, []);
 
+  const loadSymbolSettings = useCallback(async () => {
+    try {
+      const r = await api<any>("/api/ai-agent/symbol-settings");
+      setWhitelist(r.whitelist || "");
+      setBlacklist(r.blacklist || "");
+      setUseRegime(r.use_market_regime ?? true);
+      setUseMtf(r.use_mtf_confirm ?? true);
+      setUseCorrelation(r.use_correlation_filter ?? true);
+    } catch {}
+  }, []);
+
+  const saveSymbolSettings = async () => {
+    try {
+      await api("/api/ai-agent/symbol-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          whitelist,
+          blacklist,
+          use_market_regime: useRegime,
+          use_mtf_confirm: useMtf,
+          use_correlation_filter: useCorrelation,
+        }),
+      });
+      toast("Configuración guardada");
+    } catch (e: any) {
+      toast(e.message || "Error al guardar", false);
+    }
+  };
+
   useEffect(() => {
     loadStatus();
     loadLog();
@@ -128,6 +164,7 @@ export function AIAgentPage() {
     loadPlan();
     loadBrokers();
     loadTradingMode();
+    loadSymbolSettings();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
@@ -136,7 +173,7 @@ export function AIAgentPage() {
       clearInterval(id2);
       clearInterval(id3);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode]);
+  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings]);
 
   useEffect(() => {
     loadBrokerBalance();
@@ -740,6 +777,70 @@ export function AIAgentPage() {
                 <Button variant="default" size="sm" onClick={testKey} disabled={isRunning}>Probar API Key</Button>
               </Tooltip>
               {testResult && <span className="text-[12px] font-bold">{testResult}</span>}
+            </div>
+
+            {/* Nivel 1: Filtros Inteligentes */}
+            <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-3">
+              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2">🧠 Filtros Inteligentes</div>
+
+              {/* Feature toggles */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <Tooltip text="La IA detecta si el mercado está en tendencia, lateral, o volátil. No compra en tendencia bajista.">
+                  <label className="flex items-center gap-2 rounded-[8px] bg-[var(--color-surface-2)] p-2 cursor-pointer">
+                    <input type="checkbox" checked={useRegime} onChange={(e) => setUseRegime(e.target.checked)} disabled={isRunning} className="w-4 h-4 accent-[var(--color-accent)]" />
+                    <span className="text-[11px] font-bold text-[var(--color-text)]">Market Regime</span>
+                    <span className="text-[9px] text-[var(--color-text-muted)]">No compra en bajista</span>
+                  </label>
+                </Tooltip>
+                <Tooltip text="Confirma con timeframe mayor (2h) antes de comprar en 1h. Reduce falsas entradas.">
+                  <label className="flex items-center gap-2 rounded-[8px] bg-[var(--color-surface-2)] p-2 cursor-pointer">
+                    <input type="checkbox" checked={useMtf} onChange={(e) => setUseMtf(e.target.checked)} disabled={isRunning} className="w-4 h-4 accent-[var(--color-accent)]" />
+                    <span className="text-[11px] font-bold text-[var(--color-text)]">MTF Confirm</span>
+                    <span className="text-[9px] text-[var(--color-text-muted)]">Confirma 2h trend</span>
+                  </label>
+                </Tooltip>
+                <Tooltip text="Evita comprar símbolos correlacionados con posiciones existentes (ej: no comprar ETH si ya tienes BTC).">
+                  <label className="flex items-center gap-2 rounded-[8px] bg-[var(--color-surface-2)] p-2 cursor-pointer">
+                    <input type="checkbox" checked={useCorrelation} onChange={(e) => setUseCorrelation(e.target.checked)} disabled={isRunning} className="w-4 h-4 accent-[var(--color-accent)]" />
+                    <span className="text-[11px] font-bold text-[var(--color-text)]">Correlation Filter</span>
+                    <span className="text-[9px] text-[var(--color-text-muted)]">Diversificación real</span>
+                  </label>
+                </Tooltip>
+              </div>
+
+              {/* Whitelist / Blacklist */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                    Lista Blanca (solo estos símbolos)
+                  </label>
+                  <Input
+                    value={whitelist}
+                    onChange={(e) => setWhitelist(e.target.value)}
+                    placeholder="ej: BTCUSDT,ETHUSDT,SOLUSDT (vacío = todos)"
+                    disabled={isRunning}
+                    className="w-full"
+                  />
+                  <p className="text-[9px] text-[var(--color-text-muted)] mt-1">Si pones símbolos, la IA SOLO podrá tocar esos.</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                    Lista Negra (nunca tocar)
+                  </label>
+                  <Input
+                    value={blacklist}
+                    onChange={(e) => setBlacklist(e.target.value)}
+                    placeholder="ej: SHIBUSDT,PEPEUSDT (símbolos a evitar)"
+                    disabled={isRunning}
+                    className="w-full"
+                  />
+                  <p className="text-[9px] text-[var(--color-text-muted)] mt-1">La IA nunca comprará estos símbolos.</p>
+                </div>
+              </div>
+
+              <Button variant="primary" size="sm" onClick={saveSymbolSettings} disabled={isRunning}>
+                Guardar Filtros
+              </Button>
             </div>
           </div>
         )}

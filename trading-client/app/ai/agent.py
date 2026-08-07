@@ -222,6 +222,14 @@ DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo
 
 BUY_CANDIDATES: El contexto incluye "buy_candidates" con los mejores símbolos rankeados por score técnico. USA esta lista como prioridad de compra. El primer candidato con score más alto = mejor oportunidad.
 
+MARKET REGIME: El contexto incluye "market_regime" con el régimen actual de BTC (como proxy del mercado global). USA esta información:
+- trending_up: mercado alcista — COMpra con confianza, TP más ambiciosos
+- trending_down: mercado bajista — NO compres (a menos que RSI < 30 extremo)
+- ranging: mercado lateral — solo compra en oversold (RSI < 35) para mean reversion
+- volatile: alta volatilidad — SL más amplio, oportunidades de breakout
+- squeeze: compresión — prepararse para expansión, compra con SL ajustado
+- reversal: posible reversión — compra solo si confianza > 0.7
+
 SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical. confidence entre 0 y 1."""
 
 FEW_SHOT_EXAMPLE = """
@@ -1571,6 +1579,14 @@ class AITradingAgent:
             except Exception:
                 pass
 
+            # Market regime for BTC (as global market proxy) — Nivel 1
+            try:
+                from app.services.market_regime import detect_regime
+                btc_regime = detect_regime("BTCUSDT", interval="1h", limit=200)
+                ctx["market_regime"] = btc_regime.to_dict()
+            except Exception:
+                pass
+
             return ctx
 
         except Exception as exc:
@@ -1782,6 +1798,160 @@ class AITradingAgent:
         action["take_profit_pct"] = min(max(float(action.get("take_profit_pct", tp_lo)), tp_lo), tp_hi)
         return action
 
+    # ─── Nivel 1: Market Regime, MTF, Correlation, Whitelist ───────────────────
+
+    _user_settings_cache: dict[str, Any] | None = None
+    _user_settings_cache_time: float = 0
+
+    def _load_user_settings(self) -> dict[str, Any]:
+        """Load user settings from DB (cached for 60s)."""
+        if self._user_settings_cache is not None and (time.time() - self._user_settings_cache_time) < 60:
+            return self._user_settings_cache
+        try:
+            from sqlalchemy import select
+            from app.database.models.user_settings import UserSettings
+            from app.database.session import SessionLocal
+
+            db = SessionLocal()
+            try:
+                row = db.execute(
+                    select(UserSettings).where(UserSettings.user_id == self._user_id)
+                ).scalars().first()
+                settings = {}
+                if row:
+                    settings = {
+                        "ai_symbol_whitelist": row.ai_symbol_whitelist or "",
+                        "ai_symbol_blacklist": row.ai_symbol_blacklist or "",
+                        "ai_use_market_regime": row.ai_use_market_regime if row.ai_use_market_regime is not None else True,
+                        "ai_use_mtf_confirm": row.ai_use_mtf_confirm if row.ai_use_mtf_confirm is not None else True,
+                        "ai_use_correlation_filter": row.ai_use_correlation_filter if row.ai_use_correlation_filter is not None else True,
+                    }
+            finally:
+                db.close()
+            self._user_settings_cache = settings
+            self._user_settings_cache_time = time.time()
+            return settings
+        except Exception:
+            self._user_settings_cache = {}
+            self._user_settings_cache_time = time.time()
+            return {}
+
+    def _check_whitelist_blacklist(self, symbol: str) -> tuple[bool, str]:
+        """Check if symbol is allowed by user's whitelist/blacklist.
+        Returns (allowed, reason)."""
+        settings = self._load_user_settings()
+        sym = symbol.upper().strip()
+
+        # Blacklist takes priority
+        blacklist = {s.strip().upper() for s in settings.get("ai_symbol_blacklist", "").split(",") if s.strip()}
+        if sym in blacklist:
+            return False, f"{sym} está en tu lista negra — no se opera"
+
+        # Whitelist (if set, only these symbols are allowed)
+        whitelist = {s.strip().upper() for s in settings.get("ai_symbol_whitelist", "").split(",") if s.strip()}
+        if whitelist and sym not in whitelist:
+            return False, f"{sym} no está en tu lista blanca — solo se opera: {', '.join(sorted(whitelist))}"
+
+        return True, ""
+
+    def _get_market_regime(self, symbol: str) -> dict[str, Any] | None:
+        """Get market regime for a symbol. Returns None on error."""
+        try:
+            from app.services.market_regime import detect_regime
+            regime = detect_regime(symbol, interval="1h", limit=200)
+            return regime.to_dict()
+        except Exception as exc:
+            self._add_log("warn", f"No se pudo obtener régimen de mercado para {symbol}: {exc}")
+            return None
+
+    def _check_regime_gate(self, symbol: str) -> tuple[bool, str, dict | None]:
+        """Check if market regime allows buying this symbol.
+        Returns (allowed, reason, regime_data)."""
+        settings = self._load_user_settings()
+        if not settings.get("ai_use_market_regime", True):
+            return True, "", None
+
+        regime_data = self._get_market_regime(symbol)
+        if regime_data is None:
+            # If we can't get regime, allow but log
+            return True, "Régimen no disponible — permitiendo con precaución", None
+
+        regime = regime_data.get("regime", "")
+        confidence = regime_data.get("confidence", 0)
+
+        # Block buys in trending_down (unless reversal with high confidence)
+        if regime == "trending_down":
+            if regime_data.get("rsi", 50) < 35 and confidence > 0.6:
+                return True, f"Régimen {regime} pero RSI oversold + posible reversal — permitiendo", regime_data
+            return False, f"Régimen {regime} (confianza {confidence:.0%}) — no se compra en tendencia bajista", regime_data
+
+        # In ranging, only allow if RSI < 40 (mean reversion opportunity)
+        if regime == "ranging":
+            rsi = regime_data.get("rsi", 50)
+            if rsi > 60:
+                return False, f"Régimen ranging con RSI {rsi:.0f} — esperar mejor entrada", regime_data
+            return True, f"Régimen ranging con RSI {rsi:.0f} — oportunidad de mean reversion", regime_data
+
+        # trending_up, volatile, squeeze, reversal → allow
+        return True, f"Régimen {regime} (confianza {confidence:.0%}) — ok para comprar", regime_data
+
+    def _check_mtf_confirmation(self, symbol: str) -> tuple[bool, str, float]:
+        """Check multi-timeframe confirmation for a buy.
+        Returns (confirmed, reason, confidence_boost).
+        confidence_boost is added to the action's confidence (clamped 0-1)."""
+        settings = self._load_user_settings()
+        if not settings.get("ai_use_mtf_confirm", True):
+            return True, "MTF deshabilitado por usuario", 0.0
+
+        try:
+            from app.services.multi_timeframe import confirm_entry_mtf
+            result = confirm_entry_mtf(symbol, primary_interval="1h", strategy_name="trend_momentum")
+            confirmed = result.get("confirmed", True)
+            boost = result.get("confidence_boost", 0.0)
+            reasons = result.get("reasons", [])
+            reason_str = "; ".join(reasons) if reasons else "sin datos MTF"
+            return confirmed, reason_str, boost
+        except Exception as exc:
+            self._add_log("warn", f"MTF check falló para {symbol}: {exc}")
+            return True, f"MTF no disponible: {exc}", 0.0
+
+    def _check_correlation(self, symbol: str, open_positions: list[dict] | None = None) -> tuple[bool, str]:
+        """Check if symbol is too correlated with existing positions.
+        Returns (allowed, reason)."""
+        settings = self._load_user_settings()
+        if not settings.get("ai_use_correlation_filter", True):
+            return True, ""
+
+        if not open_positions:
+            positions = self._api_get("/api/positions?status=open&limit=20")
+            open_positions = positions if isinstance(positions, list) else []
+
+        if not open_positions:
+            return True, ""  # No positions = no correlation risk
+
+        # Extract base assets
+        new_asset = self._extract_asset(symbol)
+        existing_assets = [self._extract_asset(p.get("symbol", "")) for p in open_positions]
+
+        # Known high-correlation clusters (simplified — no need for live correlation matrix)
+        CORRELATION_CLUSTERS = [
+            {"BTC", "WBTC", "BTCD"},  # Bitcoin ecosystem
+            {"ETH", "STETH", "WETH", "ETHFI", "ARB"},  # Ethereum ecosystem
+            {"SOL", "JUP", "PYTH", "JTO"},  # Solana ecosystem
+            {"DOGE", "SHIB", "FLOKI", "PEPE", "WIF", "BONK"},  # Memecoins
+            {"LINK", "UNI", "AAVE", "COMP", "CRV"},  # DeFi blue chips
+            {"AVAX", "NEAR", "FTM", "ALGO", "ATOM"},  # L1 competitors
+        ]
+
+        for cluster in CORRELATION_CLUSTERS:
+            if new_asset in cluster:
+                # Check if any existing position is in the same cluster
+                overlap = [a for a in existing_assets if a in cluster and a != new_asset]
+                if overlap:
+                    return False, f"{new_asset} correlacionado con posiciones existentes ({', '.join(overlap)}) — diversificación insuficiente"
+
+        return True, ""
+
     def _execute_action(self, action: dict) -> None:
         """Ejecuta una acción de trading directamente via execution engine."""
         action_type = action.get("type", "").lower()
@@ -1801,10 +1971,42 @@ class AITradingAgent:
             action = self._apply_profile_guardrails(action)
             if action is None:
                 return
-            confidence = action["confidence"]
+
+            # ─── Nivel 1 gates: whitelist/blacklist → regime → MTF → correlation ───
+            # 1. Whitelist/blacklist check
+            allowed, wl_reason = self._check_whitelist_blacklist(symbol)
+            if not allowed:
+                self._add_log("info", f"❌ {symbol} rechazado por filtro de usuario: {wl_reason}")
+                return
+
+            # 2. Market regime gate
+            regime_ok, regime_reason, regime_data = self._check_regime_gate(symbol)
+            if not regime_ok:
+                self._add_log("info", f"❌ {symbol} rechazado por régimen de mercado: {regime_reason}")
+                return
+            if regime_data:
+                self._add_log("info", f"📊 {symbol}: {regime_reason}")
+
+            # 3. MTF confirmation
+            mtf_ok, mtf_reason, confidence_boost = self._check_mtf_confirmation(symbol)
+            if not mtf_ok:
+                self._add_log("info", f"❌ {symbol} rechazado por MTF: {mtf_reason}")
+                return
+            if confidence_boost != 0:
+                self._add_log("info", f"📈 MTF {symbol}: {mtf_reason} (boost {confidence_boost:+.2f})")
+
+            # 4. Correlation check
+            corr_ok, corr_reason = self._check_correlation(symbol)
+            if not corr_ok:
+                self._add_log("info", f"❌ {symbol} rechazado por correlación: {corr_reason}")
+                return
+
+            # Apply MTF confidence boost (clamped 0-1)
+            confidence = min(max(action["confidence"] + confidence_boost, 0), 1)
+            action["confidence"] = confidence
             sl_pct = action["stop_loss_pct"]
             tp_pct = action["take_profit_pct"]
-            self._add_log("info", f"Comprando {symbol} (confianza: {confidence}, SL: {sl_pct}%, TP: {tp_pct}%): {reason}")
+            self._add_log("info", f"Comprando {symbol} (confianza: {confidence:.2f}, SL: {sl_pct}%, TP: {tp_pct}%): {reason}")
             result = self._api_post("/api/ai-agent/execute", {
                 "action_type": "buy",
                 "symbol": symbol,

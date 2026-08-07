@@ -135,6 +135,11 @@ _MIGRATIONS = {
         ("ai_model", "VARCHAR(100)"),
         ("last_model_used", "VARCHAR(100)"),
         ("last_ai_provider_used", "VARCHAR(50)"),
+        ("ai_symbol_whitelist", "VARCHAR(500)"),
+        ("ai_symbol_blacklist", "VARCHAR(500)"),
+        ("ai_use_market_regime", "BOOLEAN NOT NULL DEFAULT 1"),
+        ("ai_use_mtf_confirm", "BOOLEAN NOT NULL DEFAULT 1"),
+        ("ai_use_correlation_filter", "BOOLEAN NOT NULL DEFAULT 1"),
     ],
     "signals": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),

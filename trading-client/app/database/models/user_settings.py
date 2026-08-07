@@ -34,3 +34,10 @@ class UserSettings(Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     telegram_alerts: Mapped[bool] = mapped_column(default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # AI Agent symbol controls (comma-separated, e.g. "BTCUSDT,ETHUSDT,SOLUSDT")
+    ai_symbol_whitelist: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ai_symbol_blacklist: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # AI Agent feature toggles
+    ai_use_market_regime: Mapped[bool] = mapped_column(default=True, nullable=False)
+    ai_use_mtf_confirm: Mapped[bool] = mapped_column(default=True, nullable=False)
+    ai_use_correlation_filter: Mapped[bool] = mapped_column(default=True, nullable=False)
