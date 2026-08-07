@@ -18,6 +18,7 @@ import {
   CircleUser,
   FlaskConical,
   Bot,
+  Grid3x3,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
@@ -51,7 +52,8 @@ export type TabId =
   | "security"
   | "preferences"
   | "broker"
-  | "ai-agent";
+  | "ai-agent"
+  | "bots";
 
 interface NavItem {
   id: TabId;
@@ -68,6 +70,7 @@ const generalItems: NavItem[] = [
   { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
   { id: "backtest", label: "Backtest", icon: <FlaskConical size={17} />, group: "general" },
   { id: "ai-agent", label: "AI Agent", icon: <Bot size={17} />, group: "general" },
+  { id: "bots", label: "Bots", icon: <Grid3x3 size={17} />, group: "general" },
 ];
 
 const sistemaItems: NavItem[] = [
@@ -90,6 +93,7 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
   broker: { title: "Broker", subtitle: "Vista de broker" },
   "ai-agent": { title: "AI Trading Agent", subtitle: "Agente de IA autónomo — razonamiento y estadísticas" },
+  bots: { title: "Trading Bots", subtitle: "Grid y DCA bots automatizados" },
 };
 
 interface LayoutProps {

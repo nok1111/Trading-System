@@ -95,6 +95,7 @@ async def license_check(request: Request, call_next):
 # ---------------------------------------------------------------------------
 from app.api.routes import (
     ai_agent,
+    bots,
     broker_accounts,
     broker_data,
     brokers,
@@ -118,6 +119,7 @@ app.include_router(brokers.router)
 app.include_router(broker_accounts.router)
 app.include_router(broker_data.router)
 app.include_router(intelligence.router)
+app.include_router(bots.router)
 
 # ---------------------------------------------------------------------------
 # Startup / Shutdown events
