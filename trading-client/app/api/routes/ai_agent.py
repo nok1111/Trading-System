@@ -1692,19 +1692,20 @@ def toggle_kill_switch(enabled: bool = Query(True)) -> dict:
 # ─── Nivel 1: Symbol whitelist/blacklist + feature toggles ────────────────────
 
 class AISymbolSettings(BaseModel):
-    """User's AI Agent symbol controls and feature toggles."""
+    """User's AI Agent symbol controls, feature toggles, and custom instructions."""
     whitelist: str = ""
     blacklist: str = ""
     use_market_regime: bool = True
     use_mtf_confirm: bool = True
     use_correlation_filter: bool = True
+    custom_instructions: str = ""
 
 
 @router.get("/ai-agent/symbol-settings")
 def get_ai_symbol_settings(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
-    """Get the user's AI Agent symbol whitelist/blacklist and feature toggles."""
+    """Get the user's AI Agent symbol whitelist/blacklist, feature toggles, and custom instructions."""
     uid = current_user.id if current_user else 0
     try:
         from sqlalchemy import select
@@ -1723,12 +1724,13 @@ def get_ai_symbol_settings(
                     "use_market_regime": row.ai_use_market_regime if row.ai_use_market_regime is not None else True,
                     "use_mtf_confirm": row.ai_use_mtf_confirm if row.ai_use_mtf_confirm is not None else True,
                     "use_correlation_filter": row.ai_use_correlation_filter if row.ai_use_correlation_filter is not None else True,
+                    "custom_instructions": row.ai_custom_instructions or "",
                 }
         finally:
             db.close()
     except Exception:
         pass
-    return {"whitelist": "", "blacklist": "", "use_market_regime": True, "use_mtf_confirm": True, "use_correlation_filter": True}
+    return {"whitelist": "", "blacklist": "", "use_market_regime": True, "use_mtf_confirm": True, "use_correlation_filter": True, "custom_instructions": ""}
 
 
 @router.patch("/ai-agent/symbol-settings")
@@ -1736,7 +1738,7 @@ def update_ai_symbol_settings(
     settings: AISymbolSettings,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
-    """Update the user's AI Agent symbol whitelist/blacklist and feature toggles."""
+    """Update the user's AI Agent symbol whitelist/blacklist, feature toggles, and custom instructions."""
     uid = current_user.id if current_user else 0
     try:
         from sqlalchemy import select
@@ -1756,6 +1758,7 @@ def update_ai_symbol_settings(
             row.ai_use_market_regime = settings.use_market_regime
             row.ai_use_mtf_confirm = settings.use_mtf_confirm
             row.ai_use_correlation_filter = settings.use_correlation_filter
+            row.ai_custom_instructions = settings.custom_instructions.strip()[:1000] or None
             db.commit()
         finally:
             db.close()
@@ -2075,6 +2078,164 @@ def ai_agent_execute(
         return {"status": "error", "reason": str(exc)}
     finally:
         session.close()
+
+
+@router.get("/ai-agent/backtest-comparison")
+def ai_agent_backtest_comparison(
+    days: int = Query(30, ge=1, le=90),
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Nivel 3: AI vs Backtest comparison.
+
+    Simulates what would have happened if ALL AI Agent signals in the last N days
+    were followed with a fixed position size. Compares:
+    - AI Agent actual PnL (from closed trades)
+    - Buy & Hold BTC for the same period
+    - AI win rate, avg trade, best/worst trade
+    """
+    try:
+        from sqlalchemy import func, select
+        from app.database.models.trade import Trade as TradeModel
+        from app.database.models.position import Position as PosModel
+        from app.database.session import SessionLocal
+
+        uid = current_user.id if current_user else 0
+        since = datetime.now(tz=UTC) - timedelta(days=days)
+
+        db = SessionLocal()
+        try:
+            # 1. Get all AI Agent trades in the period
+            trades = db.execute(
+                select(TradeModel).where(
+                    TradeModel.user_id == uid,
+                    TradeModel.timestamp >= since,
+                    TradeModel.strategy_name.like("AI-Agent%"),
+                ).order_by(TradeModel.timestamp)
+            ).scalars().all()
+
+            # 2. Match buys and sells to compute per-trade PnL
+            # Group by position_id
+            positions_map: dict[int, list] = {}
+            standalone_sells = []
+            standalone_buys = []
+
+            for t in trades:
+                if t.position_id:
+                    positions_map.setdefault(t.position_id, []).append(t)
+                elif t.side == "SELL":
+                    standalone_sells.append(t)
+                else:
+                    standalone_buys.append(t)
+
+            simulated_trades = []
+            total_pnl = 0.0
+            wins = 0
+            losses = 0
+            best_trade = 0.0
+            worst_trade = 0.0
+            total_invested = 0.0
+
+            for pos_id, pos_trades in positions_map.items():
+                buys = [t for t in pos_trades if t.side == "BUY"]
+                sells = [t for t in pos_trades if t.side == "SELL"]
+                if not buys or not sells:
+                    continue
+
+                buy_value = sum(float(t.quantity) * float(t.price) for t in buys)
+                sell_value = sum(float(t.quantity) * float(t.price) for t in sells)
+                pnl = sell_value - buy_value
+                pnl_pct = (pnl / buy_value * 100) if buy_value > 0 else 0
+
+                total_pnl += pnl
+                total_invested += buy_value
+                if pnl > 0:
+                    wins += 1
+                else:
+                    losses += 1
+                best_trade = max(best_trade, pnl_pct)
+                worst_trade = min(worst_trade, pnl_pct)
+
+                simulated_trades.append({
+                    "symbol": pos_trades[0].symbol,
+                    "buy_value": round(buy_value, 2),
+                    "sell_value": round(sell_value, 2),
+                    "pnl": round(pnl, 2),
+                    "pnl_pct": round(pnl_pct, 2),
+                    "opened_at": pos_trades[0].timestamp.isoformat(),
+                    "closed_at": sells[0].timestamp.isoformat() if sells else None,
+                })
+
+            # Also count standalone sells (partial exits without position_id)
+            for t in standalone_sells:
+                pnl = float(t.realized_pnl)
+                total_pnl += pnl
+                if pnl > 0:
+                    wins += 1
+                else:
+                    losses += 1
+
+            total_trades = wins + losses
+            win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+            avg_trade = (total_pnl / total_trades) if total_trades > 0 else 0
+
+            # 3. Buy & Hold BTC comparison
+            btc_then = 0
+            btc_now = 0
+            try:
+                import httpx as _hx
+                # Get BTC price N days ago
+                resp = _hx.get(
+                    "https://api.binance.com/api/v3/klines",
+                    params={"symbol": "BTCUSDT", "interval": "1d", "limit": days + 1},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    klines = resp.json()
+                    if klines:
+                        btc_then = float(klines[0][1])  # open price N days ago
+                        btc_now = float(klines[-1][4])   # close price now
+            except Exception:
+                pass
+
+            btc_pnl_pct = ((btc_now - btc_then) / btc_then * 100) if btc_then > 0 else 0
+            # If we had invested total_invested in BTC
+            btc_pnl_usd = (total_invested * btc_pnl_pct / 100) if total_invested > 0 else 0
+
+            # 4. AI PnL percentage
+            ai_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+
+            return {
+                "status": "ok",
+                "days": days,
+                "ai_agent": {
+                    "total_trades": total_trades,
+                    "wins": wins,
+                    "losses": losses,
+                    "win_rate": round(win_rate, 1),
+                    "total_pnl": round(total_pnl, 2),
+                    "total_invested": round(total_invested, 2),
+                    "pnl_pct": round(ai_pnl_pct, 2),
+                    "avg_trade": round(avg_trade, 2),
+                    "best_trade_pct": round(best_trade, 2),
+                    "worst_trade_pct": round(worst_trade, 2),
+                },
+                "buy_hold_btc": {
+                    "btc_price_then": round(btc_then, 2),
+                    "btc_price_now": round(btc_now, 2),
+                    "pnl_pct": round(btc_pnl_pct, 2),
+                    "pnl_usd": round(btc_pnl_usd, 2),
+                },
+                "comparison": {
+                    "ai_vs_btc_pct": round(ai_pnl_pct - btc_pnl_pct, 2),
+                    "ai_vs_btc_usd": round(total_pnl - btc_pnl_usd, 2),
+                    "winner": "ai_agent" if total_pnl > btc_pnl_usd else "buy_hold",
+                },
+                "trades": simulated_trades[-20:],  # last 20 trades
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
 
 
 @router.get("/ai-agent/performance-learning")

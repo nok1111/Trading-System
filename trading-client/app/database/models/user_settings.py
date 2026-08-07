@@ -41,3 +41,5 @@ class UserSettings(Base):
     ai_use_market_regime: Mapped[bool] = mapped_column(default=True, nullable=False)
     ai_use_mtf_confirm: Mapped[bool] = mapped_column(default=True, nullable=False)
     ai_use_correlation_filter: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Nivel 3: Custom instructions (natural language rules the AI must follow)
+    ai_custom_instructions: Mapped[str | None] = mapped_column(String(1000), nullable=True)

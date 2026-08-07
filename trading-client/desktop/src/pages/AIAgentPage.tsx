@@ -77,6 +77,10 @@ export function AIAgentPage() {
   const [useCorrelation, setUseCorrelation] = useState(true);
   // Nivel 2: Performance learning
   const [perfData, setPerfData] = useState<any>(null);
+  // Nivel 3: Custom instructions + backtest comparison
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [backtestData, setBacktestData] = useState<any>(null);
+  const [backtestDays, setBacktestDays] = useState(30);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -137,6 +141,7 @@ export function AIAgentPage() {
       setUseRegime(r.use_market_regime ?? true);
       setUseMtf(r.use_mtf_confirm ?? true);
       setUseCorrelation(r.use_correlation_filter ?? true);
+      setCustomInstructions(r.custom_instructions || "");
     } catch {}
   }, []);
 
@@ -146,6 +151,13 @@ export function AIAgentPage() {
       setPerfData(r);
     } catch {}
   }, []);
+
+  const loadBacktest = useCallback(async () => {
+    try {
+      const r = await api<any>(`/api/ai-agent/backtest-comparison?days=${backtestDays}`);
+      setBacktestData(r);
+    } catch {}
+  }, [backtestDays]);
 
   const saveSymbolSettings = async () => {
     try {
@@ -158,6 +170,7 @@ export function AIAgentPage() {
           use_market_regime: useRegime,
           use_mtf_confirm: useMtf,
           use_correlation_filter: useCorrelation,
+          custom_instructions: customInstructions,
         }),
       });
       toast("Configuración guardada");
@@ -175,6 +188,7 @@ export function AIAgentPage() {
     loadTradingMode();
     loadSymbolSettings();
     loadPerfData();
+    loadBacktest();
     const id1 = setInterval(loadStatus, 5000);
     const id2 = setInterval(loadLog, 5000);
     const id3 = setInterval(loadStats, 15000);
@@ -185,7 +199,7 @@ export function AIAgentPage() {
       clearInterval(id3);
       clearInterval(id4);
     };
-  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings, loadPerfData]);
+  }, [loadStatus, loadLog, loadStats, loadPlan, loadBrokers, loadTradingMode, loadSymbolSettings, loadPerfData, loadBacktest]);
 
   useEffect(() => {
     loadBrokerBalance();
@@ -850,6 +864,26 @@ export function AIAgentPage() {
                 </div>
               </div>
 
+              {/* Nivel 3: Custom Instructions */}
+              <div className="mt-3">
+                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">
+                  Instrucciones Personalizadas (lenguaje natural)
+                </label>
+                <Tooltip text="Escribe reglas en lenguaje natural que la IA debe seguir siempre. Ej: 'No comprar meme coins', 'Solo operar de lunes a viernes', 'Evitar símbolos con volumen bajo'.">
+                  <textarea
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    placeholder="ej: No comprar meme coins. Solo operar BTC y ETH los fines de semana. Evitar símbolos con menos de $10M volumen diario."
+                    disabled={isRunning}
+                    rows={3}
+                    className="w-full rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2.5 text-[11px] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] resize-none"
+                  />
+                </Tooltip>
+                <p className="text-[9px] text-[var(--color-text-muted)] mt-1">
+                  La IA leerá estas reglas en cada ciclo y las respetará. Máx 1000 caracteres.
+                </p>
+              </div>
+
               <Button variant="primary" size="sm" onClick={saveSymbolSettings} disabled={isRunning}>
                 Guardar Filtros
               </Button>
@@ -965,6 +999,90 @@ export function AIAgentPage() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {/* Nivel 3: AI vs Backtest Comparison */}
+      {backtestData && backtestData.status === "ok" && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[13px] font-bold text-[var(--color-accent)]">📊 IA vs Buy & Hold BTC — Últimos {backtestData.days} días</h3>
+            <div className="flex gap-1">
+              {[7, 30, 90].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setBacktestDays(d)}
+                  className={cn(
+                    "px-2 py-0.5 rounded-[6px] text-[10px] font-bold transition-colors",
+                    backtestDays === d
+                      ? "bg-[var(--color-accent)] text-[var(--color-bg)]"
+                      : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                  )}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* AI Agent */}
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
+              <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">🤖 AI Agent</div>
+              <div className={cn(
+                "text-[20px] font-bold",
+                backtestData.ai_agent.pnl_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
+              )}>
+                {backtestData.ai_agent.pnl_pct >= 0 ? "+" : ""}{backtestData.ai_agent.pnl_pct}%
+              </div>
+              <div className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                ${backtestData.ai_agent.total_pnl} PnL · {backtestData.ai_agent.total_trades} trades
+              </div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">
+                Win rate: {backtestData.ai_agent.win_rate}% · Avg: ${backtestData.ai_agent.avg_trade}
+              </div>
+            </div>
+
+            {/* Buy & Hold BTC */}
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
+              <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">📈 Buy & Hold BTC</div>
+              <div className={cn(
+                "text-[20px] font-bold",
+                backtestData.buy_hold_btc.pnl_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
+              )}>
+                {backtestData.buy_hold_btc.pnl_pct >= 0 ? "+" : ""}{backtestData.buy_hold_btc.pnl_pct}%
+              </div>
+              <div className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                ${backtestData.buy_hold_btc.pnl_usd} PnL · mismo capital
+              </div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">
+                BTC: ${backtestData.buy_hold_btc.btc_price_then} → ${backtestData.buy_hold_btc.btc_price_now}
+              </div>
+            </div>
+          </div>
+
+          {/* Verdict */}
+          <div className={cn(
+            "rounded-[8px] p-2.5 text-center",
+            backtestData.comparison.winner === "ai_agent"
+              ? "bg-[var(--color-success)]/10 border border-[var(--color-success)]/30"
+              : "bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30"
+          )}>
+            <span className="text-[12px] font-bold">
+              {backtestData.comparison.winner === "ai_agent"
+                ? `🤖 La IA ganó por ${backtestData.comparison.ai_vs_btc_pct > 0 ? "+" : ""}${backtestData.comparison.ai_vs_btc_pct}% (${backtestData.comparison.ai_vs_btc_usd > 0 ? "+" : ""}$${backtestData.comparison.ai_vs_btc_usd})`
+                : `📈 Buy & Hold BTC ganó por ${backtestData.comparison.ai_vs_btc_pct < 0 ? "+" : ""}${Math.abs(backtestData.comparison.ai_vs_btc_pct)}% ($${Math.abs(backtestData.comparison.ai_vs_btc_usd).toFixed(2)})`
+              }
+            </span>
+          </div>
+
+          {/* Best/Worst */}
+          {backtestData.ai_agent.total_trades > 0 && (
+            <div className="flex gap-3 mt-2 text-[10px]">
+              <span className="text-[var(--color-success)]">Mejor: +{backtestData.ai_agent.best_trade_pct}%</span>
+              <span className="text-[var(--color-danger)]">Peor: {backtestData.ai_agent.worst_trade_pct}%</span>
+            </div>
+          )}
         </Card>
       )}
 

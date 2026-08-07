@@ -140,6 +140,7 @@ _MIGRATIONS = {
         ("ai_use_market_regime", "BOOLEAN NOT NULL DEFAULT 1"),
         ("ai_use_mtf_confirm", "BOOLEAN NOT NULL DEFAULT 1"),
         ("ai_use_correlation_filter", "BOOLEAN NOT NULL DEFAULT 1"),
+        ("ai_custom_instructions", "VARCHAR(1000)"),
     ],
     "signals": [
         ("user_id", "INTEGER NOT NULL DEFAULT 0"),

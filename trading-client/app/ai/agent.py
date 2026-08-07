@@ -1730,6 +1730,12 @@ class AITradingAgent:
         profile = self._get_user_profile()
         prompt += self._build_profile_prompt_block(profile)
 
+        # Nivel 3: Add user's custom instructions (natural language rules)
+        settings = self._load_user_settings()
+        custom_instructions = settings.get("ai_custom_instructions", "").strip()
+        if custom_instructions:
+            prompt += f"\n\nINSTRUCCIONES PERSONALIZADAS DEL USUARIO (MÁXIMA PRIORIDAD — debes cumplir SIEMPRE):\n{custom_instructions}\n"
+
         # Add few-shot example for lightweight models
         active_model = self._get_active_model()
         if active_model in LIGHTWEIGHT_MODELS:
@@ -1856,6 +1862,7 @@ class AITradingAgent:
                         "ai_use_market_regime": row.ai_use_market_regime if row.ai_use_market_regime is not None else True,
                         "ai_use_mtf_confirm": row.ai_use_mtf_confirm if row.ai_use_mtf_confirm is not None else True,
                         "ai_use_correlation_filter": row.ai_use_correlation_filter if row.ai_use_correlation_filter is not None else True,
+                        "ai_custom_instructions": row.ai_custom_instructions or "",
                     }
             finally:
                 db.close()
