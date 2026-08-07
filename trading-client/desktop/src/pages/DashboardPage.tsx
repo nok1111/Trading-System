@@ -8,6 +8,7 @@ import { WelcomePortal } from "../components/dashboard/WelcomePortal";
 import { TodayPriorities } from "../components/dashboard/TodayPriorities";
 import { AIActivityTimeline } from "../components/dashboard/AIActivityTimeline";
 import { OnboardingModal } from "../components/dashboard/OnboardingModal";
+import { AutoPilotWidget } from "../components/dashboard/AutoPilotWidget";
 import { useAuthContext } from "../context/AuthContext";
 import {
   getMarketOverview,
@@ -93,6 +94,9 @@ export function DashboardPage() {
     <div className="p-5 space-y-4 max-w-[900px] mx-auto">
       {/* Conversational welcome — AI greets you like a friend */}
       <WelcomePortal data={sinceLastVisit} profile={userProfile} loading={loading} username={user?.username} />
+
+      {/* Auto-Pilot — one-click personalized trading plan */}
+      <AutoPilotWidget profile={userProfile} />
 
       {/* Market pulse — subtle, not overwhelming */}
       <div className="grid grid-cols-2 gap-3">

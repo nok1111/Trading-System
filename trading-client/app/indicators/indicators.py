@@ -235,3 +235,41 @@ def williams_r(df: pd.DataFrame, period: int = 14) -> pd.Series:
     lowest = df["low"].rolling(window=period, min_periods=period).min()
     wr = (highest - df["close"]) / (highest - lowest).replace(0, np.nan) * -100
     return wr
+
+
+def adx(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+    """Average Directional Index — trend strength indicator.
+
+    ADX > 25: strong trend
+    ADX 20-25: developing trend
+    ADX < 20: weak/no trend (ranging market)
+
+    Returns DataFrame with 'adx', 'plus_di', 'minus_di' columns.
+    """
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
+
+    # True Range
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    # Directional Movement
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+
+    plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
+
+    # Smoothed averages (Wilder's smoothing)
+    atr_val = tr.ewm(alpha=1/period, adjust=False).mean()
+    plus_di = 100 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / atr_val.replace(0, np.nan))
+    minus_di = 100 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / atr_val.replace(0, np.nan))
+
+    # DX and ADX
+    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan))
+    adx_val = dx.ewm(alpha=1/period, adjust=False).mean()
+
+    return pd.DataFrame({"adx": adx_val, "plus_di": plus_di, "minus_di": minus_di})

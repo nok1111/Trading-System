@@ -530,6 +530,103 @@ def get_assignments_endpoint() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Market Regime & Auto-Pilot Endpoints
+# ---------------------------------------------------------------------------
+
+class RegimeRequest(_BaseModel):
+    symbol: str
+    interval: str = "1h"
+    limit: int = 200
+
+
+@router.post("/regime/detect")
+def detect_regime_endpoint(req: RegimeRequest) -> dict:
+    """Detect market regime for a symbol."""
+    from app.services.market_regime import detect_regime
+
+    try:
+        regime = detect_regime(req.symbol, req.interval, req.limit)
+        return regime.to_dict()
+    except Exception as exc:
+        logger.warning("Regime detection failed: %s", exc)
+        return {"error": str(exc)}
+
+
+class RegimeBatchRequest(_BaseModel):
+    symbols: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+    interval: str = "1h"
+    limit: int = 200
+
+
+@router.post("/regime/detect-batch")
+def detect_regime_batch_endpoint(req: RegimeBatchRequest) -> dict:
+    """Detect market regime for multiple symbols."""
+    from app.services.market_regime import detect_regimes_batch
+
+    try:
+        regimes = detect_regimes_batch(req.symbols, req.interval, req.limit)
+        return {
+            "regimes": [r.to_dict() for r in regimes],
+            "total": len(regimes),
+            "distribution": _regime_distribution(regimes),
+        }
+    except Exception as exc:
+        logger.warning("Regime batch failed: %s", exc)
+        return {"error": str(exc)}
+
+
+def _regime_distribution(regimes) -> dict[str, int]:
+    dist: dict[str, int] = {}
+    for r in regimes:
+        dist[r.regime] = dist.get(r.regime, 0) + 1
+    return dist
+
+
+class AutoPilotRequest(_BaseModel):
+    risk_tolerance: str = "moderate"
+    experience_level: str = "beginner"
+    capital_range: str = "100-1000"
+    trading_goal: str = "growth"
+    interval: str = "1h"
+    max_symbols: int = 5
+
+
+@router.post("/auto-pilot/plan")
+def auto_pilot_plan_endpoint(req: AutoPilotRequest) -> dict:
+    """Generate a complete auto-pilot trading plan based on user profile + market conditions."""
+    from app.services.auto_pilot import generate_auto_pilot_plan
+
+    try:
+        plan = generate_auto_pilot_plan(
+            risk_tolerance=req.risk_tolerance,
+            experience_level=req.experience_level,
+            capital_range=req.capital_range,
+            trading_goal=req.trading_goal,
+            interval=req.interval,
+            max_symbols=req.max_symbols,
+        )
+        return plan.to_dict()
+    except Exception as exc:
+        logger.warning("Auto-pilot plan failed: %s", exc)
+        return {"error": str(exc)}
+
+
+@router.get("/profile/recommendations")
+def profile_recommendations_endpoint(
+    risk_tolerance: str = "moderate",
+    experience_level: str = "beginner",
+) -> dict:
+    """Get personalized recommendations based on user profile."""
+    from app.services.market_regime import get_profile_recommendations
+
+    try:
+        return get_profile_recommendations(risk_tolerance, experience_level)
+    except Exception as exc:
+        logger.warning("Profile recommendations failed: %s", exc)
+        return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
 # Alerts & Notifications Endpoints
 # ---------------------------------------------------------------------------
 
