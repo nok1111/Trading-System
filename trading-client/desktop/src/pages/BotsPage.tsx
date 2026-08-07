@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Tooltip, InfoPanel } from "../components/common/Tooltip";
-import { Play, Square, Trash2, Plus, Grid3x3, DollarSign, Activity, TrendingUp, Clock, Target } from "lucide-react";
+import { Play, Square, Trash2, Plus, Grid3x3, DollarSign, Activity, TrendingUp, Clock, Target, Info } from "lucide-react";
 
 // ─── Types ───
 
@@ -56,6 +56,128 @@ interface SchedulerStatus {
   total_dca_bots: number;
 }
 
+interface TradingSymbol {
+  symbol: string;
+  base: string;
+  quote: string;
+  volume: number;
+  last_price: number;
+  change_pct: number;
+}
+
+// ─── Symbol Selector (CCXT dropdown with search) ───
+
+function SymbolSelector({
+  value, onChange, symbols, loading, quoteAsset, onQuoteChange, quoteAssets,
+}: {
+  value: string;
+  onChange: (symbol: string) => void;
+  symbols: TradingSymbol[];
+  loading: boolean;
+  quoteAsset: string;
+  onQuoteChange: (q: string) => void;
+  quoteAssets: string[];
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = symbols.filter(s =>
+    s.symbol.toLowerCase().includes(search.toLowerCase()) ||
+    s.base.toLowerCase().includes(search.toLowerCase())
+  ).slice(0, 50);
+
+  return (
+    <div className="relative">
+      <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1">
+        Simbolo
+        <Tooltip text="Selecciona el par de trading de los disponibles en el exchange (via CCXT). Los simbolos estan ordenados por volumen. Puedes buscar por nombre (BTC, ETH, SOL, etc.).">
+          <Info size={13} className="text-[var(--color-text-muted)] cursor-help" />
+        </Tooltip>
+      </label>
+
+      {/* Quote asset selector */}
+      <div className="flex gap-1 mb-1.5 flex-wrap">
+        {(quoteAssets.length > 0 ? quoteAssets.slice(0, 8) : ["USDT", "BTC", "ETH", "FDUSD", "BNB"]).map(q => (
+          <button
+            key={q}
+            onClick={() => onQuoteChange(q)}
+            className={cn(
+              "px-2 py-0.5 rounded-[4px] text-[9px] font-bold transition-colors",
+              quoteAsset === q
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            )}
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+
+      {/* Selected symbol display + dropdown trigger */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2.5 text-[11px] hover:border-[var(--color-primary)]"
+      >
+        <span className="font-bold text-[var(--color-text)]">{value || "Seleccionar..."}</span>
+        <span className="text-[var(--color-text-muted)]">{loading ? "Cargando..." : "▼"}</span>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-[8px] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl max-h-[280px] flex flex-col">
+          {/* Search input */}
+          <input
+            autoFocus
+            placeholder="Buscar (BTC, ETH, SOL...)"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full rounded-t-[8px] bg-[var(--color-surface-2)] border-b border-[var(--color-border)] p-2 text-[11px] outline-none"
+          />
+
+          {/* Results */}
+          <div className="overflow-y-auto flex-1">
+            {loading && (
+              <div className="p-3 text-center text-[10px] text-[var(--color-text-muted)]">Cargando simbolos...</div>
+            )}
+            {!loading && filtered.length === 0 && (
+              <div className="p-3 text-center text-[10px] text-[var(--color-text-muted)]">No se encontraron simbolos</div>
+            )}
+            {!loading && filtered.map(s => (
+              <button
+                key={s.symbol}
+                onClick={() => {
+                  onChange(s.symbol);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className={cn(
+                  "w-full flex items-center justify-between px-3 py-2 text-[11px] hover:bg-[var(--color-surface-2)] transition-colors text-left",
+                  s.symbol === value && "bg-[var(--color-primary)]/10"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[var(--color-text)]">{s.base}</span>
+                  <span className="text-[var(--color-text-muted)] text-[9px]">/{s.quote}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-muted)]">
+                  {s.last_price > 0 && (
+                    <span>${s.last_price < 1 ? s.last_price.toFixed(6) : s.last_price.toLocaleString()}</span>
+                  )}
+                  {s.change_pct !== 0 && (
+                    <span className={s.change_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>
+                      {s.change_pct >= 0 ? "+" : ""}{s.change_pct.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Component ───
 
 export function BotsPage() {
@@ -65,6 +187,12 @@ export function BotsPage() {
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+
+  // Symbols from CCXT
+  const [symbols, setSymbols] = useState<TradingSymbol[]>([]);
+  const [symbolsLoading, setSymbolsLoading] = useState(false);
+  const [quoteAsset, setQuoteAsset] = useState("USDT");
+  const [quoteAssets, setQuoteAssets] = useState<string[]>([]);
 
   // Form state for grid bot
   const [gridForm, setGridForm] = useState({
@@ -94,11 +222,37 @@ export function BotsPage() {
     }
   }, []);
 
+  const loadSymbols = useCallback(async (quote: string = "USDT") => {
+    setSymbolsLoading(true);
+    try {
+      const r = await api<any>(`/api/bots/symbols?quote=${quote}&limit=300`);
+      if (r.status === "ok") {
+        setSymbols(r.symbols || []);
+        setQuoteAssets(r.quote_assets || []);
+      }
+    } catch (e) {
+      console.error("Error loading symbols:", e);
+    } finally {
+      setSymbolsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Load symbols when create form opens or quote asset changes
+  useEffect(() => {
+    if (showCreate && symbols.length === 0) {
+      loadSymbols(quoteAsset);
+    }
+  }, [showCreate]);
+
+  useEffect(() => {
+    if (showCreate) loadSymbols(quoteAsset);
+  }, [quoteAsset]);
 
   const createGridBot = async () => {
     try {
@@ -289,13 +443,15 @@ export function BotsPage() {
                   className="w-full rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2.5 text-[11px]" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1">
-                  Simbolo
-                  <Tooltip text="Par de trading en formato CCXT. Ej: BTC/USDT, ETH/USDT, SOL/USDT. El bot operara este par en el exchange configurado." icon />
-                </label>
-                <input placeholder="BTC/USDT" value={gridForm.symbol}
-                  onChange={e => setGridForm({...gridForm, symbol: e.target.value})}
-                  className="w-full rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2.5 text-[11px]" />
+                <SymbolSelector
+                  value={gridForm.symbol}
+                  onChange={sym => setGridForm({...gridForm, symbol: sym})}
+                  symbols={symbols}
+                  loading={symbolsLoading}
+                  quoteAsset={quoteAsset}
+                  onQuoteChange={setQuoteAsset}
+                  quoteAssets={quoteAssets}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1">
@@ -351,13 +507,15 @@ export function BotsPage() {
                   className="w-full rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2.5 text-[11px]" />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1">
-                  Simbolo
-                  <Tooltip text="Par de trading en formato CCXT. Ej: BTC/USDT, ETH/USDT. El bot comprara este par repetidamente." icon />
-                </label>
-                <input placeholder="BTC/USDT" value={dcaForm.symbol}
-                  onChange={e => setDcaForm({...dcaForm, symbol: e.target.value})}
-                  className="w-full rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2.5 text-[11px]" />
+                <SymbolSelector
+                  value={dcaForm.symbol}
+                  onChange={sym => setDcaForm({...dcaForm, symbol: sym})}
+                  symbols={symbols}
+                  loading={symbolsLoading}
+                  quoteAsset={quoteAsset}
+                  onQuoteChange={setQuoteAsset}
+                  quoteAssets={quoteAssets}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1">

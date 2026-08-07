@@ -370,3 +370,83 @@ def scheduler_stop(user=Depends(get_current_user)):
     if scheduler.is_running:
         scheduler.stop()
     return {"status": "stopped", "is_running": scheduler.is_running}
+
+
+# ─── Symbols endpoint (CCXT) ───
+
+@router.get("/symbols")
+def list_trading_symbols(
+    quote: str = "USDT",
+    limit: int = 200,
+    user=Depends(get_current_user),
+) -> dict:
+    """List available trading symbols from CCXT (Binance by default).
+
+    Returns symbols filtered by quote asset (USDT, BTC, ETH, etc.)
+    sorted by volume. Uses CCXT load_markets() + fetch_tickers().
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    try:
+        import ccxt
+
+        # Use Binance public API (no keys needed for market data)
+        exchange = ccxt.binance({"enableRateLimit": True})
+
+        # Load markets
+        markets = exchange.load_markets()
+
+        # Filter: spot, active, matching quote asset
+        symbols = []
+        for sym, market in markets.items():
+            if not market.get("active", True):
+                continue
+            if market.get("type") != "spot":
+                continue
+            if market.get("quote") != quote.upper():
+                continue
+            symbols.append({
+                "symbol": sym,
+                "base": market.get("base", ""),
+                "quote": market.get("quote", ""),
+            })
+
+        # Try to fetch tickers for volume sorting
+        try:
+            tickers = exchange.fetch_tickers()
+            for s in symbols:
+                t = tickers.get(s["symbol"])
+                if t:
+                    s["volume"] = float(t.get("quoteVolume", 0))
+                    s["last_price"] = float(t.get("last", 0))
+                    s["change_pct"] = float(t.get("percentage", 0))
+                else:
+                    s["volume"] = 0
+                    s["last_price"] = 0
+                    s["change_pct"] = 0
+            # Sort by volume descending
+            symbols.sort(key=lambda x: x.get("volume", 0), reverse=True)
+        except Exception as exc:
+            log.warning(f"Could not fetch tickers: {exc}")
+            # Sort alphabetically as fallback
+            symbols.sort(key=lambda x: x["symbol"])
+
+        # Limit results
+        symbols = symbols[:limit]
+
+        # Also return available quote assets
+        quote_assets = sorted(set(
+            m.get("quote", "") for m in markets.values()
+            if m.get("active", True) and m.get("type") == "spot" and m.get("quote")
+        ))
+
+        return {
+            "status": "ok",
+            "quote": quote.upper(),
+            "symbols": symbols,
+            "total": len(symbols),
+            "quote_assets": quote_assets,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc), "symbols": []}
