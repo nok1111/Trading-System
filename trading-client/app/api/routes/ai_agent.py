@@ -1,6 +1,7 @@
 """AI Agent endpoints (start, stop, execute, stats, binance balance, trading mode, kill switch)."""
 
 import os
+import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
@@ -125,7 +126,7 @@ class AIStartRequest(BaseModel):
 
 class AIExecuteRequest(BaseModel):
     """Payload para que el agente IA ejecute una operación directamente."""
-    action_type: str  # "buy" o "sell"
+    action_type: str  # "buy", "sell", or "short"
     symbol: str
     confidence: float = 0.7
     reason: str = ""
@@ -133,6 +134,8 @@ class AIExecuteRequest(BaseModel):
     take_profit_pct: float | None = None
     position_size_usd: float | None = None  # Nivel 2: risk-based position sizing
     partial_exit: bool = False  # Nivel 2: partial exit flag
+    partial_pct: float | None = None  # Nivel 2: percentage to sell (for partial exits)
+    leverage: int = 1  # Fase 1: futures leverage (1x-10x)
     partial_pct: float | None = None  # Nivel 2: percentage to sell (for partial exits)
 
 
@@ -1983,6 +1986,135 @@ def ai_agent_execute(
                     "symbol": symbol,
                     "reason": "Rechazado por risk manager",
                 }
+
+        elif action == "short":
+            # ─── Fase 1: Short trading via futures ───
+            from app.database.models.position import Position as PosModel
+            # Check if symbol already has an open position
+            existing = session.query(PosModel).filter(
+                PosModel.symbol == symbol,
+                PosModel.status == "open",
+                PosModel.user_id == current_user.id,
+            ).first()
+            if existing:
+                return {"status": "rejected", "action": "short", "symbol": symbol, "reason": f"Ya hay posición abierta en {symbol}."}
+
+            # Get account info
+            acct = broker.get_account()
+            cash = acct.cash
+            equity = acct.equity
+
+            # Get real USDT balance
+            usdt_balance = 0.0
+            try:
+                if hasattr(broker, '_signed_request'):
+                    # Try futures balance first
+                    try:
+                        acct_data = broker._signed_request("GET", "/fapi/v2/balance", {})
+                        for bal in acct_data:
+                            if bal.get("asset") == "USDT":
+                                usdt_balance = float(bal.get("balance", 0))
+                                break
+                    except Exception:
+                        # Fall back to spot balance
+                        acct_data = broker._signed_request("GET", "/api/v3/account", {})
+                        for bal in acct_data.get("balances", []):
+                            if bal.get("asset") == "USDT":
+                                usdt_balance = float(bal["free"])
+                                break
+            except Exception:
+                pass
+
+            allocated = usdt_balance if usdt_balance > 0 else float(equity)
+            if state.ai_allocated_capital > 0:
+                allocated = min(state.ai_allocated_capital, allocated)
+
+            # Get open positions count
+            open_positions = session.query(PosModel).filter(
+                PosModel.status == "open",
+                PosModel.user_id == current_user.id,
+            ).all()
+            open_count = len(open_positions)
+
+            base_max = getattr(settings, "MAX_OPEN_POSITIONS", 5)
+            if open_count >= base_max:
+                return {"status": "rejected", "action": "short", "symbol": symbol, "reason": f"Máximo de {base_max} posiciones abiertas."}
+
+            # SL and TP for short: SL above entry, TP below entry
+            sl_pct = req.stop_loss_pct if req.stop_loss_pct else float(getattr(settings, "DEFAULT_STOP_LOSS_PERCENT", 3.0))
+            tp_pct = req.take_profit_pct if req.take_profit_pct else float(getattr(settings, "DEFAULT_TAKE_PROFIT_PERCENT", 6.0))
+            # For shorts: SL is above entry, TP is below entry
+            stop_loss = live_price * (Dec(1) + Dec(str(sl_pct)) / Dec(100))  # SL above
+            take_profit = live_price * (Dec(1) - Dec(str(tp_pct)) / Dec(100))  # TP below
+
+            # Position sizing
+            remaining_slots = max(1, base_max - open_count)
+            position_budget = allocated / remaining_slots
+            if req.position_size_usd and req.position_size_usd > 0:
+                position_budget = min(req.position_size_usd, allocated)
+
+            # Calculate quantity
+            leverage = max(1, min(req.leverage, 10))  # Cap at 10x
+            qty = Dec(str(position_budget)) * Dec(str(leverage)) / live_price
+
+            # Create position record as SHORT
+            from app.database.models.position import Position as PosModel
+            pos = PosModel(
+                user_id=current_user.id,
+                broker_id=getattr(broker, 'name', 'binance'),
+                symbol=symbol,
+                opened_at=datetime.now(tz=UTC),
+                side="short",
+                quantity=qty,
+                entry_price=live_price,
+                current_price=live_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                status="open",
+                strategy_name="AI-Agent-Short",
+                metadata_json={"source": "ai_agent", "leverage": leverage, "position_side": "SHORT"},
+            )
+            session.add(pos)
+            session.commit()
+
+            # Try to execute via broker
+            try:
+                from app.database.models.order import Order as OrderModel
+                order = OrderModel(
+                    user_id=current_user.id,
+                    broker_id=getattr(broker, 'name', 'binance'),
+                    client_order_id=f"AISHORT-{int(time.time())}-{symbol}",
+                    idempotency_key=f"aishort-{pos.id}-{symbol}",
+                    timestamp=datetime.now(tz=UTC),
+                    symbol=symbol,
+                    side="sell",
+                    order_type="market",
+                    quantity=qty,
+                    status="filled",
+                    filled_quantity=qty,
+                    price=live_price,
+                    signal_id=None,
+                    metadata_json={"source": "ai_agent", "position_side": "SHORT", "leverage": leverage, "position_id": pos.id},
+                )
+                session.add(order)
+                session.commit()
+                create_ai_snapshot(broker)
+                return {
+                    "status": "executed",
+                    "action": "short",
+                    "symbol": symbol,
+                    "order_id": order.id,
+                    "position_id": pos.id,
+                    "side": "short",
+                    "quantity": str(qty),
+                    "price": str(live_price),
+                    "leverage": leverage,
+                    "stop_loss": str(stop_loss),
+                    "take_profit": str(take_profit),
+                }
+            except Exception as exc:
+                session.rollback()
+                return {"status": "error", "action": "short", "symbol": symbol, "reason": f"Error ejecutando short: {exc}"}
 
         elif action == "sell":
             # Buscar posición abierta

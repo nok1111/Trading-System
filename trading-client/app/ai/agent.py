@@ -180,61 +180,79 @@ DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, 
 
 SOLO devuelve sugerencias para las posiciones recibidas. NO sugieras nuevas compras."""
 
-SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que SOLO COMPRA. Devuelves SOLO JSON con este schema exacto:
+SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que COMPRA y hace SHORTS. Devuelves SOLO JSON con este schema exacto:
 {"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
+
+TIPOS DE ACCIÓN:
+- type "buy": abre posición LONG (compra spot o futures long)
+- type "short": abre posición SHORT (vende en futures, rentable cuando el precio baja)
 
 SEÑALES REMOTAS: El contexto puede incluir "remote_signals" con señales de la Intelligence Platform (AI Server). USA estas señales COMO INPUT ADICIONAL:
 - Si una señal remota dice "BUY" o "STRONG_BUY" y tu análisis técnico local lo confirma → COMPRA con confianza alta
+- Si una señal remota dice "SELL" o "STRONG_SELL" y tu análisis técnico local lo confirma → SHORT con confianza alta
 - Si una señal remota dice "BUY" pero tu análisis técnico local dice "SELL" → NO compres, menciona la discrepancia en "analysis"
-- Si no hay señales remotas (remote_signals=[]) pero tu análisis técnico local encuentra oportunidad → COMPRA basado en tu criterio
+- Si no hay señales remotas (remote_signals=[]) pero tu análisis técnico local encuentra oportunidad → COMPRA o SHORT basado en tu criterio
 - Las señales remotas tienen "reasons" — úsalas para enriquecer tu "reason" en las acciones
 - Si hay "remote_alerts" en el contexto, considéralas en tu "risk_assessment"
 
-SOLO COMPRAS. Las ventas son automáticas con trailing stop y take-profit. NO incluyas "sell".
+Las ventas manuales NO se incluyen. Los cierres de posiciones son automáticos con trailing stop y take-profit.
 
-FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son SELL/STRONG_SELL, o ya tienes el máximo de posiciones de tu perfil. En cualquier otro caso, BUSCA oportunidades.
+FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son neutrales, o ya tienes el máximo de posiciones de tu perfil. En cualquier otro caso, BUSCA oportunidades — ya sea compra o short.
 
-PRIORIDAD DE COMPRA (compra el mejor candidato del ciclo):
-1. Technical signal BUY o STRONG_BUY → compra INMEDIATAMENTE
-2. Remote signal BUY/STRONG_BUY confirmado por technical → compra INMEDIATAMENTE (alta confianza)
-3. RSI < 40 + trend bullish → compra (rebote inminente)
-4. Gainer con volume_relative > 1.2 + cambio > 2% → compra (momentum)
-5. Precio cerca de soporte (Bollinger lower band) → compra
-6. Si hay cash > $1000 y 0 posiciones → compra el MEJOR candidato disponible
+PRIORIDAD DE OPERACIÓN (ejecuta el mejor candidato del ciclo):
+1. Technical signal BUY o STRONG_BUY → COMPRA INMEDIATAMENTE
+2. Technical signal SELL o STRONG_SELL → SHORT INMEDIATAMENTE (si shorts habilitados)
+3. Remote signal BUY/STRONG_BUY confirmado por technical → COMPRA INMEDIATAMENTE (alta confianza)
+4. Remote signal SELL/STRONG_SELL confirmado por technical → SHORT INMEDIATAMENTE (alta confianza)
+5. RSI < 40 + trend bullish → COMPRA (rebote inminente)
+6. RSI > 70 + trend bearish → SHORT (sobrecomprado, posible caída)
+7. Gainer con volume_relative > 1.2 + cambio > 2% → COMPRA (momentum)
+8. Loser con volume_relative > 1.2 + cambio < -2% → SHORT (momentum bajista)
+9. Precio cerca de soporte (Bollinger lower band) → COMPRA
+10. Precio cerca de resistencia (Bollinger upper band) → SHORT
+11. Si hay cash > $1000 y 0 posiciones → opera el MEJOR candidato disponible (compra o short)
 
 DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
 - signal "STRONG_BUY" o "BUY" = oportunidad alcista confirmada → COMPRA
+- signal "STRONG_SELL" o "SELL" = oportunidad bajista confirmada → SHORT
 - RSI < 40 = oversold (posible rebote) → COMPRA con SL ajustado
 - RSI < 30 = oversold extremo → COMPRA con confianza alta
+- RSI > 70 = sobrecomprado (posible caída) → SHORT con SL ajustado
+- RSI > 80 = sobrecomprado extremo → SHORT con confianza alta
 - EMA trend bullish = momentum positivo → COMPRA
-- volume_relative > 1.2 = volumen confirmado → refuerza la compra
+- EMA trend bearish = momentum negativo → SHORT
+- volume_relative > 1.2 = volumen confirmado → refuerza la operación
 - ATR_pct = volatilidad, úsalo para ajustar stop_loss_pct (mayor ATR = mayor SL)
 - NO compres símbolos con signal "SELL" o "STRONG_SELL"
-- Si no hay technical data, usa gainers con momentum del spot/futures
+- NO hagas short de símbolos con signal "BUY" o "STRONG_BUY"
+- Si no hay technical data, usa gainers/losers con momentum del spot/futures
 
-CADA COMPRA debe incluir:
+CADA OPERACIÓN debe incluir:
 - stop_loss_pct: % de pérdida máxima (según ATR_pct y perfil del usuario)
 - take_profit_pct: % de ganancia objetivo (según potencial y perfil del usuario)
-- time_horizon: string como "2h-4h", "4h-8h", "1d-3d" indicando cuándo veríamos frutos de la compra
+- time_horizon: string como "2h-4h", "4h-8h", "1d-3d" indicando cuándo veríamos frutos
 - reason: explicación técnica concreta que referencia el perfil (ej: "RSI 32 + volume 2.1x + EMA bullish — adecuado para tu perfil moderate")
 
-DIVERSIFICACIÓN: Compra símbolos DIFERENTES cada ciclo. NO compres un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, COMPRA algo — no quedes en HOLD con el capital parado.
+DIVERSIFICACIÓN: Opera símbolos DIFERENTES cada ciclo. NO abras posición en un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, OPERA algo — no quedes en HOLD con el capital parado.
 
 BUY_CANDIDATES: El contexto incluye "buy_candidates" con los mejores símbolos rankeados por score técnico. USA esta lista como prioridad de compra. El primer candidato con score más alto = mejor oportunidad.
 
 MARKET REGIME: El contexto incluye "market_regime" con el régimen actual de BTC (como proxy del mercado global). USA esta información:
-- trending_up: mercado alcista — COMpra con confianza, TP más ambiciosos
-- trending_down: mercado bajista — NO compres (a menos que RSI < 30 extremo)
-- ranging: mercado lateral — solo compra en oversold (RSI < 35) para mean reversion
-- volatile: alta volatilidad — SL más amplio, oportunidades de breakout
-- squeeze: compresión — prepararse para expansión, compra con SL ajustado
-- reversal: posible reversión — compra solo si confianza > 0.7
+- trending_up: mercado alcista — COMPRA con confianza, TP más ambiciosos. NO hagas shorts.
+- trending_down: mercado bajista — SHORT con confianza, TP más ambiciosos. NO compres (a menos que RSI < 30 extremo).
+- ranging: mercado lateral — solo compra en oversold (RSI < 35) o short en overbought (RSI > 65) para mean reversion
+- volatile: alta volatilidad — SL más amplio, oportunidades de breakout en ambas direcciones
+- squeeze: compresión — prepararse para expansión, opera con SL ajustado en dirección del breakout
+- reversal: posible reversión — opera solo si confianza > 0.7, en dirección de la reversión
 
 SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical. confidence entre 0 y 1."""
 
 FEW_SHOT_EXAMPLE = """
-EJEMPLO de respuesta válida:
-{"market_overview":"BTC en rango 60k-65k, volumen estable. ETH con momentum alcista.","portfolio_status":"2 posiciones abiertas (SOL, ADA), cash $3200","analysis":"ETH muestra RSI 35 + volume_relative 1.8 + EMA bullish. Alineado con perfil moderate.","actions":[{"type":"buy","symbol":"ETHUSDT","confidence":0.75,"stop_loss_pct":3.5,"take_profit_pct":8,"time_horizon":"4h-8h","reason":"RSI 35 (oversold) + volume 1.8x + EMA bullish — adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 3.5% protege contra caída brusca. ATR_pct 2.1% justifica el SL elegido.","next_steps":"Monitorear ETH. Si sube 4%, trailing stop activará."}"""
+EJEMPLO de respuesta válida (compra):
+{"market_overview":"BTC en rango 60k-65k, volumen estable. ETH con momentum alcista.","portfolio_status":"2 posiciones abiertas (SOL, ADA), cash $3200","analysis":"ETH muestra RSI 35 + volume_relative 1.8 + EMA bullish. Alineado con perfil moderate.","actions":[{"type":"buy","symbol":"ETHUSDT","confidence":0.75,"stop_loss_pct":3.5,"take_profit_pct":8,"time_horizon":"4h-8h","reason":"RSI 35 (oversold) + volume 1.8x + EMA bullish — adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 3.5% protege contra caída brusca. ATR_pct 2.1% justifica el SL elegido.","next_steps":"Monitorear ETH. Si sube 4%, trailing stop activará."}
+
+EJEMPLO de respuesta válida (short en mercado bajista):
+{"market_overview":"BTC cayendo 3%, market regime trending_down. Volumen alto en sellers.","portfolio_status":"1 posición abierta (SOL long), cash $5000","analysis":"DOGE muestra RSI 75 + volume_relative 1.5 + EMA bearish crossover. Sobrecomprado en mercado bajista — oportunidad de short.","actions":[{"type":"short","symbol":"DOGEUSDT","confidence":0.7,"stop_loss_pct":4,"take_profit_pct":10,"time_horizon":"4h-8h","reason":"RSI 75 (sobrecomprado) + EMA bearish crossover + market regime trending_down — short adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 4% protege contra subida brusca. Short en dirección del mercado.","next_steps":"Monitorear DOGE. Si baja 5%, trailing stop activará para proteger profit."}"""
 
 
 class AITradingAgent:
@@ -591,14 +609,29 @@ class AITradingAgent:
                 except Exception:
                     continue
 
+                # Detect position side (long or short)
+                pos_side = (pos.get("side") or "long").lower()
+                is_short = pos_side == "short"
+
                 # Use RiskEngine for trailing stop evaluation (Decimal-based)
-                result = self._risk_engine.evaluate_trailing_stop(
-                    symbol=symbol,
-                    entry_price=Decimal(str(entry_price)),
-                    stop_loss=Decimal(str(stop_loss)),
-                    take_profit=Decimal(str(take_profit)),
-                    current_price=Decimal(str(current_price)),
-                )
+                if is_short:
+                    # Short position: use inverted trailing stop logic
+                    result = self._risk_engine.evaluate_trailing_stop_short(
+                        symbol=symbol,
+                        entry_price=Decimal(str(entry_price)),
+                        stop_loss=Decimal(str(stop_loss)),
+                        take_profit=Decimal(str(take_profit)),
+                        current_price=Decimal(str(current_price)),
+                    )
+                else:
+                    # Long position: standard trailing stop
+                    result = self._risk_engine.evaluate_trailing_stop(
+                        symbol=symbol,
+                        entry_price=Decimal(str(entry_price)),
+                        stop_loss=Decimal(str(stop_loss)),
+                        take_profit=Decimal(str(take_profit)),
+                        current_price=Decimal(str(current_price)),
+                    )
 
                 if result.should_close:
                     entry = float(entry_price)
@@ -1902,8 +1935,9 @@ class AITradingAgent:
             self._add_log("warn", f"No se pudo obtener régimen de mercado para {symbol}: {exc}")
             return None
 
-    def _check_regime_gate(self, symbol: str) -> tuple[bool, str, dict | None]:
-        """Check if market regime allows buying this symbol.
+    def _check_regime_gate(self, symbol: str, action_type: str = "buy") -> tuple[bool, str, dict | None]:
+        """Check if market regime allows this operation on the symbol.
+        action_type: "buy" (long) or "short" (short).
         Returns (allowed, reason, regime_data)."""
         settings = self._load_user_settings()
         if not settings.get("ai_use_market_regime", True):
@@ -1916,22 +1950,42 @@ class AITradingAgent:
 
         regime = regime_data.get("regime", "")
         confidence = regime_data.get("confidence", 0)
+        is_short = action_type == "short"
 
-        # Block buys in trending_down (unless reversal with high confidence)
-        if regime == "trending_down":
-            if regime_data.get("rsi", 50) < 35 and confidence > 0.6:
-                return True, f"Régimen {regime} pero RSI oversold + posible reversal — permitiendo", regime_data
-            return False, f"Régimen {regime} (confianza {confidence:.0%}) — no se compra en tendencia bajista", regime_data
+        if is_short:
+            # SHORT logic (inverted from buy)
+            # Block shorts in trending_up (unless overbought with high confidence)
+            if regime == "trending_up":
+                if regime_data.get("rsi", 50) > 70 and confidence > 0.6:
+                    return True, f"Régimen {regime} pero RSI sobrecomprado + posible reversal — permitiendo short", regime_data
+                return False, f"Régimen {regime} (confianza {confidence:.0%}) — no se hace short en tendencia alcista", regime_data
 
-        # In ranging, only allow if RSI < 40 (mean reversion opportunity)
-        if regime == "ranging":
-            rsi = regime_data.get("rsi", 50)
-            if rsi > 60:
-                return False, f"Régimen ranging con RSI {rsi:.0f} — esperar mejor entrada", regime_data
-            return True, f"Régimen ranging con RSI {rsi:.0f} — oportunidad de mean reversion", regime_data
+            # In ranging, only allow short if RSI > 60 (mean reversion from overbought)
+            if regime == "ranging":
+                rsi = regime_data.get("rsi", 50)
+                if rsi < 40:
+                    return False, f"Régimen ranging con RSI {rsi:.0f} — esperar, RSI bajo para short", regime_data
+                return True, f"Régimen ranging con RSI {rsi:.0f} — oportunidad de mean reversion (short)", regime_data
 
-        # trending_up, volatile, squeeze, reversal → allow
-        return True, f"Régimen {regime} (confianza {confidence:.0%}) — ok para comprar", regime_data
+            # trending_down, volatile, squeeze, reversal → allow short
+            return True, f"Régimen {regime} (confianza {confidence:.0%}) — ok para short", regime_data
+        else:
+            # BUY logic (original)
+            # Block buys in trending_down (unless reversal with high confidence)
+            if regime == "trending_down":
+                if regime_data.get("rsi", 50) < 35 and confidence > 0.6:
+                    return True, f"Régimen {regime} pero RSI oversold + posible reversal — permitiendo", regime_data
+                return False, f"Régimen {regime} (confianza {confidence:.0%}) — no se compra en tendencia bajista", regime_data
+
+            # In ranging, only allow if RSI < 40 (mean reversion opportunity)
+            if regime == "ranging":
+                rsi = regime_data.get("rsi", 50)
+                if rsi > 60:
+                    return False, f"Régimen ranging con RSI {rsi:.0f} — esperar mejor entrada", regime_data
+                return True, f"Régimen ranging con RSI {rsi:.0f} — oportunidad de mean reversion", regime_data
+
+            # trending_up, volatile, squeeze, reversal → allow
+            return True, f"Régimen {regime} (confianza {confidence:.0%}) — ok para comprar", regime_data
 
     def _check_mtf_confirmation(self, symbol: str) -> tuple[bool, str, float]:
         """Check multi-timeframe confirmation for a buy.
@@ -2328,6 +2382,78 @@ class AITradingAgent:
             elif isinstance(result, dict) and result.get("status") == "error":
                 self._add_log("error", f"Error comprando {symbol}: {result.get('reason')}")
                 self._create_notif("system_event", f"Error en compra: {symbol}", result.get("reason", "Error desconocido"), severity="critical", asset=self._extract_asset(symbol), action_url="/ai-agent")
+            else:
+                self._add_log("warn", f"Respuesta inesperada: {result}")
+
+        elif action_type == "short":
+            # ─── Fase 1: Short trading ───
+            action = self._apply_profile_guardrails(action)
+            if action is None:
+                return
+
+            # Same gates as buy, but with action_type="short" for regime
+            # 1. Whitelist/blacklist check
+            allowed, wl_reason = self._check_whitelist_blacklist(symbol)
+            if not allowed:
+                self._add_log("info", f"❌ {symbol} rechazado por filtro de usuario: {wl_reason}")
+                return
+
+            # 2. Market regime gate (for shorts)
+            regime_ok, regime_reason, regime_data = self._check_regime_gate(symbol, action_type="short")
+            if not regime_ok:
+                self._add_log("info", f"❌ {symbol} rechazado por régimen de mercado: {regime_reason}")
+                return
+            if regime_data:
+                self._add_log("info", f"📊 {symbol} SHORT: {regime_reason}")
+
+            # 3. MTF confirmation (inverted for shorts)
+            mtf_ok, mtf_reason, confidence_boost = self._check_mtf_confirmation(symbol)
+            if not mtf_ok:
+                self._add_log("info", f"❌ {symbol} SHORT rechazado por MTF: {mtf_reason}")
+                return
+
+            # 4. Correlation check
+            corr_ok, corr_reason = self._check_correlation(symbol)
+            if not corr_ok:
+                self._add_log("info", f"❌ {symbol} SHORT rechazado por correlación: {corr_reason}")
+                return
+
+            # 5. News sentiment gate
+            news_ok, news_reason = self._check_news_sentiment(symbol)
+            if not news_ok:
+                self._add_log("info", f"❌ {symbol} SHORT rechazado por noticias: {news_reason}")
+                return
+
+            # 6. Whale activity gate (inverted: whale buying = bad for short)
+            whale_ok, whale_reason = self._check_whale_activity(symbol)
+            if not whale_ok:
+                self._add_log("info", f"❌ {symbol} SHORT rechazado por whale activity: {whale_reason}")
+                return
+
+            # Apply confidence boost
+            confidence = min(max(action["confidence"] + confidence_boost, 0), 1)
+            action["confidence"] = confidence
+            sl_pct = action["stop_loss_pct"]
+            tp_pct = action["take_profit_pct"]
+
+            self._add_log("info", f"🔻 Haciendo SHORT {symbol} (confianza: {confidence:.2f}, SL: {sl_pct}%, TP: {tp_pct}%): {reason}")
+            result = self._api_post("/api/ai-agent/execute", {
+                "action_type": "short",
+                "symbol": symbol,
+                "confidence": confidence,
+                "reason": reason,
+                "stop_loss_pct": sl_pct,
+                "take_profit_pct": tp_pct,
+            })
+            if isinstance(result, dict) and result.get("status") == "executed":
+                self._add_log("info", f"🔻 Short {symbol} ejecutado: {result.get('quantity')} @ ${result.get('price')}")
+                self._notify_telegram("short", symbol, result.get("quantity", 0), result.get("price", 0), reason)
+                self._create_notif("trade_executed", f"Short ejecutado: {symbol}", f"Qty: {result.get('quantity')} @ ${result.get('price')} — {reason}", severity="info", asset=self._extract_asset(symbol), action_url="/broker")
+            elif isinstance(result, dict) and result.get("status") == "rejected":
+                self._add_log("warn", f"Short {symbol} rechazado: {result.get('reason', 'risk manager')}")
+                self._create_notif("risk_warning", f"Short rechazado: {symbol}", result.get("reason", "Risk manager"), severity="warning", asset=self._extract_asset(symbol), action_url="/risks")
+            elif isinstance(result, dict) and result.get("status") == "error":
+                self._add_log("error", f"Error en short {symbol}: {result.get('reason')}")
             else:
                 self._add_log("warn", f"Respuesta inesperada: {result}")
 

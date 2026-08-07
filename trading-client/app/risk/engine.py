@@ -414,6 +414,87 @@ class RiskEngine:
         """Limpia el peak tracking después de cerrar una posición."""
         self._position_peaks.pop(symbol, None)
 
+    def evaluate_trailing_stop_short(
+        self,
+        symbol: str,
+        entry_price: Decimal,
+        stop_loss: Decimal,
+        take_profit: Decimal,
+        current_price: Decimal,
+    ) -> TrailingStopResult:
+        """Evalúa el trailing stop para una posición SHORT (inverted logic).
+
+        For shorts:
+        - Profit when price goes DOWN
+        - SL is ABOVE entry price
+        - TP is BELOW entry price
+        - Track lowest price (trough) instead of peak
+        1. Above entry: use original stop-loss
+        2. Below entry (< 2% down): stop at breakeven
+        3. Clearly in profit: trail at 2% above trough, never above entry
+        """
+        # Track trough (lowest price seen)
+        trough = self._position_peaks.get(symbol, entry_price)
+        if current_price < trough:
+            trough = current_price
+            self._position_peaks[symbol] = trough
+
+        # Determine effective stop-loss based on trough (lowest price seen)
+        if trough < entry_price * (Decimal("1") - BREAKEVEN_THRESHOLD):
+            # Position was clearly in profit: trail at 2% above trough, never above entry
+            trailing_sl = trough * (Decimal("1") + TRAILING_STOP_PCT)
+            effective_sl = min(entry_price, trailing_sl)
+        elif trough < entry_price:
+            # Position was barely in profit (< 2% down): breakeven stop
+            effective_sl = entry_price
+        else:
+            # Never been in profit: use original stop-loss
+            effective_sl = stop_loss
+
+        # Check if should close (price goes UP for shorts = bad)
+        if current_price >= effective_sl:
+            if effective_sl == entry_price and current_price > entry_price:
+                return TrailingStopResult(
+                    should_close=True,
+                    reason=f"Breakeven stop (short): precio {current_price} subió hacia entry {entry_price}",
+                    effective_sl=effective_sl,
+                    peak=trough,
+                    close_type="breakeven",
+                )
+            elif effective_sl < entry_price:
+                return TrailingStopResult(
+                    should_close=True,
+                    reason=f"Trailing stop (short): trough fue {trough}, comprando a {current_price}",
+                    effective_sl=effective_sl,
+                    peak=trough,
+                    close_type="trailing",
+                )
+            else:
+                return TrailingStopResult(
+                    should_close=True,
+                    reason=f"Stop-loss (short): precio {current_price} >= SL {effective_sl}",
+                    effective_sl=effective_sl,
+                    peak=trough,
+                    close_type="stop_loss",
+                )
+
+        # TP for shorts: price goes DOWN to TP
+        if current_price <= take_profit:
+            return TrailingStopResult(
+                should_close=True,
+                reason=f"Take-profit (short): precio {current_price} <= TP {take_profit}",
+                effective_sl=effective_sl,
+                peak=trough,
+                close_type="take_profit",
+            )
+
+        return TrailingStopResult(
+            should_close=False,
+            reason="Posición short dentro de rangos",
+            effective_sl=effective_sl,
+            peak=trough,
+        )
+
     def get_position_peak(self, symbol: str) -> Decimal | None:
         """Devuelve el peak tracking para un símbolo."""
         return self._position_peaks.get(symbol)

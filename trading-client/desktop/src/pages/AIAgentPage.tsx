@@ -81,6 +81,9 @@ export function AIAgentPage() {
   const [customInstructions, setCustomInstructions] = useState("");
   const [backtestData, setBacktestData] = useState<any>(null);
   const [backtestDays, setBacktestDays] = useState(30);
+  // Fase 1: Short trading + leverage
+  const [shortsEnabled, setShortsEnabled] = useState(false);
+  const [leverage, setLeverage] = useState(1);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -882,6 +885,54 @@ export function AIAgentPage() {
                 <p className="text-[9px] text-[var(--color-text-muted)] mt-1">
                   La IA leerá estas reglas en cada ciclo y las respetará. Máx 1000 caracteres.
                 </p>
+              </div>
+
+              {/* Fase 1: Short Trading + Leverage */}
+              <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-2">⚡ Trading Avanzado</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Tooltip text="Permite a la IA hacer SHORTS (vender en mercado bajista). La IA abre posición short cuando detecta sobrecompra + tendencia bajista. Rentable cuando el precio baja.">
+                    <label className="flex items-center gap-2 rounded-[8px] bg-[var(--color-surface-2)] p-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shortsEnabled}
+                        onChange={(e) => setShortsEnabled(e.target.checked)}
+                        disabled={isRunning}
+                        className="w-4 h-4 accent-[var(--color-danger)]"
+                      />
+                      <div>
+                        <span className="text-[11px] font-bold text-[var(--color-text)]">🔻 Permitir Shorts</span>
+                        <span className="block text-[9px] text-[var(--color-text-muted)]">IA puede ganar en mercado bajista</span>
+                      </div>
+                    </label>
+                  </Tooltip>
+                  <Tooltip text="Leverage (apalancamiento) para futures. 1x = sin apalancamiento. Mayor leverage = mayor riesgo y mayor recompensa. Máx 10x.">
+                    <div className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-bold text-[var(--color-text)]">Leverage</span>
+                        <span className="text-[13px] font-bold text-[var(--color-accent)]">{leverage}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={leverage}
+                        onChange={(e) => setLeverage(Number(e.target.value))}
+                        disabled={isRunning || !shortsEnabled}
+                        className="w-full accent-[var(--color-accent)]"
+                      />
+                      <div className="flex justify-between text-[8px] text-[var(--color-text-muted)] mt-0.5">
+                        <span>1x</span><span>5x</span><span>10x</span>
+                      </div>
+                    </div>
+                  </Tooltip>
+                </div>
+                {shortsEnabled && leverage > 3 && (
+                  <p className="text-[9px] text-[var(--color-warning)] mt-1.5">
+                    ⚠️ Leverage {leverage}x es alto. Una subida del {(100/leverage).toFixed(1)}% del precio puede liquidar tu posición short.
+                  </p>
+                )}
               </div>
 
               <Button variant="primary" size="sm" onClick={saveSymbolSettings} disabled={isRunning}>

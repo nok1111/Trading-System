@@ -2,6 +2,7 @@
 
 from app.brokers.broker import Broker
 from app.brokers.binance_broker import BinanceBroker
+from app.brokers.binance_futures_broker import BinanceFuturesBroker
 from app.brokers.mock_broker import MockBroker
 from app.config import Settings
 from app.data.binance_source import BinanceDataSource
@@ -24,7 +25,7 @@ def create_broker(settings: Settings) -> Broker:
     """Crea el broker adecuado según BROKER_PROVIDER y TRADING_MODE.
 
     - Paper mode: siempre MockBroker (usa datos reales de Binance pero sin órdenes reales).
-    - Live mode: BinanceBroker con API keys reales.
+    - Live mode: BinanceBroker (spot) o BinanceFuturesBroker (futures) con API keys reales.
     - Testnet: BinanceBroker apuntando a testnet.binance.vision.
     """
     provider = settings.BROKER_PROVIDER.lower()
@@ -34,6 +35,15 @@ def create_broker(settings: Settings) -> Broker:
         if not settings.BROKER_API_KEY or not settings.BROKER_API_SECRET:
             # No keys in .env — fall back to MockBroker (user keys resolved at API layer)
             return MockBroker(initial_cash=settings.PAPER_TRADING_INITIAL_CASH)
+
+        # Check if futures mode is enabled
+        use_futures = getattr(settings, "USE_FUTURES", False)
+        if use_futures:
+            return BinanceFuturesBroker(
+                api_key=settings.BROKER_API_KEY,
+                api_secret=settings.BROKER_API_SECRET,
+                testnet=settings.BINANCE_TESTNET,
+            )
         return BinanceBroker(
             api_key=settings.BROKER_API_KEY,
             api_secret=settings.BROKER_API_SECRET,
