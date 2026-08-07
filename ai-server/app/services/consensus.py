@@ -131,6 +131,7 @@ def _call_llm(
                     ],
                     "temperature": model_config.temperature,
                     "max_tokens": max_tokens,
+                    "stream": False,
                     "response_format": {"type": "json_object"},
                 },
                 timeout=s.AGENT_TIMEOUT_SECONDS,

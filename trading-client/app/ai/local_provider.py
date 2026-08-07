@@ -279,6 +279,7 @@ class LocalAIProvider(AIProvider):
                 ],
                 "temperature": 0.4,
                 "max_tokens": max_tokens,
+                "stream": False,
                 "response_format": {"type": "json_object"},
             }
             resp = httpx.post(
