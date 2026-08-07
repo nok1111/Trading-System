@@ -5,9 +5,8 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 
-from app.api.auth import get_current_user
+from app.services.auth import get_current_user
 from app.database.base import SessionLocal
 from app.database.models.dca_bot import DCABot
 from app.database.models.grid_bot import GridBot
