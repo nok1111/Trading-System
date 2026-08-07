@@ -168,6 +168,14 @@ def run_backtest(
         return _run_breakout(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
     if strategy == "grid":
         return _run_grid(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    if strategy == "macd_momentum":
+        return _run_macd_momentum(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    if strategy == "bollinger_squeeze":
+        return _run_bollinger_squeeze(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    if strategy == "supertrend":
+        return _run_supertrend(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
+    if strategy == "rsi_divergence":
+        return _run_rsi_divergence(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
     return _run_trend_momentum(symbol, interval, limit, initial_cash, fee_pct, slippage_pct)
 
 
@@ -1166,6 +1174,461 @@ def _run_mean_reversion_custom(
         trades.append({"side": "SELL", "pnl": pnl, "entry_price": entry_price, "exit_price": sell_price, "reason": "end"})
 
     return equity_curve, trades
+
+
+# ─── MACD Momentum Backtest ───────────────────────────────────────────────────
+
+
+def _run_macd_momentum(
+    symbol: str,
+    interval: str,
+    limit: int,
+    initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    fast_period: int = 12,
+    slow_period: int = 26,
+    signal_period: int = 9,
+    stop_loss_pct: float = 0.03,
+    take_profit_pct: float = 0.07,
+    trailing_pct: float = 0.025,
+    max_hold: int = 48,
+) -> BacktestResult:
+    """Backtest for MACD Momentum strategy."""
+    df = _fetch_klines_df(symbol, interval, limit)
+    close = df["close"]
+    macd_df = ind.macd(close, fast_period, slow_period, signal_period)
+    macd_line = macd_df["macd"]
+    signal_line = macd_df["signal"]
+    histogram = macd_df["histogram"]
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+
+    cash = initial_cash
+    position_qty = 0.0
+    entry_price = 0.0
+    highest_since_entry = 0.0
+    entry_time = None
+    bars_in_position = 0
+    total_fees = 0.0
+    total_slippage = 0.0
+
+    equity_curve: list[dict] = []
+    trades: list[dict] = []
+    min_bars = slow_period + signal_period + 1
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]
+        price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            # MACD bearish crossover
+            if i > 0 and not macd_line.isna().iloc[i - 1] and not signal_line.isna().iloc[i - 1]:
+                if macd_line.iloc[i - 1] >= signal_line.iloc[i - 1] and macd_line.iloc[i] < signal_line.iloc[i]:
+                    exit_reason = "macd_bearish_cross"
+            if not exit_reason and price <= effective_stop:
+                exit_reason = "stop_loss" if price <= hard_stop else "trailing_stop"
+            elif not exit_reason and price >= take_profit:
+                exit_reason = "take_profit"
+            elif not exit_reason and bars_in_position >= max_hold:
+                exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee
+                total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
+                trades.append({
+                    "entry_time": entry_time.isoformat() if entry_time else "",
+                    "exit_time": idx.isoformat(), "side": "SELL",
+                    "quantity": position_qty, "entry_price": entry_price, "exit_price": sell_price,
+                    "pnl": round(pnl, 2), "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2), "reason": exit_reason, "bars_held": bars_in_position,
+                })
+                position_qty = 0.0; entry_price = 0.0; highest_since_entry = 0.0; bars_in_position = 0
+
+        if position_qty == 0:
+            m_val = float(macd_line.iloc[i]) if not macd_line.isna().iloc[i] else 0
+            s_val = float(signal_line.iloc[i]) if not signal_line.isna().iloc[i] else 0
+            prev_m = float(macd_line.iloc[i - 1]) if i > 0 and not macd_line.isna().iloc[i - 1] else 0
+            prev_s = float(signal_line.iloc[i - 1]) if i > 0 and not signal_line.isna().iloc[i - 1] else 0
+            hist = float(histogram.iloc[i]) if not histogram.isna().iloc[i] else 0
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50
+
+            crossover_up = prev_m <= prev_s and m_val > s_val
+            if crossover_up and hist > 0 and rsi_val > 45:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price; position_qty = qty
+                    highest_since_entry = price; entry_time = idx; bars_in_position = 0
+                    cash -= trade_value + fee; total_fees += fee
+                    total_slippage += (fill_price - price) * qty
+                    trades.append({"entry_time": idx.isoformat(), "exit_time": "", "side": "BUY",
+                        "quantity": qty, "entry_price": entry_price, "exit_price": 0,
+                        "pnl": 0, "pnl_pct": 0, "fee": round(fee, 2), "reason": "macd_bullish_cross", "bars_held": 0})
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee; total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
+        trades.append({"entry_time": entry_time.isoformat() if entry_time else "", "exit_time": df.index[-1].isoformat(),
+            "side": "SELL", "quantity": position_qty, "entry_price": entry_price, "exit_price": sell_price,
+            "pnl": round(pnl, 2), "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2), "reason": "backtest_end", "bars_held": bars_in_position})
+
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+    return _calculate_metrics(symbol=symbol, strategy="macd_momentum", interval=interval,
+        initial_cash=initial_cash, equity_curve=equity_curve, trades=trades,
+        total_fees=total_fees, total_slippage=total_slippage, buy_hold_return_pct=buy_hold_pct)
+
+
+# ─── Bollinger Squeeze Backtest ───────────────────────────────────────────────
+
+
+def _run_bollinger_squeeze(
+    symbol: str, interval: str, limit: int, initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT, slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    bb_period: int = 20, bb_std: float = 2.0, squeeze_threshold: float = 20.0,
+    stop_loss_pct: float = 0.03, take_profit_pct: float = 0.10,
+    trailing_pct: float = 0.03, max_hold: int = 60,
+) -> BacktestResult:
+    """Backtest for Bollinger Squeeze strategy."""
+    df = _fetch_klines_df(symbol, interval, limit)
+    close = df["close"]
+    bb = ind.bollinger_bands(close, bb_period, bb_std)
+    bb_upper = bb["upper"]; bb_middle = bb["middle"]; bb_lower = bb["lower"]
+    bb_width = (bb["upper"] - bb["lower"]) / bb["middle"].replace(0, np.nan)
+    atr_pct = ind.atr_percentile(df, 14, 50)
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+
+    cash = initial_cash; position_qty = 0.0; entry_price = 0.0
+    highest_since_entry = 0.0; entry_time = None; bars_in_position = 0
+    total_fees = 0.0; total_slippage = 0.0
+    equity_curve: list[dict] = []; trades: list[dict] = []
+    min_bars = 51
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]; price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            bb_mid = float(bb_middle.iloc[i]) if not bb_middle.isna().iloc[i] else price
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            if price < bb_mid: exit_reason = "below_bb_mid"
+            elif price <= effective_stop: exit_reason = "stop_loss"
+            elif price >= take_profit: exit_reason = "take_profit"
+            elif bars_in_position >= max_hold: exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee; total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
+                trades.append({"entry_time": entry_time.isoformat() if entry_time else "",
+                    "exit_time": idx.isoformat(), "side": "SELL", "quantity": position_qty,
+                    "entry_price": entry_price, "exit_price": sell_price, "pnl": round(pnl, 2),
+                    "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2), "reason": exit_reason, "bars_held": bars_in_position})
+                position_qty = 0.0; entry_price = 0.0; highest_since_entry = 0.0; bars_in_position = 0
+
+        if position_qty == 0:
+            ap = float(atr_pct.iloc[i]) if not atr_pct.isna().iloc[i] else 50
+            prev_upper = float(bb_upper.iloc[i - 1]) if i > 0 and not bb_upper.isna().iloc[i - 1] else 0
+            bw = float(bb_width.iloc[i]) if not bb_width.isna().iloc[i] else 0
+            prev_bw = float(bb_width.iloc[i - 1]) if i > 0 and not bb_width.isna().iloc[i - 1] else 0
+            in_squeeze = ap < squeeze_threshold
+            price_breakout = price > prev_upper
+            width_expanding = bw > prev_bw
+
+            if in_squeeze and price_breakout and width_expanding:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price; position_qty = qty
+                    highest_since_entry = price; entry_time = idx; bars_in_position = 0
+                    cash -= trade_value + fee; total_fees += fee
+                    total_slippage += (fill_price - price) * qty
+                    trades.append({"entry_time": idx.isoformat(), "exit_time": "", "side": "BUY",
+                        "quantity": qty, "entry_price": entry_price, "exit_price": 0,
+                        "pnl": 0, "pnl_pct": 0, "fee": round(fee, 2), "reason": "squeeze_breakout", "bars_held": 0})
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee; total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
+        trades.append({"entry_time": entry_time.isoformat() if entry_time else "", "exit_time": df.index[-1].isoformat(),
+            "side": "SELL", "quantity": position_qty, "entry_price": entry_price, "exit_price": sell_price,
+            "pnl": round(pnl, 2), "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2), "reason": "backtest_end", "bars_held": bars_in_position})
+
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+    return _calculate_metrics(symbol=symbol, strategy="bollinger_squeeze", interval=interval,
+        initial_cash=initial_cash, equity_curve=equity_curve, trades=trades,
+        total_fees=total_fees, total_slippage=total_slippage, buy_hold_return_pct=buy_hold_pct)
+
+
+# ─── Supertrend Backtest ──────────────────────────────────────────────────────
+
+
+def _run_supertrend(
+    symbol: str, interval: str, limit: int, initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT, slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    atr_period: int = 10, multiplier: float = 3.0,
+    stop_loss_pct: float = 0.04, take_profit_pct: float = 0.12,
+    trailing_pct: float = 0.035, max_hold: int = 72,
+) -> BacktestResult:
+    """Backtest for Supertrend strategy."""
+    df = _fetch_klines_df(symbol, interval, limit)
+    close = df["close"]
+    st = ind.supertrend(df, atr_period, multiplier)
+    st_line = st["supertrend"]; st_dir = st["direction"]
+    rsi_series = ind.rsi(close, 14)
+    atr_series = ind.atr(df, 14)
+
+    cash = initial_cash; position_qty = 0.0; entry_price = 0.0
+    highest_since_entry = 0.0; entry_time = None; bars_in_position = 0
+    total_fees = 0.0; total_slippage = 0.0
+    equity_curve: list[dict] = []; trades: list[dict] = []
+    min_bars = atr_period * 2 + 1
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]; price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            cur_dir = float(st_dir.iloc[i]) if not st_dir.isna().iloc[i] else 1
+            prev_dir = float(st_dir.iloc[i - 1]) if i > 0 and not st_dir.isna().iloc[i - 1] else 1
+            if prev_dir == 1 and cur_dir == -1: exit_reason = "supertrend_bearish"
+            elif price <= effective_stop: exit_reason = "stop_loss"
+            elif price >= take_profit: exit_reason = "take_profit"
+            elif bars_in_position >= max_hold: exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee; total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
+                trades.append({"entry_time": entry_time.isoformat() if entry_time else "",
+                    "exit_time": idx.isoformat(), "side": "SELL", "quantity": position_qty,
+                    "entry_price": entry_price, "exit_price": sell_price, "pnl": round(pnl, 2),
+                    "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2), "reason": exit_reason, "bars_held": bars_in_position})
+                position_qty = 0.0; entry_price = 0.0; highest_since_entry = 0.0; bars_in_position = 0
+
+        if position_qty == 0:
+            cur_dir = float(st_dir.iloc[i]) if not st_dir.isna().iloc[i] else 0
+            prev_dir = float(st_dir.iloc[i - 1]) if i > 0 and not st_dir.isna().iloc[i - 1] else 0
+            st_val = float(st_line.iloc[i]) if not st_line.isna().iloc[i] else 0
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50
+
+            trend_up = prev_dir == -1 and cur_dir == 1
+            if trend_up and price > st_val and rsi_val > 45:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price; position_qty = qty
+                    highest_since_entry = price; entry_time = idx; bars_in_position = 0
+                    cash -= trade_value + fee; total_fees += fee
+                    total_slippage += (fill_price - price) * qty
+                    trades.append({"entry_time": idx.isoformat(), "exit_time": "", "side": "BUY",
+                        "quantity": qty, "entry_price": entry_price, "exit_price": 0,
+                        "pnl": 0, "pnl_pct": 0, "fee": round(fee, 2), "reason": "supertrend_bullish", "bars_held": 0})
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee; total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
+        trades.append({"entry_time": entry_time.isoformat() if entry_time else "", "exit_time": df.index[-1].isoformat(),
+            "side": "SELL", "quantity": position_qty, "entry_price": entry_price, "exit_price": sell_price,
+            "pnl": round(pnl, 2), "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2), "reason": "backtest_end", "bars_held": bars_in_position})
+
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+    return _calculate_metrics(symbol=symbol, strategy="supertrend", interval=interval,
+        initial_cash=initial_cash, equity_curve=equity_curve, trades=trades,
+        total_fees=total_fees, total_slippage=total_slippage, buy_hold_return_pct=buy_hold_pct)
+
+
+# ─── RSI Divergence Backtest ──────────────────────────────────────────────────
+
+
+def _run_rsi_divergence(
+    symbol: str, interval: str, limit: int, initial_cash: float,
+    fee_pct: float = DEFAULT_FEE_PCT, slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+    rsi_period: int = 14, divergence_lookback: int = 20,
+    rsi_oversold: float = 35.0, rsi_overbought: float = 65.0,
+    stop_loss_pct: float = 0.03, take_profit_pct: float = 0.06,
+    trailing_pct: float = 0.02, max_hold: int = 36,
+) -> BacktestResult:
+    """Backtest for RSI Divergence strategy."""
+    df = _fetch_klines_df(symbol, interval, limit)
+    close = df["close"]
+    rsi_series = ind.rsi(close, rsi_period)
+    atr_series = ind.atr(df, 14)
+
+    cash = initial_cash; position_qty = 0.0; entry_price = 0.0
+    highest_since_entry = 0.0; entry_time = None; bars_in_position = 0
+    total_fees = 0.0; total_slippage = 0.0
+    equity_curve: list[dict] = []; trades: list[dict] = []
+    min_bars = max(divergence_lookback + 10, rsi_period + 10, 30)
+
+    def find_pivot_lows(series, lookback):
+        pivots = []
+        vals = series.values
+        for j in range(2, len(vals) - 2):
+            if j < len(vals) - lookback: continue
+            if np.isnan(vals[j]): continue
+            if vals[j] < vals[j-1] and vals[j] < vals[j+1] and vals[j] < vals[j-2] and vals[j] < vals[j+2]:
+                pivots.append((j, float(vals[j])))
+        return pivots
+
+    for i in range(min_bars, len(df)):
+        idx = df.index[i]; price = float(df.iloc[i]["close"])
+
+        if position_qty > 0:
+            bars_in_position += 1
+            highest_since_entry = max(highest_since_entry, price)
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50
+            trailing_stop = highest_since_entry * (1 - trailing_pct)
+            hard_stop = entry_price * (1 - stop_loss_pct)
+            take_profit = entry_price * (1 + take_profit_pct)
+            effective_stop = max(trailing_stop, hard_stop)
+
+            exit_reason = None
+            if rsi_val > rsi_overbought: exit_reason = "rsi_overbought"
+            elif price <= effective_stop: exit_reason = "stop_loss"
+            elif price >= take_profit: exit_reason = "take_profit"
+            elif bars_in_position >= max_hold: exit_reason = "max_hold"
+
+            if exit_reason:
+                sell_price = _apply_slippage_sell(price, slippage_pct)
+                trade_value = position_qty * sell_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                pnl = (sell_price - entry_price) * position_qty - fee
+                cash += trade_value - fee; total_fees += fee
+                total_slippage += (price - sell_price) * position_qty
+                trades.append({"entry_time": entry_time.isoformat() if entry_time else "",
+                    "exit_time": idx.isoformat(), "side": "SELL", "quantity": position_qty,
+                    "entry_price": entry_price, "exit_price": sell_price, "pnl": round(pnl, 2),
+                    "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+                    "fee": round(fee, 2), "reason": exit_reason, "bars_held": bars_in_position})
+                position_qty = 0.0; entry_price = 0.0; highest_since_entry = 0.0; bars_in_position = 0
+
+        if position_qty == 0:
+            rsi_val = float(rsi_series.iloc[i]) if not rsi_series.isna().iloc[i] else 50
+            # Detect bullish divergence
+            price_lows = find_pivot_lows(df["close"].iloc[:i+1], divergence_lookback)
+            rsi_lows = find_pivot_lows(rsi_series.iloc[:i+1], divergence_lookback)
+            bullish_div = False
+            if len(price_lows) >= 2 and len(rsi_lows) >= 2:
+                p1_idx, p1_val = price_lows[-2]; p2_idx, p2_val = price_lows[-1]
+                r1_idx, r1_val = rsi_lows[-2]; r2_idx, r2_val = rsi_lows[-1]
+                if p2_val < p1_val and r2_val > r1_val and rsi_val < rsi_oversold:
+                    bullish_div = True
+
+            if bullish_div:
+                atr_val = float(atr_series.iloc[i]) if not atr_series.isna().iloc[i] else price * 0.02
+                risk_amount = cash * 0.02
+                stop_distance = max(atr_val * 1.5, price * stop_loss_pct)
+                qty = risk_amount / stop_distance
+                fill_price = _apply_slippage_buy(price, slippage_pct)
+                trade_value = qty * fill_price
+                fee = _calculate_fee(trade_value, fee_pct)
+                if qty > 0 and cash > trade_value + fee:
+                    entry_price = fill_price; position_qty = qty
+                    highest_since_entry = price; entry_time = idx; bars_in_position = 0
+                    cash -= trade_value + fee; total_fees += fee
+                    total_slippage += (fill_price - price) * qty
+                    trades.append({"entry_time": idx.isoformat(), "exit_time": "", "side": "BUY",
+                        "quantity": qty, "entry_price": entry_price, "exit_price": 0,
+                        "pnl": 0, "pnl_pct": 0, "fee": round(fee, 2), "reason": "rsi_bullish_divergence", "bars_held": 0})
+
+        equity = cash + (position_qty * price if position_qty > 0 else 0)
+        equity_curve.append({"time": idx.isoformat(), "equity": round(equity, 2), "price": round(price, 6)})
+
+    if position_qty > 0:
+        final_price = float(df.iloc[-1]["close"])
+        sell_price = _apply_slippage_sell(final_price, slippage_pct)
+        trade_value = position_qty * sell_price
+        fee = _calculate_fee(trade_value, fee_pct)
+        pnl = (sell_price - entry_price) * position_qty - fee
+        cash += trade_value - fee; total_fees += fee
+        total_slippage += (final_price - sell_price) * position_qty
+        trades.append({"entry_time": entry_time.isoformat() if entry_time else "", "exit_time": df.index[-1].isoformat(),
+            "side": "SELL", "quantity": position_qty, "entry_price": entry_price, "exit_price": sell_price,
+            "pnl": round(pnl, 2), "pnl_pct": round((pnl / (entry_price * position_qty)) * 100, 2) if entry_price > 0 else 0,
+            "fee": round(fee, 2), "reason": "backtest_end", "bars_held": bars_in_position})
+
+    buy_hold_pct = _calculate_buy_hold(df, initial_cash)
+    return _calculate_metrics(symbol=symbol, strategy="rsi_divergence", interval=interval,
+        initial_cash=initial_cash, equity_curve=equity_curve, trades=trades,
+        total_fees=total_fees, total_slippage=total_slippage, buy_hold_return_pct=buy_hold_pct)
 
 
 def _run_breakout_custom(

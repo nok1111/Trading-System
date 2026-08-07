@@ -16,7 +16,10 @@ from app.services.backtest_service import run_backtest
 
 logger = logging.getLogger(__name__)
 
-STRATEGIES = ["trend_momentum", "mean_reversion", "breakout", "grid"]
+STRATEGIES = [
+    "trend_momentum", "mean_reversion", "breakout", "grid",
+    "macd_momentum", "bollinger_squeeze", "supertrend", "rsi_divergence",
+]
 
 
 @dataclass

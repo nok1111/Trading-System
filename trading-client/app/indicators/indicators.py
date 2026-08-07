@@ -145,3 +145,93 @@ def stochastic(
     k = (df["close"] - lowest) / (highest - lowest).replace(0, np.nan) * 100
     d = k.rolling(window=d_window, min_periods=d_window).mean()
     return pd.DataFrame({"k": k, "d": d})
+
+
+def supertrend(
+    df: pd.DataFrame,
+    atr_period: int = 10,
+    multiplier: float = 3.0,
+) -> pd.DataFrame:
+    """Supertrend indicator — ATR-based trend following.
+
+    Returns DataFrame with 'supertrend' (the trend line) and 'direction'
+    (1 for uptrend, -1 for downtrend).
+    """
+    atr_val = atr(df, atr_period)
+    hl2 = (df["high"] + df["low"]) / 2
+
+    upper_band = hl2 + multiplier * atr_val
+    lower_band = hl2 - multiplier * atr_val
+
+    st = pd.Series(index=df.index, dtype=float)
+    direction = pd.Series(index=df.index, dtype=float)
+
+    close = df["close"].values
+    upper = upper_band.values.copy()
+    lower = lower_band.values.copy()
+    st_vals = np.full(len(df), np.nan)
+    dir_vals = np.full(len(df), 1.0)
+
+    for i in range(1, len(df)):
+        if np.isnan(upper[i]) or np.isnan(lower[i]):
+            continue
+
+        # Final upper band: if upper < prev_upper OR close > prev_upper
+        if i > 0 and not np.isnan(st_vals[i - 1]):
+            prev_st = st_vals[i - 1]
+            if close[i - 1] <= prev_st:  # was in downtrend
+                upper[i] = min(upper[i], upper[i - 1]) if not np.isnan(upper[i - 1]) else upper[i]
+            else:  # was in uptrend
+                lower[i] = max(lower[i], lower[i - 1]) if not np.isnan(lower[i - 1]) else lower[i]
+
+        # Determine direction
+        if dir_vals[i - 1] == 1:  # was uptrend
+            if close[i] < lower[i]:
+                dir_vals[i] = -1
+                st_vals[i] = upper[i]
+            else:
+                dir_vals[i] = 1
+                st_vals[i] = lower[i]
+        else:  # was downtrend
+            if close[i] > upper[i]:
+                dir_vals[i] = 1
+                st_vals[i] = lower[i]
+            else:
+                dir_vals[i] = -1
+                st_vals[i] = upper[i]
+
+    return pd.DataFrame({
+        "supertrend": pd.Series(st_vals, index=df.index),
+        "direction": pd.Series(dir_vals, index=df.index),
+    })
+
+
+def atr_percentile(df: pd.DataFrame, atr_period: int = 14, lookback: int = 50) -> pd.Series:
+    """ATR percentile — used to detect volatility squeeze.
+
+    Returns a Series with values 0-100 representing where current ATR
+    falls relative to the last N periods. Low percentile = squeeze.
+    """
+    atr_val = atr(df, atr_period)
+    return atr_val.rolling(window=lookback, min_periods=atr_period).rank(pct=True) * 100
+
+
+def rate_of_change(series: pd.Series, period: int = 12) -> pd.Series:
+    """Rate of Change (ROC) — percentage change over N periods.
+
+    ROC = (Current Price - Price N periods ago) / Price N periods ago * 100
+    """
+    shifted = series.shift(period)
+    return ((series - shifted) / shifted.replace(0, np.nan)) * 100
+
+
+def williams_r(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Williams %R — momentum oscillator (similar to stochastic but inverted).
+
+    %R = (Highest High - Close) / (Highest High - Lowest Low) * -100
+    Range: -100 to 0. Oversold < -80, Overbought > -20.
+    """
+    highest = df["high"].rolling(window=period, min_periods=period).max()
+    lowest = df["low"].rolling(window=period, min_periods=period).min()
+    wr = (highest - df["close"]) / (highest - lowest).replace(0, np.nan) * -100
+    return wr

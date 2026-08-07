@@ -91,6 +91,18 @@ def build_strategy(name: str, settings):
     if name in ("grid", "GridStrategy"):
         from app.strategies import GridConfig, GridStrategy
         return GridStrategy(GridConfig())
+    if name in ("macd_momentum", "MACDMomentumStrategy"):
+        from app.strategies import MACDMomentumConfig, MACDMomentumStrategy
+        return MACDMomentumStrategy(MACDMomentumConfig())
+    if name in ("bollinger_squeeze", "BollingerSqueezeStrategy"):
+        from app.strategies import BollingerSqueezeConfig, BollingerSqueezeStrategy
+        return BollingerSqueezeStrategy(BollingerSqueezeConfig())
+    if name in ("supertrend", "SupertrendStrategy"):
+        from app.strategies import SupertrendConfig, SupertrendStrategy
+        return SupertrendStrategy(SupertrendConfig())
+    if name in ("rsi_divergence", "RSIDivergenceStrategy"):
+        from app.strategies import RSIDivergenceConfig, RSIDivergenceStrategy
+        return RSIDivergenceStrategy(RSIDivergenceConfig())
     # default: trend
     from app.strategies import TrendMomentumConfig, TrendMomentumStrategy
     return TrendMomentumStrategy(TrendMomentumConfig())

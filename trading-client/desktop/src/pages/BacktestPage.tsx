@@ -106,6 +106,10 @@ const strategies = [
   { id: "mean_reversion", label: "Mean Reversion", desc: "RSI oversold + Bollinger Bands — mercados laterales" },
   { id: "breakout", label: "Breakout", desc: "Donchian Channels + volumen — movimientos explosivos" },
   { id: "grid", label: "Grid Trading", desc: "Rango ATR dinamico — income pasivo en sideways" },
+  { id: "macd_momentum", label: "MACD Momentum", desc: "Cruce MACD + histograma — detecta momentum temprano" },
+  { id: "bollinger_squeeze", label: "Bollinger Squeeze", desc: "Compresion de volatilidad + expansion — post-consolidacion" },
+  { id: "supertrend", label: "Supertrend", desc: "ATR trend following — tendencias sostenidas, menos whipsaws" },
+  { id: "rsi_divergence", label: "RSI Divergence", desc: "Divergencia precio/RSI — detecta reverses antes que otros" },
 ];
 
 export function BacktestPage() {
