@@ -12,7 +12,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from app.database.models.dca_bot import DCABot
+from app.database.models.grid_bot import DCABot
 
 logger = logging.getLogger(__name__)
 
