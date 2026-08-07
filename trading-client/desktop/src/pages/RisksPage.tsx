@@ -48,7 +48,7 @@ interface RiskStatus {
 }
 
 export function RisksPage() {
-  const [innerTab, setInnerTab] = useState<"risk" | "price-alerts">("risk");
+  const [innerTab, setInnerTab] = useState<"risk" | "portfolio" | "price-alerts">("risk");
 
   return (
     <div className="p-5 space-y-4 max-w-[900px] mx-auto">
@@ -67,6 +67,18 @@ export function RisksPage() {
           Riesgos de Mercado
         </button>
         <button
+          onClick={() => setInnerTab("portfolio")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+            innerTab === "portfolio"
+              ? "border-[var(--color-primary)] text-[var(--color-text)]"
+              : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <Shield size={14} />
+          Portfolio Risk
+        </button>
+        <button
           onClick={() => setInnerTab("price-alerts")}
           className={cn(
             "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
@@ -80,7 +92,13 @@ export function RisksPage() {
         </button>
       </div>
 
-      {innerTab === "risk" ? <RisksPageContent /> : <PriceAlertsContent />}
+      {innerTab === "risk" ? (
+        <RisksPageContent />
+      ) : innerTab === "portfolio" ? (
+        <PortfolioRiskContent />
+      ) : (
+        <PriceAlertsContent />
+      )}
     </div>
   );
 }
@@ -491,6 +509,315 @@ function RiskToggle({ label, value, onSave, saving }: {
       >
         {value ? "ON" : "OFF"}
       </button>
+    </div>
+  );
+}
+
+// ─── Portfolio Risk Content ───────────────────────────────────────────────────
+
+interface PortfolioRiskData {
+  total_exposure: number;
+  max_single_position_pct: number;
+  category_exposure: Record<string, number>;
+  category_limits: Record<string, number>;
+  category_warnings: string[];
+  correlation_warnings: string[];
+  correlation_matrix: Record<string, Record<string, number>>;
+  avg_correlation: number;
+  var: {
+    var_95_pct: number;
+    var_99_pct: number;
+    cvar_95_pct: number;
+    var_95_usd: number;
+    var_99_usd: number;
+    cvar_95_usd: number;
+    portfolio_value: number;
+  } | null;
+  risk_score: number;
+  recommendations: string[];
+  positions: {
+    symbol: string;
+    quantity: number;
+    entry_price: number;
+    current_price: number;
+    value: number;
+    unrealized_pnl: number;
+  }[];
+  portfolio_value: number;
+  cash: number;
+}
+
+function PortfolioRiskContent() {
+  const [data, setData] = useState<PortfolioRiskData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const r = await api<PortfolioRiskData>("/api/portfolio-risk");
+      setData(r);
+    } catch (e: any) {
+      setError(e.message || "Error al cargar portfolio risk");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  if (loading) return <LoadingSkeleton lines={8} />;
+  if (error) return <div className="text-[var(--color-danger)] text-[13px]">{error}</div>;
+  if (!data) return null;
+
+  const riskColor =
+    data.risk_score < 30 ? "var(--color-success)" :
+    data.risk_score < 60 ? "var(--color-warning)" :
+    "var(--color-danger)";
+
+  const riskLabel =
+    data.risk_score < 30 ? "Bajo" :
+    data.risk_score < 60 ? "Moderado" :
+    "Alto";
+
+  return (
+    <div className="space-y-4">
+      {/* Risk Score Banner */}
+      <div className="panel p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Risk Score</div>
+            <div className="text-[32px] font-extrabold" style={{ color: riskColor }}>
+              {data.risk_score}<span className="text-[16px] text-[var(--color-text-muted)]">/100</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Nivel</div>
+            <div className="text-[20px] font-bold" style={{ color: riskColor }}>{riskLabel}</div>
+          </div>
+          <button
+            onClick={load}
+            className="ml-auto h-8 px-3 rounded-[8px] bg-[var(--color-surface-2)] text-[11px] font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          >
+            Actualizar
+          </button>
+        </div>
+        {/* Risk score bar */}
+        <div className="h-2 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${data.risk_score}%`, backgroundColor: riskColor }}
+          />
+        </div>
+      </div>
+
+      {/* VaR + Exposure Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="panel p-3">
+          <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Portfolio Value</div>
+          <div className="text-[18px] font-extrabold text-[var(--color-text)]">${data.portfolio_value?.toFixed(0)}</div>
+        </div>
+        <div className="panel p-3">
+          <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Total Exposure</div>
+          <div className="text-[18px] font-extrabold text-[var(--color-text)]">${data.total_exposure?.toFixed(0)}</div>
+        </div>
+        <div className="panel p-3">
+          <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Cash Available</div>
+          <div className="text-[18px] font-extrabold text-[var(--color-success)]">${data.cash?.toFixed(0)}</div>
+        </div>
+        <div className="panel p-3">
+          <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Max Position</div>
+          <div className="text-[18px] font-extrabold text-[var(--color-text)]">{data.max_single_position_pct?.toFixed(1)}%</div>
+        </div>
+      </div>
+
+      {/* VaR Cards */}
+      {data.var && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Value at Risk (VaR)</h3>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
+              <div className="text-[10px] text-[var(--color-text-muted)] uppercase mb-1">95% VaR (1 dia)</div>
+              <div className="text-[20px] font-extrabold text-[var(--color-warning)]">${data.var.var_95_usd.toFixed(0)}</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">{data.var.var_95_pct}% del portfolio</div>
+            </div>
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
+              <div className="text-[10px] text-[var(--color-text-muted)] uppercase mb-1">99% VaR (1 dia)</div>
+              <div className="text-[20px] font-extrabold text-[var(--color-danger)]">${data.var.var_99_usd.toFixed(0)}</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">{data.var.var_99_pct}% del portfolio</div>
+            </div>
+            <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
+              <div className="text-[10px] text-[var(--color-text-muted)] uppercase mb-1">CVaR (Expected Shortfall)</div>
+              <div className="text-[20px] font-extrabold text-[var(--color-danger)]">${data.var.cvar_95_usd.toFixed(0)}</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">{data.var.cvar_95_pct}% del portfolio</div>
+            </div>
+          </div>
+          <div className="mt-3 text-[11px] text-[var(--color-text-muted)]">
+            95% VaR: hay 95% de probabilidad de no perder mas de ${data.var.var_95_usd.toFixed(0)} en un dia.
+            CVaR: si se supera el 5%, el promedio de perdida seria ${data.var.cvar_95_usd.toFixed(0)}.
+          </div>
+        </div>
+      )}
+
+      {/* Category Exposure */}
+      <div className="panel p-5">
+        <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Exposicion por Categoria</h3>
+        <div className="space-y-2">
+          {Object.entries(data.category_exposure).map(([cat, pct]) => {
+            const limit = data.category_limits[cat] || 50;
+            const overLimit = pct > limit;
+            return (
+              <div key={cat}>
+                <div className="flex items-center justify-between text-[12px] mb-1">
+                  <span className="font-bold text-[var(--color-text)] capitalize">{cat}</span>
+                  <span className={cn("font-bold", overLimit ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]")}>
+                    {pct.toFixed(1)}% / {limit}% {overLimit && "⚠"}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full transition-all", overLimit ? "bg-[var(--color-danger)]" : "bg-[var(--color-primary)]")}
+                    style={{ width: `${Math.min(pct / limit * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {Object.keys(data.category_exposure).length === 0 && (
+            <div className="text-[12px] text-[var(--color-text-muted)]">No hay posiciones abiertas</div>
+          )}
+        </div>
+      </div>
+
+      {/* Correlation Matrix */}
+      {Object.keys(data.correlation_matrix).length > 1 && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">
+            Matriz de Correlacion
+            <span className="ml-2 text-[11px] font-normal text-[var(--color-text-muted)]">
+              Promedio: {data.avg_correlation.toFixed(2)}
+            </span>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="text-[11px]">
+              <thead>
+                <tr>
+                  <th className="text-left p-1 text-[var(--color-text-muted)]"></th>
+                  {Object.keys(data.correlation_matrix).map(col => (
+                    <th key={col} className="text-center p-1 text-[var(--color-text-muted)] font-bold">{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(data.correlation_matrix).map(([row, cols]) => (
+                  <tr key={row}>
+                    <td className="text-left p-1 text-[var(--color-text-muted)] font-bold">{row}</td>
+                    {Object.keys(data.correlation_matrix).map(col => {
+                      const val = cols[col] ?? 0;
+                      const color = val > 0.85 ? "var(--color-danger)" : val > 0.7 ? "var(--color-warning)" : val > 0.4 ? "var(--color-primary)" : "var(--color-text-muted)";
+                      return (
+                        <td
+                          key={col}
+                          className="text-center p-1 font-bold"
+                          style={{ color: val >= 1 ? "var(--color-text)" : color }}
+                        >
+                          {val.toFixed(2)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {data.correlation_warnings.length > 0 && (
+            <div className="mt-3 space-y-1">
+              {data.correlation_warnings.map((w, i) => (
+                <div key={i} className="text-[11px] text-[var(--color-warning)] flex items-center gap-1">
+                  <AlertTriangle size={11} /> {w}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Warnings */}
+      {(data.category_warnings.length > 0 || data.correlation_warnings.length > 0) && (
+        <div className="panel p-5 border border-[var(--color-warning)]/30">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-warning)] mb-3 flex items-center gap-2">
+            <AlertTriangle size={16} /> Alertas
+          </h3>
+          <div className="space-y-1">
+            {data.category_warnings.map((w, i) => (
+              <div key={`cat-${i}`} className="text-[12px] text-[var(--color-text-muted)]">• {w}</div>
+            ))}
+            {data.correlation_warnings.map((w, i) => (
+              <div key={`corr-${i}`} className="text-[12px] text-[var(--color-text-muted)]">• {w}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      <div className="panel p-5">
+        <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Recomendaciones</h3>
+        <div className="space-y-2">
+          {data.recommendations.map((r, i) => (
+            <div key={i} className="text-[12px] text-[var(--color-text-muted)] flex items-start gap-2">
+              <span className="text-[var(--color-primary)] font-bold">→</span>
+              {r}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Positions */}
+      {data.positions.length > 0 && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">
+            Posiciones Abiertas ({data.positions.length})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                  <th className="text-left pb-2">Symbol</th>
+                  <th className="text-right pb-2">Qty</th>
+                  <th className="text-right pb-2">Entry</th>
+                  <th className="text-right pb-2">Current</th>
+                  <th className="text-right pb-2">Value</th>
+                  <th className="text-right pb-2">PnL</th>
+                  <th className="text-right pb-2">% Portfolio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.positions.map((p) => {
+                  const pnlPct = p.unrealized_pnl > 0 ? "+" : "";
+                  const portfolioPct = (p.value / data.portfolio_value * 100).toFixed(1);
+                  return (
+                    <tr key={p.symbol} className="border-b border-[var(--color-border)]/30">
+                      <td className="py-1.5 font-bold text-[var(--color-text)]">{p.symbol}</td>
+                      <td className="text-right py-1.5 text-[var(--color-text-muted)]">{p.quantity.toFixed(4)}</td>
+                      <td className="text-right py-1.5 text-[var(--color-text-muted)]">${p.entry_price.toFixed(2)}</td>
+                      <td className="text-right py-1.5 text-[var(--color-text-muted)]">${p.current_price.toFixed(2)}</td>
+                      <td className="text-right py-1.5 font-bold text-[var(--color-text)]">${p.value.toFixed(0)}</td>
+                      <td className={cn("text-right py-1.5 font-bold", p.unrealized_pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                        {pnlPct}${p.unrealized_pnl.toFixed(2)}
+                      </td>
+                      <td className="text-right py-1.5 text-[var(--color-text-muted)]">{portfolioPct}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

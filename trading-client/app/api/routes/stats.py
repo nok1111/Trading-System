@@ -340,3 +340,70 @@ def position_chart_data(symbol: str, db: DbSession) -> dict:
         "pnl_pct": pnl_pct,
         "timeframe": settings.DATA_TIMEFRAME,
     }
+
+
+@router.get("/portfolio-risk")
+def portfolio_risk(db: DbSession) -> dict:
+    """Portfolio-level risk assessment: correlation, VaR, exposure limits."""
+    import logging as _log
+
+    logger = _log.getLogger(__name__)
+    from app.risk.portfolio_risk import assess_portfolio_risk
+
+    # Get open positions
+    positions_db = db.query(Position).filter_by(status="open").all()
+    if not positions_db:
+        return {
+            "total_exposure": 0,
+            "max_single_position_pct": 0,
+            "category_exposure": {},
+            "category_limits": {},
+            "category_warnings": [],
+            "correlation_warnings": [],
+            "correlation_matrix": {},
+            "avg_correlation": 0,
+            "var": None,
+            "risk_score": 0,
+            "recommendations": ["No hay posiciones abiertas"],
+            "positions": [],
+        }
+
+    # Fetch live prices for all positions
+    import httpx as _httpx
+
+    positions_data: list[dict] = []
+    for pos in positions_db:
+        live_price = float(pos.current_price or pos.entry_price)
+        try:
+            resp = _httpx.get(
+                f"https://api.binance.com/api/v3/ticker/price?symbol={pos.symbol.upper()}",
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                live_price = float(resp.json()["price"])
+        except Exception:
+            pass
+
+        value = float(pos.quantity) * live_price
+        positions_data.append({
+            "symbol": pos.symbol,
+            "quantity": float(pos.quantity),
+            "entry_price": float(pos.entry_price),
+            "current_price": live_price,
+            "value": value,
+            "unrealized_pnl": float(pos.unrealized_pnl or 0),
+        })
+
+    # Calculate portfolio value (sum of position values + cash)
+    total_position_value = sum(p["value"] for p in positions_data)
+    account = db.query(AccountSnapshot).order_by(AccountSnapshot.timestamp.desc()).first()
+    cash = float(account.cash_balance) if account else 0
+    portfolio_value = total_position_value + cash
+
+    # Run assessment
+    assessment = assess_portfolio_risk(positions_data, portfolio_value)
+    result = assessment.to_dict()
+    result["positions"] = positions_data
+    result["portfolio_value"] = round(portfolio_value, 2)
+    result["cash"] = round(cash, 2)
+    return result
