@@ -102,7 +102,7 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} onSkip={onBrokerSkip} />;
   }
 
-  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "alerts", "connections", "security", "preferences"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "bots", "alerts", "connections", "security", "preferences"];
 
   const pages: Record<TabId, React.ReactNode> = {
     dashboard: <DashboardPage />,
