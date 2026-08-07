@@ -61,7 +61,17 @@ interface OptimizationResult {
   error?: string;
 }
 
-const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LTCUSDT", "TRXUSDT"];
+// Symbols available across all supported brokers (Binance, Bybit, OKX, Kraken, Coinbase, KuCoin, Bitget)
+const symbols = [
+  // ─── Major (top market cap, available everywhere) ───
+  "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "TRXUSDT", "LTCUSDT", "AVAXUSDT",
+  // ─── Large cap (DeFi / L1 / L2) ───
+  "LINKUSDT", "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "ARBUSDT", "OPUSDT", "APTUSDT", "FILUSDT", "INJUSDT",
+  // ─── Mid cap (emerging L1s and infrastructure) ───
+  "SUIUSDT", "SEIUSDT", "TIAUSDT", "RNDRUSDT", "FETUSDT", "WLDUSDT", "ORDIUSDT", "TONUSDT", "JUPUSDT", "PYTHUSDT",
+  // ─── Memes (high volatility, good for mean reversion) ───
+  "PEPEUSDT", "SHIBUSDT", "WIFUSDT", "FLOKIUSDT", "BONKUSDT",
+];
 const intervals = ["5m", "15m", "1h", "4h", "1d"];
 const strategies = [
   { id: "trend_momentum", label: "Trend Momentum", desc: "EMA crossover + RSI + volumen" },

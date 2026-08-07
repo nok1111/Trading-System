@@ -17,7 +17,12 @@ interface PriceAlert {
   triggered_price?: number;
 }
 
-const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"];
+const symbols = [
+  "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "TRXUSDT", "LTCUSDT", "AVAXUSDT",
+  "LINKUSDT", "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "ARBUSDT", "OPUSDT", "APTUSDT", "FILUSDT", "INJUSDT",
+  "SUIUSDT", "SEIUSDT", "TIAUSDT", "RNDRUSDT", "FETUSDT", "WLDUSDT", "ORDIUSDT", "TONUSDT", "JUPUSDT", "PYTHUSDT",
+  "PEPEUSDT", "SHIBUSDT", "WIFUSDT", "FLOKIUSDT", "BONKUSDT",
+];
 
 export function PriceAlertsContent() {
   const [alerts, setAlerts] = useState<any[]>([]);
