@@ -93,12 +93,13 @@ def get_capabilities(broker_id: str) -> BrokerCapabilities:
     )
 
 
-def get_adapter(broker_id: str, credentials: BrokerCredentials) -> BrokerAdapter:
+def get_adapter(broker_id: str, credentials: BrokerCredentials, market_type: str = "spot") -> BrokerAdapter:
     """Crea y devuelve un adaptador de broker.
 
     Args:
         broker_id: Identificador del broker (ej: "binance", "bybit", "kraken").
         credentials: Credenciales normalizadas para el broker.
+        market_type: "spot", "future", "swap", o "margin" (para CCXT exchanges).
 
     Returns:
         Instancia de BrokerAdapter lista para usar.
@@ -125,8 +126,8 @@ def get_adapter(broker_id: str, credentials: BrokerCredentials) -> BrokerAdapter
 
     if broker_id == _BINANCE_ID:
         return cls(credentials)
-    # CCXTAdapter requiere exchange_id extra
-    return cls(credentials, exchange_id=broker_id)
+    # CCXTAdapter requiere exchange_id extra + market_type opcional
+    return cls(credentials, exchange_id=broker_id, market_type=market_type)
 
 
 def get_available_broker_ids() -> tuple[str, ...]:

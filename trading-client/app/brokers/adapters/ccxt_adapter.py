@@ -342,9 +342,10 @@ class CCXTAdapter(BrokerAdapter):
     para todos los demas exchanges.
     """
 
-    def __init__(self, credentials: BrokerCredentials, exchange_id: str) -> None:
+    def __init__(self, credentials: BrokerCredentials, exchange_id: str, market_type: str = "spot") -> None:
         self._credentials = credentials
         self._exchange_id = exchange_id
+        self._market_type = market_type  # "spot", "future", "swap", "margin"
 
         exchange_class = getattr(ccxt, exchange_id, None)
         if exchange_class is None:
@@ -354,7 +355,7 @@ class CCXTAdapter(BrokerAdapter):
             "apiKey": credentials.api_key,
             "secret": credentials.api_secret,
             "enableRateLimit": True,
-            "options": {"builderFee": False},
+            "options": {"builderFee": False, "defaultType": market_type},
         }
 
         if credentials.passphrase:
@@ -366,6 +367,10 @@ class CCXTAdapter(BrokerAdapter):
                 config.update(sandbox_config)
 
         self._exchange = exchange_class(config)
+
+        # For futures, set leverage and margin mode lazily on first order
+        self._leverage_cache: dict[str, int] = {}
+        self._margin_mode_cache: dict[str, str] = {}
 
     @staticmethod
     def _get_sandbox_config(exchange_id: str) -> dict[str, Any]:
@@ -497,7 +502,79 @@ class CCXTAdapter(BrokerAdapter):
         )
 
     def get_open_positions(self) -> tuple[Position, ...]:
-        return ()
+        """Fetch open positions. For futures, uses CCXT fetch_positions().
+        For spot, returns empty (spot doesn't have positions in the futures sense)."""
+        if self._market_type not in ("future", "swap"):
+            return ()
+        try:
+            raw_positions = self._exchange.fetch_positions()
+        except Exception as exc:
+            logger.warning(f"fetch_positions failed for {self._exchange_id}: {exc}")
+            return ()
+
+        positions: list[Position] = []
+        for p in raw_positions:
+            contracts = _to_decimal(p.get("contracts", 0))
+            if contracts == 0:
+                continue
+            side_str = p.get("side", "long")
+            # CCXT returns side as "long" or "short"
+            entry_price = _to_decimal(p.get("entryPrice", 0))
+            mark_price = _to_decimal(p.get("markPrice", 0))
+            unrealized = _to_decimal(p.get("unrealizedPnl", 0))
+            symbol = normalize_symbol(p.get("symbol", ""))
+            leverage = p.get("leverage", 1)
+            liquidation_price = p.get("liquidationPrice")
+            margin_mode = p.get("marginMode", "cross")
+
+            positions.append(Position(
+                symbol=symbol,
+                side=side_str,
+                quantity=abs(contracts),
+                entry_price=entry_price,
+                current_price=mark_price if mark_price > 0 else None,
+                unrealized_pnl=unrealized,
+                status="open",
+                strategy_name="",
+                metadata={
+                    "leverage": leverage,
+                    "liquidation_price": liquidation_price,
+                    "margin_mode": margin_mode,
+                    "exchange": self._exchange_id,
+                    "market_type": self._market_type,
+                },
+            ))
+        return tuple(positions)
+
+    def set_leverage(self, symbol: str, leverage: int) -> dict[str, Any]:
+        """Set leverage for a symbol in futures mode (CCXT unified)."""
+        if self._market_type not in ("future", "swap"):
+            return {"symbol": symbol, "leverage": 1}
+        sym_key = symbol.upper()
+        if sym_key in self._leverage_cache and self._leverage_cache[sym_key] == leverage:
+            return {"symbol": sym_key, "leverage": leverage}
+        try:
+            result = self._exchange.set_leverage(leverage, symbol)
+            self._leverage_cache[sym_key] = leverage
+            return result if isinstance(result, dict) else {"symbol": sym_key, "leverage": leverage}
+        except Exception as exc:
+            logger.warning(f"set_leverage failed for {self._exchange_id} {symbol}: {exc}")
+            return {"symbol": sym_key, "leverage": leverage, "error": str(exc)}
+
+    def set_margin_mode(self, symbol: str, margin_mode: str = "isolated") -> dict[str, Any]:
+        """Set margin mode: 'isolated' or 'cross' (CCXT unified)."""
+        if self._market_type not in ("future", "swap"):
+            return {"symbol": symbol, "marginMode": "cross"}
+        sym_key = symbol.upper()
+        if sym_key in self._margin_mode_cache and self._margin_mode_cache[sym_key] == margin_mode:
+            return {"symbol": sym_key, "marginMode": margin_mode}
+        try:
+            result = self._exchange.set_margin_mode(margin_mode, symbol)
+            self._margin_mode_cache[sym_key] = margin_mode
+            return result if isinstance(result, dict) else {"symbol": sym_key, "marginMode": margin_mode}
+        except Exception as exc:
+            logger.warning(f"set_margin_mode failed for {self._exchange_id} {symbol}: {exc}")
+            return {"symbol": sym_key, "marginMode": margin_mode, "error": str(exc)}
 
     def get_order_history(self, symbol: str | None = None, limit: int = 50) -> tuple[BrokerOrder, ...]:
         ccxt_symbol = symbol if symbol else None
@@ -561,6 +638,25 @@ class CCXTAdapter(BrokerAdapter):
         params: dict[str, Any] = {}
         if request.client_order_id:
             params["clientOrderId"] = request.client_order_id
+
+        # ─── Futures: positionSide, reduceOnly, leverage ───
+        meta = request.metadata or {}
+        position_side = meta.get("position_side", "").upper()  # LONG, SHORT
+        reduce_only = meta.get("reduce_only", False)
+        leverage = meta.get("leverage", 0)
+
+        if self._market_type in ("future", "swap"):
+            # Set leverage before placing order (CCXT unified)
+            if leverage and int(leverage) > 1:
+                self.set_leverage(request.symbol, int(leverage))
+
+            # positionSide is needed for Hedge Mode (Binance, Bybit)
+            # CCXT normalizes this via params
+            if position_side:
+                params["positionSide"] = position_side
+
+            if reduce_only:
+                params["reduceOnly"] = True
 
         extra_price = None
         if request.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT, OrderType.TAKE_PROFIT_LIMIT):

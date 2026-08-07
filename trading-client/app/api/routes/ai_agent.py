@@ -1988,7 +1988,7 @@ def ai_agent_execute(
                 }
 
         elif action == "short":
-            # ─── Fase 1: Short trading via futures ───
+            # ─── Fase 1: Short trading (CCXT-compatible, broker-agnostic) ───
             from app.database.models.position import Position as PosModel
             # Check if symbol already has an open position
             existing = session.query(PosModel).filter(
@@ -1999,33 +1999,12 @@ def ai_agent_execute(
             if existing:
                 return {"status": "rejected", "action": "short", "symbol": symbol, "reason": f"Ya hay posición abierta en {symbol}."}
 
-            # Get account info
+            # Get account info (broker-agnostic — works with MockBroker, BinanceBroker, or CCXT)
             acct = broker.get_account()
             cash = acct.cash
             equity = acct.equity
 
-            # Get real USDT balance
-            usdt_balance = 0.0
-            try:
-                if hasattr(broker, '_signed_request'):
-                    # Try futures balance first
-                    try:
-                        acct_data = broker._signed_request("GET", "/fapi/v2/balance", {})
-                        for bal in acct_data:
-                            if bal.get("asset") == "USDT":
-                                usdt_balance = float(bal.get("balance", 0))
-                                break
-                    except Exception:
-                        # Fall back to spot balance
-                        acct_data = broker._signed_request("GET", "/api/v3/account", {})
-                        for bal in acct_data.get("balances", []):
-                            if bal.get("asset") == "USDT":
-                                usdt_balance = float(bal["free"])
-                                break
-            except Exception:
-                pass
-
-            allocated = usdt_balance if usdt_balance > 0 else float(equity)
+            allocated = float(equity) if equity > 0 else float(cash)
             if state.ai_allocated_capital > 0:
                 allocated = min(state.ai_allocated_capital, allocated)
 
