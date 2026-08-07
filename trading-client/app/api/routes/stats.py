@@ -397,7 +397,7 @@ def portfolio_risk(db: DbSession) -> dict:
     # Calculate portfolio value (sum of position values + cash)
     total_position_value = sum(p["value"] for p in positions_data)
     account = db.query(AccountSnapshot).order_by(AccountSnapshot.timestamp.desc()).first()
-    cash = float(account.cash_balance) if account else 0
+    cash = float(account.cash) if account else 0
     portfolio_value = total_position_value + cash
 
     # Run assessment
