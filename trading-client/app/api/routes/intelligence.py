@@ -486,6 +486,49 @@ def optimize_endpoint(req: OptimizeRequest) -> dict:
         return {"error": str(exc)}
 
 
+class AutoAssignRequest(_BaseModel):
+    symbols: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "PEPEUSDT"]
+    interval: str = "1h"
+    limit: int = 500
+    initial_cash: float = 10000.0
+
+
+@router.post("/backtest/auto-assign")
+def auto_assign_endpoint(req: AutoAssignRequest) -> dict:
+    """Run all 4 strategies on each symbol and assign the best one."""
+    from app.services.strategy_assignment import auto_assign_strategies, update_assignment_cache, _last_full_evaluation
+    import datetime as _dt
+
+    try:
+        result = auto_assign_strategies(
+            symbols=req.symbols,
+            interval=req.interval,
+            limit=req.limit,
+            initial_cash=req.initial_cash,
+        )
+        # Cache all assignments
+        for a in result.assignments:
+            update_assignment_cache(a)
+        return result.to_dict()
+    except Exception as exc:
+        logger.warning("Auto-assign failed: %s", exc)
+        return {"error": str(exc)}
+
+
+@router.get("/backtest/assignments")
+def get_assignments_endpoint() -> dict:
+    """Get cached strategy assignments."""
+    from app.services.strategy_assignment import get_all_cached_assignments, get_last_evaluation_time
+
+    cache = get_all_cached_assignments()
+    last_eval = get_last_evaluation_time()
+    return {
+        "assignments": {k: v.to_dict() for k, v in cache.items()},
+        "last_evaluation": last_eval.isoformat() if last_eval else None,
+        "total": len(cache),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Alerts & Notifications Endpoints
 # ---------------------------------------------------------------------------

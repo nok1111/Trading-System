@@ -61,6 +61,34 @@ interface OptimizationResult {
   error?: string;
 }
 
+interface AutoAssignResult {
+  assignments: {
+    symbol: string;
+    best_strategy: string;
+    best_sharpe: number;
+    best_return_pct: number;
+    best_alpha_pct: number;
+    best_win_rate: number;
+    best_max_drawdown: number;
+    all_results: {
+      strategy: string;
+      sharpe: number;
+      total_return_pct: number;
+      alpha_pct: number;
+      win_rate: number;
+      max_drawdown_pct: number;
+      total_trades: number;
+      total_fees: number;
+    }[];
+    interval: string;
+    limit: number;
+  }[];
+  total_symbols: number;
+  evaluated_at: string;
+  strategy_distribution: Record<string, number>;
+  error?: string;
+}
+
 // Symbols available across all supported brokers (Binance, Bybit, OKX, Kraken, Coinbase, KuCoin, Bitget)
 const symbols = [
   // ─── Major (top market cap, available everywhere) ───
@@ -88,8 +116,10 @@ export function BacktestPage() {
   const [initialCash, setInitialCash] = useState("10000");
   const [running, setRunning] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [optResult, setOptResult] = useState<OptimizationResult | null>(null);
+  const [autoResult, setAutoResult] = useState<AutoAssignResult | null>(null);
   const [error, setError] = useState("");
 
   const handleRun = async () => {
@@ -147,6 +177,36 @@ export function BacktestPage() {
       setError(e.message || "Error al optimizar");
     }
     setOptimizing(false);
+  };
+
+  const handleAutoAssign = async () => {
+    setError("");
+    setResult(null);
+    setOptResult(null);
+    setAutoResult(null);
+    setAutoAssigning(true);
+    try {
+      // Run on a representative subset (top 10 symbols) to keep it fast
+      const subset = symbols.slice(0, 10);
+      const r = await api<AutoAssignResult>("/api/intelligence/backtest/auto-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbols: subset,
+          interval,
+          limit: parseInt(limit),
+          initial_cash: parseFloat(initialCash),
+        }),
+      });
+      if (r.error) {
+        setError(r.error);
+      } else {
+        setAutoResult(r);
+      }
+    } catch (e: any) {
+      setError(e.message || "Error al auto-asignar");
+    }
+    setAutoAssigning(false);
   };
 
   return (
@@ -225,15 +285,27 @@ export function BacktestPage() {
           </button>
           <button
             onClick={handleOptimize}
-            disabled={running || optimizing}
+            disabled={running || optimizing || autoAssigning}
             className={cn(
               "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
-              running || optimizing
+              running || optimizing || autoAssigning
                 ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
                 : "bg-[var(--color-surface-3)] text-[var(--color-text)] hover:opacity-90"
             )}
           >
             {optimizing ? "Optimizando..." : "Optimizar Parametros"}
+          </button>
+          <button
+            onClick={handleAutoAssign}
+            disabled={running || optimizing || autoAssigning}
+            className={cn(
+              "h-11 px-6 rounded-[10px] text-[14px] font-extrabold transition-all",
+              running || optimizing || autoAssigning
+                ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] cursor-not-allowed"
+                : "bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:opacity-90 border border-[var(--color-primary)]/30"
+            )}
+          >
+            {autoAssigning ? "Analizando..." : "Auto-Asignar Estrategias"}
           </button>
           <span className="text-[12px] text-[var(--color-text-muted)]">
             {strategies.find((s) => s.id === strategy)?.desc}
@@ -447,6 +519,107 @@ export function BacktestPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Auto-assignment results */}
+      {autoResult && !autoResult.error && (
+        <>
+          <div className="panel p-5">
+            <h2 className="text-[16px] font-extrabold text-[var(--color-text)] mb-2">Auto-Asignacion de Estrategias</h2>
+            <div className="text-[12px] text-[var(--color-text-muted)] mb-4">
+              {autoResult.total_symbols} simbolos evaluados con 4 estrategias cada uno ({autoResult.total_symbols * 4} backtests)
+            </div>
+
+            {/* Strategy distribution */}
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {Object.entries(autoResult.strategy_distribution).map(([strat, count]) => (
+                <div key={strat} className="rounded-[8px] bg-[var(--color-surface-2)] px-3 py-1.5 text-[11px]">
+                  <span className="font-bold text-[var(--color-text)]">{strat}</span>
+                  <span className="text-[var(--color-text-muted)] ml-2">({count} simbolos)</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Assignments table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                    <th className="text-left pb-2">Symbol</th>
+                    <th className="text-left pb-2">Mejor Estrategia</th>
+                    <th className="text-right pb-2">Sharpe</th>
+                    <th className="text-right pb-2">Retorno %</th>
+                    <th className="text-right pb-2">Alpha %</th>
+                    <th className="text-right pb-2">Win Rate</th>
+                    <th className="text-right pb-2">Max DD %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {autoResult.assignments.map((a) => (
+                    <tr key={a.symbol} className="border-b border-[var(--color-border)]/30">
+                      <td className="py-2 font-bold text-[var(--color-text)]">{a.symbol}</td>
+                      <td className="py-2">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-[4px] text-[10px] font-bold",
+                          a.best_strategy === "trend_momentum" && "bg-[var(--color-primary)]/20 text-[var(--color-primary)]",
+                          a.best_strategy === "mean_reversion" && "bg-[var(--color-warning)]/20 text-[var(--color-warning)]",
+                          a.best_strategy === "breakout" && "bg-[var(--color-success)]/20 text-[var(--color-success)]",
+                          a.best_strategy === "grid" && "bg-purple-500/20 text-purple-400",
+                        )}>
+                          {a.best_strategy}
+                        </span>
+                      </td>
+                      <td className={cn("text-right py-2 font-bold", a.best_sharpe >= 1 ? "text-[var(--color-success)]" : a.best_sharpe < 0 ? "text-[var(--color-danger)]" : "text-[var(--color-text)]")}>
+                        {a.best_sharpe.toFixed(2)}
+                      </td>
+                      <td className={cn("text-right py-2 font-bold", a.best_return_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                        {a.best_return_pct > 0 ? "+" : ""}{a.best_return_pct.toFixed(2)}%
+                      </td>
+                      <td className={cn("text-right py-2 font-bold", a.best_alpha_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                        {a.best_alpha_pct > 0 ? "+" : ""}{a.best_alpha_pct.toFixed(2)}%
+                      </td>
+                      <td className="text-right py-2 text-[var(--color-text-muted)]">{a.best_win_rate.toFixed(1)}%</td>
+                      <td className="text-right py-2 text-[var(--color-danger)]">{a.best_max_drawdown.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Detail: all strategies per symbol */}
+          <div className="panel p-5">
+            <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-3">Detalle por simbolo</h3>
+            <div className="space-y-3">
+              {autoResult.assignments.map((a) => (
+                <div key={a.symbol}>
+                  <div className="text-[12px] font-bold text-[var(--color-text)] mb-1">{a.symbol}</div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {a.all_results.map((r) => (
+                      <div
+                        key={r.strategy}
+                        className={cn(
+                          "rounded-[6px] p-2 text-[10px]",
+                          r.strategy === a.best_strategy
+                            ? "bg-[var(--color-success)]/10 border border-[var(--color-success)]/30"
+                            : "bg-[var(--color-surface-2)]"
+                        )}
+                      >
+                        <div className="font-bold text-[var(--color-text)]">{r.strategy}</div>
+                        <div className="text-[var(--color-text-muted)] mt-1">
+                          Sharpe: {r.sharpe.toFixed(2)} | Ret: {r.total_return_pct > 0 ? "+" : ""}{r.total_return_pct.toFixed(1)}%
+                        </div>
+                        <div className="text-[var(--color-text-muted)]">
+                          Alpha: {r.alpha_pct > 0 ? "+" : ""}{r.alpha_pct.toFixed(1)}% | Trades: {r.total_trades}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </>
