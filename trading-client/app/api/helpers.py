@@ -82,6 +82,9 @@ def build_strategy(name: str, settings):
         predictor = MLPredictor.load(model_path)
         from app.ml.strategy import MLStrategy, MLStrategyConfig
         return MLStrategy(model=predictor.model, feature_engineer=predictor.feature_engineer, config=MLStrategyConfig())
+    if name in ("mean_reversion", "MeanReversionStrategy"):
+        from app.strategies import MeanReversionConfig, MeanReversionStrategy
+        return MeanReversionStrategy(MeanReversionConfig())
     # default: trend
     from app.strategies import TrendMomentumConfig, TrendMomentumStrategy
     return TrendMomentumStrategy(TrendMomentumConfig())

@@ -34,9 +34,14 @@ interface BacktestResult {
 
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LTCUSDT", "TRXUSDT"];
 const intervals = ["5m", "15m", "1h", "4h", "1d"];
+const strategies = [
+  { id: "trend_momentum", label: "Trend Momentum", desc: "EMA crossover + RSI + volumen" },
+  { id: "mean_reversion", label: "Mean Reversion", desc: "RSI oversold + Bollinger Bands" },
+];
 
 export function BacktestPage() {
   const [symbol, setSymbol] = useState("BTCUSDT");
+  const [strategy, setStrategy] = useState("trend_momentum");
   const [interval, setInterval] = useState("1h");
   const [limit, setLimit] = useState("500");
   const [initialCash, setInitialCash] = useState("10000");
@@ -54,7 +59,7 @@ export function BacktestPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           symbol,
-          strategy: "trend_momentum",
+          strategy,
           interval,
           limit: parseInt(limit),
           initial_cash: parseFloat(initialCash),
@@ -77,6 +82,16 @@ export function BacktestPage() {
       <div className="panel p-5">
         <h2 className="text-[16px] font-extrabold text-[var(--color-text)] mb-4">Configuración del Backtest</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">Estrategia</label>
+            <select
+              value={strategy}
+              onChange={(e) => setStrategy(e.target.value)}
+              className="w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-[14px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+            >
+              {strategies.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </div>
           <div>
             <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">Símbolo</label>
             <select
@@ -115,6 +130,11 @@ export function BacktestPage() {
               className="w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-[14px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
             />
           </div>
+        </div>
+
+        {/* Strategy description */}
+        <div className="mt-3 text-[11px] text-[var(--color-text-muted)]">
+          {strategies.find((s) => s.id === strategy)?.desc}
         </div>
 
         <div className="mt-4 flex items-center gap-4">
