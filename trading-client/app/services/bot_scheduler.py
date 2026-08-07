@@ -86,7 +86,7 @@ class BotScheduler:
         self._cycle_count += 1
         self._last_cycle_at = datetime.now(tz=UTC)
 
-        from app.database.base import SessionLocal
+        from app.database.session import SessionLocal
         from app.database.models.dca_bot import DCABot
         from app.database.models.grid_bot import GridBot
 
@@ -149,7 +149,7 @@ class BotScheduler:
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status."""
-        from app.database.base import SessionLocal
+        from app.database.session import SessionLocal
         from app.database.models.dca_bot import DCABot
         from app.database.models.grid_bot import GridBot
 
