@@ -325,7 +325,7 @@ export function AIAgentPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Tooltip text="Inicia el asistente. Analiza el mercado y genera senales de compra/venta automaticamente.">
+            <Tooltip text="Inicia el asistente. Analiza el mercado y genera señales de compra/venta automáticamente.">
               <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9">▶ Activar</Button>
             </Tooltip>
             <Tooltip text="Detiene el asistente. Las posiciones abiertas se mantienen hasta SL/TP.">
@@ -337,14 +337,14 @@ export function AIAgentPage() {
           </div>
         </div>
 
-        {/* Que es esto - explicacion clara para principiantes */}
+        {/* ¿Qué es esto - explicación clara para principiantes */}
         <div className="mt-4 rounded-[10px] bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/15 p-4">
           <p className="text-[12px] text-[var(--color-text)] leading-relaxed">
-            <strong>Que hace?</strong> El asistente analiza el mercado de criptomonedas cada {interval} segundos usando inteligencia artificial.
-            Cuando detecta una oportunidad de compra o venta, te avisa y -si tu lo permites- ejecuta la operacion automaticamente con stop loss y take profit para proteger tu capital.
+            <strong>¿Qué hace?</strong> El asistente analiza el mercado de criptomonedas cada {interval} segundos usando inteligencia artificial.
+            Cuando detecta una oportunidad de compra o venta, te avisa y -si tu lo permites- ejecuta la operación automáticamente con stop loss y take profit para proteger tu capital.
           </p>
           <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
-            Solo opera criptomonedas (no stocks). Nunca opera con mas capital del que tu permitas.
+            Solo opera criptomonedas (no stocks). Nunca opera con más capital del que tu permitas.
           </p>
         </div>
 
@@ -359,7 +359,7 @@ export function AIAgentPage() {
             {isPaid ? "⭐ " : ""}{subscription}
           </span>
           <span className="text-[11px] text-[var(--color-text-muted)]">
-            {maxRequestsPerDay === 99999 ? "Ilimitado" : `${maxRequestsPerDay} analisis/dia`} ? min intervalo {minInterval}s
+            {maxRequestsPerDay === 99999 ? "Ilimitado" : `${maxRequestsPerDay} análisis/día`} ? min intervalo {minInterval}s
           </span>
         </div>
 
@@ -371,9 +371,9 @@ export function AIAgentPage() {
             </p>
             <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
               {provider === "groq" ? (
-                <>Obten una key gratis en <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">console.groq.com/keys</a> y pegala en Opciones Avanzadas abajo.</>
+                <>Obtén una key gratis en <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">console.groq.com/keys</a> y pégala en Opciones Avanzadas abajo.</>
               ) : (
-                <>Obten una key gratis en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">aistudio.google.com/apikey</a> y pegala en Opciones Avanzadas abajo.</>
+                <>Obtén una key gratis en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[var(--color-accent)] underline">aistudio.google.com/apikey</a> y pégala en Opciones Avanzadas abajo.</>
               )}
             </p>
           </div>
@@ -383,7 +383,7 @@ export function AIAgentPage() {
         {isPremiumProvider && isFree && (
           <div className="mt-3 p-3 rounded-lg bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
             <p className="text-[12px] font-bold text-[var(--color-danger)]">
-              🔒 {provider} requiere suscripcion PRO o PREMIUM
+              🔒 {provider} requiere suscripción PRO o PREMIUM
             </p>
             <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
               Mejora tu plan para usar proveedores de IA premium, o usa Groq/Gemini (gratis) con tu propia key.
@@ -391,11 +391,11 @@ export function AIAgentPage() {
           </div>
         )}
 
-        {/* --- Paso 1: Modo de operacion --- */}
+        {/* --- Paso 1: Modo de operación --- */}
         <div className="mt-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">1</span>
-            <span className="text-[12px] font-bold text-[var(--color-text)]">Como quieres operar?</span>
+            <span className="text-[12px] font-bold text-[var(--color-text)]">¿Cómo quieres operar?</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -442,10 +442,10 @@ export function AIAgentPage() {
           {tradeMode === "live" && (
             <div className="mt-2 p-2.5 rounded-[8px] bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
               <p className="text-[11px] font-bold text-[var(--color-danger)]">
-                ⚠️ Modo Dinero Real activado. La IA usara tu saldo del broker para comprar y vender.
+                ⚠️ Modo Dinero Real activado. La IA usará tu saldo del broker para comprar y vender.
               </p>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
-                Puedes limitar cuanto dinero usa en la seccion "Presupuesto" abajo. La IA nunca usara mas de lo que tu permitas.
+                Puedes limitar cuanto dinero usa en la seccion "Presupuesto" abajo. La IA nunca usará más de lo que tu permitas.
               </p>
             </div>
           )}
@@ -455,13 +455,13 @@ export function AIAgentPage() {
         <div className="mt-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">2</span>
-            <span className="text-[12px] font-bold text-[var(--color-text)]">Que tan agresivo quieres que sea?</span>
+            <span className="text-[12px] font-bold text-[var(--color-text)]">¿Qué tan agresivo quieres que sea?</span>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {([
               { value: "conservative", label: "Cauteloso", desc: "Menos operaciones, stops ajustados. Prioriza proteger tu capital.", icon: "🛡️" },
               { value: "balanced", label: "Balanceado", desc: "Mezcla de operaciones seguras y oportunidades. Recomendado.", icon: "⚖️" },
-              { value: "aggressive", label: "Agresivo", desc: "Mas operaciones, stops amplios. Busca maximizar ganancias pero con mas riesgo.", icon: "🚀" },
+              { value: "aggressive", label: "Agresivo", desc: "Más operaciones, stops amplios. Busca maximizar ganancias pero con más riesgo.", icon: "🚀" },
             ] as const).map((m) => (
               <button
                 key={m.value}
@@ -482,27 +482,27 @@ export function AIAgentPage() {
           </div>
         </div>
 
-        {/* --- Paso 3: Ejecucion automatica --- */}
+        {/* --- Paso 3: Ejecucion automática --- */}
         <div className="mt-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">3</span>
-            <span className="text-[12px] font-bold text-[var(--color-text)]">Quieres que la IA ejecute operaciones sola?</span>
+            <span className="text-[12px] font-bold text-[var(--color-text)]">¿Quieres que la IA ejecute operaciones sola?</span>
           </div>
           <div className="rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-3">
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-[12px] font-bold text-[var(--color-text)]">
-                  Ejecucion automatica {autoTrade ? "(Activada)" : "(Desactivada)"}
+                  Ejecucion automática {autoTrade ? "(Activada)" : "(Desactivada)"}
                 </p>
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-1 leading-relaxed">
                   {autoTrade ? (
                     <>
-                      ✅ La IA comprara y vendera automaticamente cuando detecte oportunidades.<br />
-                      <span className="text-[var(--color-warning)]">Solo usara el dinero que le asignes en el Presupuesto.</span>
+                      ✅ La IA comprará y venderá automáticamente cuando detecte oportunidades.<br />
+                      <span className="text-[var(--color-warning)]">Solo usará el dinero que le asignes en el Presupuesto.</span>
                     </>
                   ) : (
                     <>
-                      ⏸️ La IA solo te mostrara senales de compra/venta. <strong>Tu decides</strong> si ejecutarlas manualmente.
+                      ⏸️ La IA solo te mostrará señales de compra/venta. <strong>Tu decides</strong> si ejecutarlas manualmente.
                     </>
                   )}
                 </p>
@@ -514,7 +514,7 @@ export function AIAgentPage() {
             {autoTrade && tradeMode === "live" && (
               <div className="mt-2 p-2 rounded-[6px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/20">
                 <p className="text-[10px] text-[var(--color-warning)] font-bold">
-                  ⚠️ La IA operara con dinero real automaticamente. Asegurate de haber configurado un presupuesto limite.
+                  ⚠️ La IA operará con dinero real automáticamente. Asegúrate de haber configurado un presupuesto límite.
                 </p>
               </div>
             )}
@@ -526,7 +526,7 @@ export function AIAgentPage() {
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center">4</span>
-              <span className="text-[12px] font-bold text-[var(--color-text)]">En que exchange tienes tu cuenta?</span>
+              <span className="text-[12px] font-bold text-[var(--color-text)]">¿En qué exchange tienes tu cuenta?</span>
             </div>
             <div className="flex gap-2 flex-wrap">
               {brokers.filter((b) => b.id !== "paper").map((b) => {
@@ -585,7 +585,7 @@ export function AIAgentPage() {
             </div>
             {!brokers.some((b) => b.connected) && (
               <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
-                💡 No tienes ningun broker conectado. Ve a <strong>Connections</strong> para conectar tu cuenta de Binance u otro exchange.
+                💡 No tienes ningún broker conectado. Ve a <strong>Connections</strong> para conectar tu cuenta de Binance u otro exchange.
               </p>
             )}
           </div>
@@ -598,7 +598,7 @@ export function AIAgentPage() {
               <span className="text-[12px] font-bold text-green-400">💰 Presupuesto de Trading</span>
               {allocatedCapital > 0 ? (
                 <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">
-                  LIMITE: ${allocatedCapital.toFixed(2)}
+                  LÍMITE: ${allocatedCapital.toFixed(2)}
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">
@@ -653,23 +653,23 @@ export function AIAgentPage() {
                 type="number"
                 value={capitalInput}
                 onChange={(e) => setCapitalInput(e.target.value)}
-                placeholder="Pon un limite (USD) - ej: 100"
+                placeholder="Pon un límite (USD) - ej: 100"
                 disabled={isRunning}
                 className="flex-1"
               />
-              <Tooltip text="Fija un limite maximo de dinero que la IA puede usar. Ej: $100 = la IA nunca usara mas de $100.">
+              <Tooltip text="Fija un límite maximo de dinero que la IA puede usar. Ej: $100 = la IA nunca usará más de $100.">
                 <Button variant="primary" size="sm" onClick={assignCapital} disabled={isRunning || !capitalInput}>
-                  Fijar limite
+                  Fijar límite
                 </Button>
               </Tooltip>
-              <Tooltip text="La IA usara todo el USDT disponible en tu cuenta. Sin limite fijo.">
+              <Tooltip text="La IA usará todo el USDT disponible en tu cuenta. Sin límite fijo.">
                 <Button variant="ghost" size="sm" onClick={useAllBalance} disabled={isRunning}>
-                  Sin limite
+                  Sin límite
                 </Button>
               </Tooltip>
             </div>
             <div className="text-[10px] text-[var(--color-text-muted)]">
-              💡 <strong>Fijar limite</strong> = la IA solo usa ese monto. <strong>Sin limite</strong> = usa todo el USDT disponible.
+              💡 <strong>Fijar límite</strong> = la IA solo usa ese monto. <strong>Sin límite</strong> = usa todo el USDT disponible.
               El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja en tu broker.
             </div>
           </div>
@@ -696,7 +696,7 @@ export function AIAgentPage() {
                 <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Intervalo (segundos)</label>
                 <div className="flex gap-1">
                   <Input type="number" value={interval} onChange={(e) => setIntervalVal(parseInt(e.target.value) || 30)} min={10} disabled={isRunning} className="w-20" />
-                  <Tooltip text="Cada cuantos segundos la IA analiza el mercado. Menos = mas frecuente pero gasta mas cuota.">
+                  <Tooltip text="Cada cuántos segundos la IA analiza el mercado. Menos = más frecuente pero gasta más cuota.">
                     <Button variant="primary" size="sm" onClick={setIntervalApi} disabled={isRunning}>Aplicar</Button>
                   </Tooltip>
                 </div>
@@ -710,7 +710,7 @@ export function AIAgentPage() {
                     {hasGroqKey && <span className="text-[var(--color-success)] ml-1">- guardada</span>}
                   </label>
                   <Input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} placeholder={hasGroqKey ? "Usando key guardada" : isFree ? "Pega tu key gratis de Groq" : "Key del servidor disponible"} disabled={isRunning} className="w-full" />
-                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis -</a>
+                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key gratis -</a>
                 </div>
               )}
               {provider === "gemini" && (
@@ -720,7 +720,7 @@ export function AIAgentPage() {
                     {hasGeminiKey && <span className="text-[var(--color-success)] ml-1">- guardada</span>}
                   </label>
                   <Input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder={hasGeminiKey ? "Usando key guardada" : isFree ? "Pega tu key gratis de Gemini" : "Key del servidor disponible"} disabled={isRunning} className="w-full" />
-                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key gratis -</a>
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key gratis -</a>
                 </div>
               )}
               {PROVIDERS.find((p) => p.value === provider)?.premium && (
@@ -729,9 +729,9 @@ export function AIAgentPage() {
                     API Key Premium {hasPremiumKey && <span className="text-[var(--color-success)] ml-1">- guardada</span>}
                   </label>
                   <Input type="password" value={premiumKey} onChange={(e) => setPremiumKey(e.target.value)} placeholder={hasPremiumKey ? "Usando key guardada" : "Pega tu API key"} disabled={isRunning} className="w-full" />
-                  {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key -</a>}
-                  {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key -</a>}
-                  {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obtener key -</a>}
+                  {provider === "openai" && <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key -</a>}
+                  {provider === "deepseek" && <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key -</a>}
+                  {provider === "mistral" && <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" className="text-[10px] text-[var(--color-accent)] underline hover:opacity-80 mt-1 inline-block">Obténer key -</a>}
                 </div>
               )}
             </div>
@@ -756,7 +756,7 @@ export function AIAgentPage() {
           <CardValue className={winRate >= 50 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>
             {winRate.toFixed(1)}%
           </CardValue>
-          <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{wins} ganadas / {losses} perdidas</div>
+          <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{wins} ganadas / {losses} pérdidas</div>
         </Card>
         <Card>
           <CardLabel>Ganancia Total</CardLabel>
@@ -822,7 +822,7 @@ export function AIAgentPage() {
       {/* Reasoning Cards */}
       {decisions.length > 0 && (
         <Card>
-          <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">🧠 Razonamiento de la IA - Ultimas Decisiones</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-accent)] mb-3">🧠 Razonamiento de la IA - Últimas Decisiones</h3>
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {decisions.slice(0, 10).map((d, i) => (
               <ReasoningCard key={i} entry={d} defaultExpanded={i < 3} />
