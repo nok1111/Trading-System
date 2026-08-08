@@ -105,7 +105,13 @@ class PriceStream:
         self._loop.run_until_complete(self._connect_loop())
 
     async def _cancel_ws(self) -> None:
-        pass
+        """Close the active WebSocket to unblock _connect_and_listen."""
+        if self._ws and not self._ws.closed:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
+        self._connected = False
 
     async def _connect_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -170,6 +176,15 @@ class PriceStream:
         price = Decimal(str(price_str))
         self._prices[symbol] = price
         self._timestamps[symbol] = time()
+
+        # Prune stale entries: remove symbols not updated in 10 min
+        # This prevents unbounded growth if symbols are added/removed dynamically
+        if len(self._prices) > len(self._symbols) * 2:
+            cutoff = time() - 600  # 10 minutes
+            stale = [s for s, ts in self._timestamps.items() if ts < cutoff]
+            for s in stale:
+                self._prices.pop(s, None)
+                self._timestamps.pop(s, None)
 
         if self._on_price:
             try:
