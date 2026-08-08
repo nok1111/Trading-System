@@ -72,6 +72,9 @@ def resolve_broker_credentials(
     except Exception as exc:
         logger.warning("resolve_broker_credentials failed for broker_id=%s: %s", broker_id, exc)
     return None
+
+
+def build_strategy(name: str, settings):
     """Construye una estrategia por nombre."""
     if name == "ml":
         from pathlib import Path
