@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database.models import MarketAlert, MarketSignal
+from app.database.models import MarketAlert, MarketReport, MarketScenario, MarketSignal
 from app.services.consensus import (
     compute_agreement,
     generate_default_scenarios,
@@ -258,6 +258,10 @@ class EventScheduler:
                         consensus_result.result,
                         merged_results,
                     )
+                    # Persistir escenarios del consensus
+                    self._persist_scenario(session, consensus_result.result, event)
+                    # Persistir reporte periódico
+                    self._persist_report(session, consensus_result.result, merged_results, event)
                     self._last_consensus[symbol] = consensus_result.result
             else:
                 logger.info("Consensus skipped for %s — no material change", symbol)
@@ -558,6 +562,83 @@ class EventScheduler:
             return signal
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to persist signal: %s", exc)
+            session.rollback()
+            return None
+
+    def _persist_scenario(
+        self,
+        session: Session,
+        consensus_result: dict[str, Any],
+        event: SchedulerEvent,
+    ) -> MarketScenario | None:
+        """Persiste los escenarios probabilísticos del Consensus en BD."""
+        try:
+            asset = consensus_result.get("asset", event.asset)
+            scenarios = consensus_result.get("scenarios", [])
+            if not scenarios:
+                return None
+
+            current_price = event.data.get("price", 0)
+            invalidation = consensus_result.get("invalidation", {})
+
+            scenario = MarketScenario(
+                asset=asset,
+                horizon="1d",
+                current_price=current_price,
+                scenarios=scenarios,
+                invalidation_conditions=[invalidation] if invalidation else [],
+                expires_at=datetime.now(UTC) + timedelta(hours=24),
+            )
+            session.add(scenario)
+            session.commit()
+            session.refresh(scenario)
+            logger.info("Persisted scenario %d for %s — %d scenarios", scenario.id, asset, len(scenarios))
+            return scenario
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to persist scenario: %s", exc)
+            session.rollback()
+            return None
+
+    def _persist_report(
+        self,
+        session: Session,
+        consensus_result: dict[str, Any],
+        agent_results: dict[str, dict | None],
+        event: SchedulerEvent,
+    ) -> MarketReport | None:
+        """Persiste un reporte periódico con el consensus + resultados de agentes."""
+        try:
+            asset = consensus_result.get("asset", event.asset)
+            now = datetime.now(UTC)
+
+            # Determinar tipo de reporte y período
+            if now.hour < 1:
+                report_type = "daily"
+                period = now.strftime("%Y-%m-%d")
+            else:
+                report_type = "event"
+                period = now.strftime("%Y-%m-%d %H:00")
+
+            report = MarketReport(
+                asset=asset,
+                report_type=report_type,
+                content={
+                    "consensus": consensus_result,
+                    "agent_results": {
+                        k: v for k, v in agent_results.items() if v is not None
+                    },
+                    "event_type": event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type),
+                    "price": event.data.get("price", 0),
+                },
+                period=period,
+            )
+            session.add(report)
+            session.commit()
+            session.refresh(report)
+            logger.info("Persisted report %d for %s — type=%s", report.id, asset, report_type)
+            return report
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to persist report: %s", exc)
             session.rollback()
             return None
 

@@ -1229,6 +1229,33 @@ def _fetch_remote_signals(settings: Any, limit: int) -> list[dict]:
     return result
 
 
+@router.get("/scenarios/{asset}")
+def get_remote_scenarios(asset: str, limit: int = 5) -> list[dict]:
+    """Fetch probabilistic scenarios from the AI Server for an asset."""
+    cached = _cached(f"scenarios_{asset}_{limit}")
+    if cached:
+        return cached
+
+    try:
+        from app.config import get_settings
+        settings = get_settings()
+        if settings.USE_INTELLIGENCE_API and settings.REMOTE_AI_URL:
+            url = f"{settings.REMOTE_AI_URL.rstrip('/')}/v1/intelligence/scenarios/{asset.upper()}"
+            headers: dict[str, str] = {}
+            if settings.REMOTE_AI_TOKEN:
+                headers["Authorization"] = f"Bearer {settings.REMOTE_AI_TOKEN}"
+            resp = httpx.get(url, headers=headers, params={"limit": limit}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            scenarios = data.get("scenarios", [])
+            _set_cache(f"scenarios_{asset}_{limit}", scenarios, 120)
+            return scenarios
+    except Exception as exc:
+        logger.warning("Remote scenarios fetch failed: %s", exc)
+
+    return []
+
+
 @router.get("/signals")
 def get_active_signals(limit: int = 10) -> list[dict]:
     """Get active signals for the dashboard 'Señales activas' card.
