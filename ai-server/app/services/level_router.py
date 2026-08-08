@@ -24,8 +24,18 @@ class ModelConfig:
     level: str
 
 
+_VALID_PLANS = {"free", "pro", "premium"}
+
+
 def get_model_for_plan(plan: str) -> ModelConfig:
-    """Selecciona el modelo LLM según el plan del usuario."""
+    """Selecciona el modelo LLM según el plan del usuario.
+
+    Only accepts validated plan values. Unknown plans default to "free"
+    (most restrictive) to prevent privilege escalation via crafted plan strings.
+    """
+    # Validate plan — default to "free" for any unknown value
+    if plan not in _VALID_PLANS:
+        plan = "free"
     settings = get_settings()
     provider = settings.AI_PROVIDER
 
