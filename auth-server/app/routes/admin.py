@@ -696,7 +696,7 @@ OMNIROUTE_PROVIDER_CATALOG = [
     {"id": "openrouter", "name": "OpenRouter", "category": "api-key", "free": False,
      "url": "https://openrouter.ai/keys",
      "test_model": "openrouter/auto",
-     "description": "Gateway a 100+ modelos (Claude, GPT, DeepSeek, etc.) — $1 credit gratis"},
+     "description": "Gateway a 100+ modelos (Claude, GPT, Gemini, DeepSeek, etc.) — $1 credit gratis, modelos :free disponibles"},
     {"id": "mistral", "name": "Mistral AI", "category": "api-key", "free": False,
      "url": "https://console.mistral.ai/api-keys",
      "test_model": "mistral/mistral-small-latest",
