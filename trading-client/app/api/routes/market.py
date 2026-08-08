@@ -1,8 +1,12 @@
 """Market data endpoints (prices, movers, smart money)."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.data.price_stream import get_price_stream
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["market"])
 
@@ -77,7 +81,8 @@ def market_movers(
             ],
         }
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Market data error: %s", exc)
+        raise HTTPException(status_code=502, detail="Error al obtener datos de mercado") from exc
 
 
 @router.get("/market/smart-money")
@@ -93,7 +98,8 @@ def smart_money(
     try:
         return lb.get_top_traders(period=period, stat_type=stat_type, limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Market data error: %s", exc)
+        raise HTTPException(status_code=502, detail="Error al obtener datos de mercado") from exc
 
 
 @router.get("/market/smart-money/{encrypted_uid}/positions")
@@ -105,7 +111,8 @@ def smart_money_positions(encrypted_uid: str) -> list[dict]:
     try:
         return lb.get_trader_positions(encrypted_uid)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Market data error: %s", exc)
+        raise HTTPException(status_code=502, detail="Error al obtener datos de mercado") from exc
 
 
 @router.get("/market/smart-money/{encrypted_uid}/info")
@@ -117,7 +124,8 @@ def smart_money_info(encrypted_uid: str) -> dict:
     try:
         return lb.get_trader_info(encrypted_uid)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Market data error: %s", exc)
+        raise HTTPException(status_code=502, detail="Error al obtener datos de mercado") from exc
 
 
 @router.get("/klines/{symbol}")

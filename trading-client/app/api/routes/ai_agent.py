@@ -657,7 +657,7 @@ def ai_agent_test_key(
             return {"ok": False, "error": f"Provider '{provider}' no soportado"}
 
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": "Error interno del servidor"}
 
 
 @router.get("/ai-agent/status")
@@ -1174,7 +1174,7 @@ def get_binance_price(symbol: str = Query(...)) -> dict:
             return {"symbol": symbol.upper(), "price": float(resp.json()["price"])}
         return {"error": f"Binance respondió {resp.status_code}"}
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": "Error interno del servidor"}
 
 
 @router.get("/binance/positions")
@@ -1785,7 +1785,7 @@ def update_ai_symbol_settings(
             db.close()
         return {"ok": True, "message": "Configuración guardada"}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": "Error interno del servidor"}
 
 
 @router.post("/ai-agent/execute")
@@ -2204,7 +2204,7 @@ def ai_agent_execute(
 
     except Exception as exc:
         session.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2364,7 +2364,7 @@ def ai_agent_backtest_comparison(
         finally:
             db.close()
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": "Error interno del servidor"}
 
 
 @router.get("/ai-agent/performance-learning")
@@ -2422,7 +2422,7 @@ def ai_agent_performance_learning(
         finally:
             db.close()
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": "Error interno del servidor"}
 
 
 @router.get("/ai-agent/learning-insights")
@@ -2439,7 +2439,7 @@ def ai_agent_learning_insights(
         # Then return insights
         return learner.get_learning_insights()
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": "Error interno del servidor"}
 
 
 @router.post("/ai-agent/evaluate-predictions")
@@ -2453,7 +2453,7 @@ def ai_agent_evaluate_predictions(
         learner = PerformanceLearner(uid)
         return learner.evaluate_pending_predictions()
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": "Error interno del servidor"}
 
 
 @router.get("/ai-agent/stats")
@@ -2581,7 +2581,7 @@ def ai_agent_stats() -> dict:
             "decisions_rejected": len(decisions_rejected),
         }
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2615,7 +2615,7 @@ def get_changes_since_last_login(
             "movers": [],
             "buyRecommendations": [],
             "highImpactNews": [],
-            "error": str(exc),
+            "error": "Error interno del servidor",
         }
     finally:
         session.close()
@@ -2635,7 +2635,7 @@ def get_today_priorities(
     try:
         return _get_priorities(session, user_id=current_user.id)
     except Exception as exc:
-        return {"priorities": [], "error": str(exc)}
+        return {"priorities": [], "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2655,7 +2655,7 @@ def get_intelligence_activity(
     try:
         return _get_activity(session, hours=24, limit=limit, user_id=current_user.id)
     except Exception as exc:
-        return {"entries": [], "error": str(exc)}
+        return {"entries": [], "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2679,7 +2679,7 @@ def get_intelligence_news(
         news = get_news(hours=hours, impact=impact, asset=asset, limit=limit, offset=offset)
         return {"news": news, "count": len(news)}
     except Exception as exc:
-        return {"news": [], "count": 0, "error": str(exc)}
+        return {"news": [], "count": 0, "error": "Error interno del servidor"}
 
 
 @router.post("/intelligence/news/fetch")
@@ -2693,7 +2693,7 @@ def trigger_news_fetch(
         count = fetch_and_store_news(max_per_feed=10, min_impact="medium")
         return {"fetched": count, "status": "ok"}
     except Exception as exc:
-        return {"fetched": 0, "error": str(exc)}
+        return {"fetched": 0, "error": "Error interno del servidor"}
 
 
 # ---------------------------------------------------------------------------
@@ -2713,7 +2713,7 @@ def get_analysis_history(
         history = _get_history(asset, hours=hours, limit=limit)
         return {"asset": asset.upper(), "history": history, "count": len(history)}
     except Exception as exc:
-        return {"asset": asset.upper(), "history": [], "count": 0, "error": str(exc)}
+        return {"asset": asset.upper(), "history": [], "count": 0, "error": "Error interno del servidor"}
 
 
 @router.get("/intelligence/analysis/{asset}/trend")
@@ -2727,7 +2727,7 @@ def get_analysis_trend(
     try:
         return _get_trend(asset, hours=hours)
     except Exception as exc:
-        return {"asset": asset.upper(), "trend": "error", "error": str(exc)}
+        return {"asset": asset.upper(), "trend": "error", "error": "Error interno del servidor"}
 
 
 @router.get("/intelligence/analysis")
@@ -2742,7 +2742,7 @@ def get_all_latest_analyses(
         analyses = _get_all(asset_list)
         return {"analyses": analyses, "count": len(analyses)}
     except Exception as exc:
-        return {"analyses": [], "count": 0, "error": str(exc)}
+        return {"analyses": [], "count": 0, "error": "Error interno del servidor"}
 
 
 # ---------------------------------------------------------------------------
@@ -2759,7 +2759,7 @@ def trigger_cleanup(
     try:
         return run_cleanup()
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": "Error interno del servidor"}
 
 
 # ---------------------------------------------------------------------------
@@ -2889,7 +2889,7 @@ def get_user_profile(
 
         return profile.to_dict()
     except Exception as exc:
-        return {"onboarding_completed": False, "error": str(exc)}
+        return {"onboarding_completed": False, "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2936,7 +2936,7 @@ def save_user_profile(
         return profile.to_dict()
     except Exception as exc:
         session.rollback()
-        return {"error": str(exc)}
+        return {"error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2959,7 +2959,7 @@ def get_notifications(
         items = _get(session, unread_only=unread_only, limit=limit, offset=offset)
         return {"notifications": items, "count": len(items)}
     except Exception as exc:
-        return {"notifications": [], "count": 0, "error": str(exc)}
+        return {"notifications": [], "count": 0, "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2973,7 +2973,7 @@ def get_unread_count() -> dict:
     try:
         return {"count": _count(session)}
     except Exception as exc:
-        return {"count": 0, "error": str(exc)}
+        return {"count": 0, "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -2988,7 +2988,7 @@ def mark_notification_read(notif_id: int) -> dict:
         ok = _mark_read(session, notif_id)
         return {"ok": ok}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -3003,7 +3003,7 @@ def mark_all_notifications_read() -> dict:
         count = _mark_all(session)
         return {"ok": True, "updated": count}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": "Error interno del servidor"}
     finally:
         session.close()
 
@@ -3129,7 +3129,7 @@ def record_trade(
         return {"status": "ok", "trade_id": trade.id}
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": "Error interno del servidor"}
     finally:
         db.close()
 
@@ -3201,6 +3201,6 @@ def bulk_import_positions(
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": "Error interno del servidor"}
     finally:
         db.close()
