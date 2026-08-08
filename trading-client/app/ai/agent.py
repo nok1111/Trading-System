@@ -17,7 +17,7 @@ import logging
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from typing import Any, Literal
 
 import httpx
@@ -307,6 +307,7 @@ class AITradingAgent:
         self._base_interval = interval_seconds
         self._current_interval = interval_seconds
         self._position_peaks: dict[str, float] = {}  # symbol -> highest price seen (legacy)
+        self._state_lock = Lock()  # protects _log, _cycle, _position_peaks, _last_context_hash
         self._risk_engine = RiskEngine()  # Deterministic risk engine with trailing stop
         self._jwt_token = jwt_token
         self._user_id = user_id
@@ -499,9 +500,10 @@ class AITradingAgent:
         }
         if extra:
             entry.update(extra)
-        self._log.append(entry)
-        if len(self._log) > 500:
-            self._log = self._log[-500:]
+        with self._state_lock:
+            self._log.append(entry)
+            if len(self._log) > 500:
+                self._log = self._log[-500:]
         if level == "error":
             logger.error(f"[AI Agent] {message}")
         else:
@@ -538,7 +540,8 @@ class AITradingAgent:
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                self._cycle += 1
+                with self._state_lock:
+                    self._cycle += 1
 
                 # Request authorization grant from Auth Server before each cycle
                 grant = self._request_grant()
@@ -730,7 +733,8 @@ class AITradingAgent:
                         emoji = "🎉" if current_price > entry else "🛡️" if current_price >= entry * 0.999 else "⚠️"
                         self._add_log("info", f"{emoji} Venta {symbol} ejecutada @ ${current_price:.4f} (PnL: {pnl_pct:+.2f}%)")
                         self._risk_engine.clear_position_peak(symbol)
-                        self._position_peaks.pop(symbol, None)
+                        with self._state_lock:
+                            self._position_peaks.pop(symbol, None)
                     else:
                         self._add_log("error", f"Auto-sell falló para {symbol}: {sell_result}")
                 else:
@@ -904,12 +908,14 @@ class AITradingAgent:
         import hashlib
         context_str = json.dumps(context, sort_keys=True, default=str)
         context_hash = hashlib.md5(context_str.encode()).hexdigest()
-        if context_hash == self._last_context_hash and self._hold_streak >= 2:
-            self._add_log("info", "Sin cambios en el mercado, saltando ciclo (ahorro de tokens)", {"cycle": self._cycle, "phase": "skip"})
-            self._hold_streak += 1
-            self._adjust_interval()
-            return
-        self._last_context_hash = context_hash
+        with self._state_lock:
+            last_hash = self._last_context_hash
+            if context_hash == last_hash and self._hold_streak >= 2:
+                self._add_log("info", "Sin cambios en el mercado, saltando ciclo (ahorro de tokens)", {"cycle": self._cycle, "phase": "skip"})
+                self._hold_streak += 1
+                self._adjust_interval()
+                return
+            self._last_context_hash = context_hash
 
         # Log what we're seeing
         self._log_context_summary(context)

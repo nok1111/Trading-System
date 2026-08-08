@@ -18,6 +18,7 @@ Trailing stop con Decimal:
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -198,6 +199,7 @@ class RiskEngine:
         self._daily_loss_limit_usd = daily_loss_limit_usd
         self._circuit_breaker = CircuitBreaker(daily_loss_limit_usd)
         self._position_peaks: dict[str, Decimal] = {}
+        self._peaks_lock = threading.Lock()
 
     @property
     def circuit_breaker(self) -> CircuitBreaker:
@@ -349,10 +351,11 @@ class RiskEngine:
         3. Clearly in profit: trail at 2% below peak, nunca below entry
         """
         # Track peak
-        peak = self._position_peaks.get(symbol, entry_price)
-        if current_price > peak:
-            peak = current_price
-            self._position_peaks[symbol] = peak
+        with self._peaks_lock:
+            peak = self._position_peaks.get(symbol, entry_price)
+            if current_price > peak:
+                peak = current_price
+                self._position_peaks[symbol] = peak
 
         # Determine effective stop-loss based on peak (highest price seen)
         # This ensures the stop never goes backwards even if price drops
@@ -412,7 +415,8 @@ class RiskEngine:
 
     def clear_position_peak(self, symbol: str) -> None:
         """Limpia el peak tracking después de cerrar una posición."""
-        self._position_peaks.pop(symbol, None)
+        with self._peaks_lock:
+            self._position_peaks.pop(symbol, None)
 
     def evaluate_trailing_stop_short(
         self,
@@ -434,10 +438,11 @@ class RiskEngine:
         3. Clearly in profit: trail at 2% above trough, never above entry
         """
         # Track trough (lowest price seen)
-        trough = self._position_peaks.get(symbol, entry_price)
-        if current_price < trough:
-            trough = current_price
-            self._position_peaks[symbol] = trough
+        with self._peaks_lock:
+            trough = self._position_peaks.get(symbol, entry_price)
+            if current_price < trough:
+                trough = current_price
+                self._position_peaks[symbol] = trough
 
         # Determine effective stop-loss based on trough (lowest price seen)
         if trough < entry_price * (Decimal("1") - BREAKEVEN_THRESHOLD):
@@ -497,7 +502,8 @@ class RiskEngine:
 
     def get_position_peak(self, symbol: str) -> Decimal | None:
         """Devuelve el peak tracking para un símbolo."""
-        return self._position_peaks.get(symbol)
+        with self._peaks_lock:
+            return self._position_peaks.get(symbol)
 
     def evaluate_technical_exit(
         self,
