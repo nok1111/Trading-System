@@ -177,7 +177,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
       } catch {}
     };
     loadReportsCount();
-    const id = setInterval(loadReportsCount, 60000);
+    const id = setInterval(loadReportsCount, 10000);
     return () => {
       alive = false;
       clearInterval(id);

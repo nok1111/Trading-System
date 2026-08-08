@@ -2835,7 +2835,7 @@ class AITradingAgent:
                     stop_loss_pct=None,
                     take_profit_pct=None,
                     status="pending",
-                    trading_mode="live",
+                    trading_mode="live" if broker != "paper" else "paper",
                     broker_name=broker,
                     metadata_json={
                         "position_id": sug.get("position_id") or pos_data.get("id"),

@@ -1580,7 +1580,7 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
       }));
 
     try {
-      const body: any = { positions: selectedData, broker: brokerId || "paper" };
+      const body: any = { positions: selectedData, broker: brokerId || (activeTab === "live" ? "binance" : "paper") };
       if (aiProvider) body.provider = aiProvider;
       if (aiModel) body.model = aiModel;
       const res = await api<any>("/api/ai-agent/analyze-positions", {
