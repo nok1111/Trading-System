@@ -139,4 +139,4 @@ def query_order_status(merchant_trade_no: str) -> dict | None:
 
 def verify_webhook_signature(timestamp: str, nonce: str, payload: str, signature: str) -> bool:
     expected = _build_signature(timestamp, nonce, payload)
-    return expected == signature.upper()
+    return hmac.compare_digest(expected, signature.upper())
