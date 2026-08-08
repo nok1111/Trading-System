@@ -48,6 +48,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# HMAC service-to-service authentication on /v1/ routes
+from app.services.hmac import hmac_middleware  # noqa: E402
+
+app.middleware("http")(hmac_middleware)
+
 
 @app.get("/health")
 def health() -> dict:

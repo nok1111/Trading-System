@@ -96,9 +96,10 @@ async def hmac_middleware(request: Request, call_next: Callable) -> Response:
             content={"detail": "Timestamp outside allowed window"},
         )
 
-    body = (await request.body()).decode() if await request.body() else ""
-    # Re-read body since we consumed it
-    request._body = body.encode()
+    raw_body = await request.body()
+    body = raw_body.decode() if raw_body else ""
+    # Restore body so downstream handlers can read it again
+    request._body = raw_body
 
     if not verify_signature(timestamp, nonce, body, signature, _settings.HMAC_SECRET):
         return JSONResponse(
