@@ -18,6 +18,11 @@ from app.routes import admin, ai_grant, auth, license, payments
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate critical config before starting
+    if settings.APP_ENV != "development" and settings.JWT_SECRET == "change-me-in-production":
+        raise RuntimeError("JWT_SECRET must be overridden in non-development environments")
+    if settings.APP_ENV != "development" and settings.CORS_ORIGINS == "*":
+        raise RuntimeError("CORS_ORIGINS must not be '*' in non-development environments")
     # Create tables on startup (for dev; use Alembic in production)
     init_db()
     yield

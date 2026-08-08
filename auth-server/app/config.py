@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # Auth
-    JWT_SECRET: str = "change-me-in-production"
+    JWT_SECRET: str = Field(default="change-me-in-production", description="Must be overridden in production via env var")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
 
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     BINANCE_PAY_MERCHANT_ID: str | None = None
 
     # CORS — Trading Client origins
-    CORS_ORIGINS: str = "*"
+    CORS_ORIGINS: str = "http://localhost:1420,http://127.0.0.1:1420"
 
     # Service URLs for monitoring (used by admin panel)
     TRADING_CLIENT_URL: str = "http://localhost:8080"
