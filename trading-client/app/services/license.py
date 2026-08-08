@@ -9,7 +9,8 @@ from app.config import get_settings
 
 # Cache: token -> (result, expiry_timestamp)
 _token_cache: dict[str, tuple[dict, float]] = {}
-_CACHE_TTL = 60  # seconds
+_CACHE_TTL = 30  # seconds — reduced from 60 to limit fail-open window
+_AUTH_SERVER_DOWN_STREAK = 0
 
 
 def validate_license(jwt_token: str) -> dict | None:
@@ -19,10 +20,12 @@ def validate_license(jwt_token: str) -> dict | None:
         dict with {valid, user_id, email, subscription, plan_limits} if valid.
         None if the token is invalid, expired, or the Auth Server is unreachable.
     """
-    # Check cache first
+    global _AUTH_SERVER_DOWN_STREAK
+
+    # Check cache first — but only serve cached results if auth server was recently reachable
     now = time.time()
     cached = _token_cache.get(jwt_token)
-    if cached and now < cached[1]:
+    if cached and now < cached[1] and _AUTH_SERVER_DOWN_STREAK < 3:
         return cached[0]
 
     settings = get_settings()
@@ -32,12 +35,18 @@ def validate_license(jwt_token: str) -> dict | None:
             headers={"Authorization": f"Bearer {jwt_token}"},
             timeout=10.0,
         )
+        _AUTH_SERVER_DOWN_STREAK = 0  # Reset on successful connection
         if resp.status_code == 200:
             result = resp.json()
             _token_cache[jwt_token] = (result, now + _CACHE_TTL)
             return result
+        # Non-200: token is invalid (not a server issue), clear cache for this token
+        _token_cache.pop(jwt_token, None)
         return None
     except Exception:
+        _AUTH_SERVER_DOWN_STREAK += 1
+        # If auth server is down, fail closed — don't serve cached tokens
+        # This prevents trading with stale credentials during an outage
         return None
 
 
