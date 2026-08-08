@@ -1,7 +1,8 @@
 use std::process::{Child, Command};
+use std::sync::Mutex;
 use tauri::Manager;
 
-static mut PYTHON_CHILD: Option<Child> = None;
+static PYTHON_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
 fn spawn_python_backend(app: &tauri::App) {
     let resource_path = app
@@ -43,7 +44,7 @@ fn spawn_python_backend(app: &tauri::App) {
     match child {
         Ok(c) => {
             println!("Python backend started (PID: {})", c.id());
-            unsafe { PYTHON_CHILD = Some(c) };
+            *PYTHON_CHILD.lock().unwrap() = Some(c);
         }
         Err(e) => {
             eprintln!("Failed to start Python backend: {}", e);
@@ -67,8 +68,8 @@ pub fn run() {
         })
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                unsafe {
-                    if let Some(mut child) = PYTHON_CHILD.take() {
+                if let Ok(mut guard) = PYTHON_CHILD.lock() {
+                    if let Some(mut child) = guard.take() {
                         let _ = child.kill();
                         println!("Python backend stopped");
                     }
