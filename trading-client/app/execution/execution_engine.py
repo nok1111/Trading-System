@@ -62,56 +62,60 @@ class ExecutionEngine:
             )
             return None
 
-        signal_db = self._persist_signal(signal_create)
-        if account is None:
-            account = self.broker.get_account()
-        open_positions = self._get_open_positions()
+        try:
+            signal_db = self._persist_signal(signal_create)
+            if account is None:
+                account = self.broker.get_account()
+            open_positions = self._get_open_positions()
 
-        risk_result = self.risk_manager.evaluate_signal(signal_create, account, open_positions)
-        if not risk_result.allowed:
-            reason = risk_result.reason or "Rechazado por riesgo"
-            logger.info("Señal %s %s rechazada: %s", signal_create.signal_type, signal_create.symbol, reason)
-            self._log_risk_event(
-                signal_create,
-                reason,
-                "medium",
-            )
-            return None
-
-        # RiskEngine determinista con circuit breaker (veto adicional)
-        if self.risk_engine is not None:
-            engine_decision = self.risk_engine.evaluate_order(
-                side=signal_create.signal_type.lower(),
-                symbol=signal_create.symbol,
-                entry_price=signal_create.entry_price or Decimal("0"),
-                stop_loss=signal_create.suggested_stop_loss,
-                account_cash=account.cash if account else Decimal("0"),
-                account_equity=account.equity if account else Decimal("0"),
-                daily_pnl=account.daily_pnl if account else Decimal("0"),
-                open_positions=[{"symbol": p.symbol, "status": p.status} for p in open_positions],
-                open_positions_count=len(open_positions),
-            )
-            if not engine_decision.allowed:
-                logger.info(
-                    "RiskEngine veto: %s %s - %s (CB: %s)",
-                    signal_create.signal_type,
-                    signal_create.symbol,
-                    engine_decision.reason,
-                    engine_decision.circuit_breaker_state.value,
-                )
+            risk_result = self.risk_manager.evaluate_signal(signal_create, account, open_positions)
+            if not risk_result.allowed:
+                reason = risk_result.reason or "Rechazado por riesgo"
+                logger.info("Señal %s %s rechazada: %s", signal_create.signal_type, signal_create.symbol, reason)
                 self._log_risk_event(
                     signal_create,
-                    f"RiskEngine: {engine_decision.reason}",
-                    engine_decision.severity,
+                    reason,
+                    "medium",
                 )
                 return None
 
-        if signal_create.signal_type == "BUY":
-            return self._execute_buy(signal_create, signal_db, account)
-        if signal_create.signal_type == "SELL":
-            return self._execute_sell(signal_create, signal_db, open_positions)
+            # RiskEngine determinista con circuit breaker (veto adicional)
+            if self.risk_engine is not None:
+                engine_decision = self.risk_engine.evaluate_order(
+                    side=signal_create.signal_type.lower(),
+                    symbol=signal_create.symbol,
+                    entry_price=signal_create.entry_price or Decimal("0"),
+                    stop_loss=signal_create.suggested_stop_loss,
+                    account_cash=account.cash if account else Decimal("0"),
+                    account_equity=account.equity if account else Decimal("0"),
+                    daily_pnl=account.daily_pnl if account else Decimal("0"),
+                    open_positions=[{"symbol": p.symbol, "status": p.status} for p in open_positions],
+                    open_positions_count=len(open_positions),
+                )
+                if not engine_decision.allowed:
+                    logger.info(
+                        "RiskEngine veto: %s %s - %s (CB: %s)",
+                        signal_create.signal_type,
+                        signal_create.symbol,
+                        engine_decision.reason,
+                        engine_decision.circuit_breaker_state.value,
+                    )
+                    self._log_risk_event(
+                        signal_create,
+                        f"RiskEngine: {engine_decision.reason}",
+                        engine_decision.severity,
+                    )
+                    return None
 
-        return None
+            if signal_create.signal_type == "BUY":
+                return self._execute_buy(signal_create, signal_db, account)
+            if signal_create.signal_type == "SELL":
+                return self._execute_sell(signal_create, signal_db, open_positions)
+
+            return None
+        except Exception:
+            self.session.rollback()
+            raise
 
     def _persist_signal(self, signal_create: SignalCreate) -> Signal:
         signal = Signal(
@@ -201,12 +205,22 @@ class ExecutionEngine:
         filled_order = self.broker.place_order(order)
         self.session.add(filled_order)
 
-        if filled_order.status == "filled" and filled_order.filled_quantity > 0:
-            self._record_trade_and_position(filled_order, signal_db)
-            self._place_exchange_sl_tp(filled_order, signal_db)
+        try:
+            if filled_order.status == "filled" and filled_order.filled_quantity > 0:
+                self._record_trade_and_position(filled_order, signal_db)
+                self._place_exchange_sl_tp(filled_order, signal_db)
 
-        self._notify_trade(filled_order, signal_db)
-        self.session.commit()
+            self._notify_trade(filled_order, signal_db)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            # Re-add the order so we at least persist it, then commit
+            self.session.add(filled_order)
+            self.session.commit()
+            logger.error(
+                "Post-fill tracking failed for %s %s — order persisted but trade/position may be missing",
+                filled_order.side, filled_order.symbol, exc_info=True,
+            )
         return filled_order
 
     def _execute_sell(
@@ -216,8 +230,12 @@ class ExecutionEngine:
         open_positions: list[Position],
     ) -> Order:
         position = next(
-            p for p in open_positions if p.symbol == signal.symbol and p.status == "open"
+            (p for p in open_positions if p.symbol == signal.symbol and p.status == "open"), None,
         )
+        if position is None:
+            logger.warning("SELL signal for %s but no open position found — skipping", signal.symbol)
+            self._log_risk_event(signal, "No hay posición abierta para vender", "medium")
+            return None  # type: ignore[return-value]
         price = self._get_live_price(signal.symbol) or signal.entry_price or self.broker.get_quote(signal.symbol)
 
         if self.order_manager is not None:
@@ -259,10 +277,18 @@ class ExecutionEngine:
         filled_order = self.broker.place_order(order)
         self.session.add(filled_order)
 
-        if filled_order.status == "filled" and filled_order.filled_quantity > 0:
-            self._close_position(filled_order, position, signal_db)
-
-        self.session.commit()
+        try:
+            if filled_order.status == "filled" and filled_order.filled_quantity > 0:
+                self._close_position(filled_order, position, signal_db)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            self.session.add(filled_order)
+            self.session.commit()
+            logger.error(
+                "Post-fill tracking failed for SELL %s — order persisted but position may not be closed",
+                filled_order.symbol, exc_info=True,
+            )
         return filled_order
 
     def _record_trade_and_position(
