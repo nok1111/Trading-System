@@ -25,11 +25,22 @@ logger = logging.getLogger(__name__)
 class LocalAIProvider(AIProvider):
     """Proveedor de IA local con cadena de fallback entre Groq, Gemini, OpenAI-compat y Ollama."""
 
+    # Default models per premium provider
+    PROVIDER_DEFAULTS: dict[str, dict] = {
+        "openai": {"model": "gpt-4o-mini", "base_url": "https://api.openai.com/v1"},
+        "deepseek": {"model": "deepseek-chat", "base_url": "https://api.deepseek.com/v1"},
+        "mistral": {"model": "mistral-small-latest", "base_url": "https://api.mistral.ai/v1"},
+        "together": {"model": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", "base_url": "https://api.together.xyz/v1"},
+        "perplexity": {"model": "llama-3.1-sonar-small-128k-online", "base_url": "https://api.perplexity.ai"},
+        "grok": {"model": "grok-beta", "base_url": "https://api.x.ai/v1"},
+    }
+
     def __init__(self, config: AIProviderConfig) -> None:
         self._config = config
         self._provider = config.provider
         self._log: list[str] = []
         self._last_http_error: str | None = None
+        self._effective_model: str | None = None  # Override model if needed
 
     def get_name(self) -> str:
         return f"local:{self._provider}"
@@ -65,6 +76,9 @@ class LocalAIProvider(AIProvider):
                 self._log.append("Groq no disponible, intentando con Gemini...")
                 result = self._ask_gemini(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
             if result is None:
+                self._log.append("Groq no disponible, intentando con OmniRoute...")
+                result = self._ask_omniroute(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
+            if result is None:
                 self._log.append("Groq no disponible, intentando con Ollama local...")
                 result = self._ask_ollama(system_prompt, user_message, timeout=ollama_timeout)
         elif self._provider == "gemini":
@@ -73,13 +87,21 @@ class LocalAIProvider(AIProvider):
                 self._log.append("Gemini no disponible, intentando con Groq...")
                 result = self._ask_groq(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
             if result is None:
+                self._log.append("Gemini no disponible, intentando con OmniRoute...")
+                result = self._ask_omniroute(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
+            if result is None:
                 self._log.append("Gemini no disponible, intentando con Ollama local...")
                 result = self._ask_ollama(system_prompt, user_message, timeout=ollama_timeout)
         elif self._provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            # Ensure correct model for this provider
+            self._ensure_provider_model()
             result = self._ask_openai_compat(system_prompt, user_message, max_tokens=max_tokens, timeout=timeout)
             if result is None and self._config.groq_api_key:
                 self._log.append(f"{self._provider} no disponible, intentando con Groq...")
                 result = self._ask_groq(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
+            if result is None:
+                self._log.append(f"{self._provider} no disponible, intentando con OmniRoute...")
+                result = self._ask_omniroute(system_prompt, user_message, max_tokens=max_tokens, timeout=fallback_timeout)
             if result is None:
                 self._log.append(f"{self._provider} no disponible, intentando con Ollama local...")
                 result = self._ask_ollama(system_prompt, user_message, timeout=ollama_timeout)
@@ -135,13 +157,33 @@ class LocalAIProvider(AIProvider):
     def get_last_http_error(self) -> str | None:
         return self._last_http_error
 
+    def _ensure_provider_model(self) -> None:
+        """Ensure the openai_model is correct for the selected premium provider.
+
+        Prevents sending e.g. 'gemini-2.0-flash' to Mistral's API.
+        """
+        defaults = self.PROVIDER_DEFAULTS.get(self._provider)
+        if not defaults:
+            return
+        current_model = self._effective_model or self._config.openai_model
+        # If model is empty or clearly belongs to another provider, use default
+        if not current_model or current_model in (
+            "gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro",
+            "llama-3.1-8b-instant", "llama-3.3-70b-versatile",
+            "gpt-4o-mini",
+        ):
+            self._effective_model = defaults["model"]
+            logger.info(f"Auto-set model to {defaults['model']} for {self._provider}")
+        else:
+            self._effective_model = current_model
+
     def _get_model_name(self) -> str:
         if self._provider == "groq":
             return self._config.groq_model
         if self._provider == "gemini":
             return self._config.gemini_model
         if self._provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
-            return self._config.openai_model
+            return self._effective_model or self._config.openai_model
         if self._provider == "omniroute":
             return f"omniroute:{self._config.omniroute_model}"
         return self._config.ollama_model
@@ -221,6 +263,7 @@ class LocalAIProvider(AIProvider):
         if not self._config.openai_api_key:
             self._last_http_error = f"No hay API key configurada para {self._provider}"
             return None
+        model = self._effective_model or self._config.openai_model
         try:
             resp = httpx.post(
                 f"{self._config.openai_base_url.rstrip('/')}/chat/completions",
@@ -229,7 +272,7 @@ class LocalAIProvider(AIProvider):
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": self._config.openai_model,
+                    "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_msg},
