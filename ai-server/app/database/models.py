@@ -151,3 +151,17 @@ class PendingNotification(Base):
         Index("ix_pending_notifications_status", "status"),
         Index("ix_pending_notifications_created", "created_at"),
     )
+
+
+class HmacNonce(Base):
+    """Persisted nonce for HMAC anti-replay protection (survives restarts)."""
+
+    __tablename__ = "hmac_nonces"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    nonce: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("ix_hmac_nonces_expires", "expires_at"),
+    )

@@ -65,13 +65,40 @@ def verify_timestamp(timestamp: str, window_seconds: int) -> bool:
 
 
 def verify_nonce(nonce: str, window_seconds: int) -> bool:
-    """Verify nonce is unique within the window. Returns True if accepted."""
+    """Verify nonce is unique within the window. Returns True if accepted.
+
+    Uses in-memory store for fast checks, backed by DB for restart persistence.
+    """
     _cleanup_nonces()
+    # Fast path: check in-memory store first
     with _nonce_lock:
         if nonce in _nonce_store:
             return False
+    # DB-backed check (survives restarts)
+    try:
+        from datetime import UTC, datetime, timedelta
+        from app.database.models import HmacNonce
+        from app.database.session import SessionLocal
+        session = SessionLocal()
+        try:
+            existing = session.query(HmacNonce).filter_by(nonce=nonce).first()
+            if existing is not None:
+                # Found in DB — replay attempt
+                with _nonce_lock:
+                    _nonce_store[nonce] = time.time() + window_seconds
+                return False
+            # Persist nonce
+            expires = datetime.now(UTC) + timedelta(seconds=window_seconds)
+            session.add(HmacNonce(nonce=nonce, expires_at=expires))
+            session.commit()
+        finally:
+            session.close()
+    except Exception:
+        # If DB is unavailable, fall back to in-memory only
+        pass
+    with _nonce_lock:
         _nonce_store[nonce] = time.time() + window_seconds
-        return True
+    return True
 
 
 async def hmac_middleware(request: Request, call_next: Callable) -> Response:
