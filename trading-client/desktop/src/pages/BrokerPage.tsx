@@ -1322,6 +1322,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
 }
 
 function PositionsModule({ positions: propPositions, brokerId }: { positions: any[]; brokerId: string | null }) {
+  const { connectedAccounts } = useBrokerContext();
   const [expandedCharts, setExpandedCharts] = useState<Set<string>>(new Set());
   const [paperStatus, setPaperStatus] = useState<any>(null);
   const [paperAction, setPaperAction] = useState("");
@@ -1580,7 +1581,10 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
       }));
 
     try {
-      const body: any = { positions: selectedData, broker: brokerId || (activeTab === "live" ? "binance" : "paper") };
+      // Use the selected broker, or the first connected broker, or "paper" if none connected
+      const firstConnected = connectedAccounts.find((a) => a.status === "CONNECTED_READ_ONLY" || a.status === "CONNECTED_TRADING");
+      const effectiveBroker = brokerId || firstConnected?.brokerId || "paper";
+      const body: any = { positions: selectedData, broker: effectiveBroker };
       if (aiProvider) body.provider = aiProvider;
       if (aiModel) body.model = aiModel;
       const res = await api<any>("/api/ai-agent/analyze-positions", {

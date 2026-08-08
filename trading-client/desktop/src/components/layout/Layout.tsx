@@ -125,7 +125,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
       const detail = (e as CustomEvent).detail;
       if (detail?.page === "trade" && detail?.asset) {
         const firstConnected = connectedAccounts.find((a) => isBrokerConnected(a.status));
-        const brokerId = detail.broker || firstConnected?.brokerId || connectedAccounts[0]?.brokerId || "binance";
+        const brokerId = detail.broker || firstConnected?.brokerId || connectedAccounts[0]?.brokerId || "";
         const rawAsset = detail.asset.toUpperCase().replace("/", "");
         const QUOTES = ["USDT", "USDC", "FDUSD", "TUSD", "BUSD", "USD", "EUR", "BTC", "ETH", "BNB", "TRY", "BRL", "MXN", "JPY", "GBP", "AUD"];
         const symbol = QUOTES.some((q) => rawAsset.endsWith(q))

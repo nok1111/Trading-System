@@ -44,7 +44,7 @@ interface ReportItem extends IntelligenceReport {
 export function ReportsPage() {
   const { connectedAccounts } = useBrokerContext();
   const firstConnectedBroker = connectedAccounts.find((a) => isBrokerConnected(a.status));
-  const activeBrokerId = firstConnectedBroker?.brokerId || "binance";
+  const activeBrokerId = firstConnectedBroker?.brokerId || "paper";
 
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(true);
