@@ -126,6 +126,7 @@ class EventScheduler:
         self._last_agent_results: dict[str, dict[str, dict | None]] = {}  # {symbol: {agent_id: result}}
         self._last_consensus: dict[str, dict | None] = {}  # {symbol: last consensus result}
         self._stop_event = threading.Event()
+        self._state_lock = threading.Lock()  # protects _last_run, _last_indicators, _last_agent_results, _last_consensus
 
     def start(self) -> bool:
         """Inicia el scheduler en background."""
@@ -205,7 +206,8 @@ class EventScheduler:
             result = self._execute_agent(agent_id, event)
             results.append(result)
             agent_results[agent_id] = result.result
-            self._last_run[agent_id] = time.time()
+            with self._state_lock:
+                self._last_run[agent_id] = time.time()
 
             # Small delay between agents to avoid rate limiting
             time.sleep(2)
@@ -222,10 +224,12 @@ class EventScheduler:
 
         # Guardar resultados de agentes para comparación futura
         symbol = event.asset
-        prev_results = self._last_agent_results.get(symbol, {})
+        with self._state_lock:
+            prev_results = self._last_agent_results.get(symbol, {})
         # Merge: actualizar solo los agentes que se ejecutaron
         merged_results = {**prev_results, **agent_results}
-        self._last_agent_results[symbol] = merged_results
+        with self._state_lock:
+            self._last_agent_results[symbol] = merged_results
 
         # Ejecutar consensus solo si hay cambio material o evento explícito
         if needs_consensus:
@@ -245,7 +249,8 @@ class EventScheduler:
                 )
                 consensus_result = self._execute_consensus(merged_results, event)
                 results.append(consensus_result)
-                self._last_run["consensus_agent"] = time.time()
+                with self._state_lock:
+                    self._last_run["consensus_agent"] = time.time()
 
                 # Persistir señal si consensus fue exitoso
                 if (
@@ -262,7 +267,8 @@ class EventScheduler:
                     self._persist_scenario(session, consensus_result.result, event)
                     # Persistir reporte periódico
                     self._persist_report(session, consensus_result.result, merged_results, event)
-                    self._last_consensus[symbol] = consensus_result.result
+                    with self._state_lock:
+                        self._last_consensus[symbol] = consensus_result.result
             else:
                 logger.info("Consensus skipped for %s — no material change", symbol)
                 results.append(AgentExecutionResult(
@@ -288,8 +294,10 @@ class EventScheduler:
         anomalies = self.market_data.detect_anomalies(symbol, indicators=indicators)
 
         # Comparar con indicadores anteriores
-        prev = self._last_indicators.get(symbol, {})
-        self._last_indicators[symbol] = {
+        with self._state_lock:
+            prev = self._last_indicators.get(symbol, {})
+        with self._state_lock:
+            self._last_indicators[symbol] = {
             "trend": indicators.trend,
             "rsi": indicators.rsi,
             "volatility": indicators.volatility,
