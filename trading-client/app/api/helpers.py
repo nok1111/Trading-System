@@ -17,12 +17,12 @@ def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
     user_id = None
     if current_user:
         user_id = getattr(current_user, "id", None)
+    if user_id is None:
+        return None
     try:
         session = SessionLocal()
         from app.database.models.broker_account import BrokerAccount as BA
-        query = session.query(BA).filter_by(broker_id="binance")
-        if user_id is not None:
-            query = query.filter_by(user_id=user_id)
+        query = session.query(BA).filter_by(broker_id="binance", user_id=user_id)
         row = query.first()
         if row and row.api_key_enc:
             key = decrypt(row.api_key_enc)
@@ -49,12 +49,12 @@ def resolve_broker_credentials(
     user_id = None
     if current_user:
         user_id = getattr(current_user, "id", None)
+    if user_id is None:
+        return None
     try:
         session = SessionLocal()
         from app.database.models.broker_account import BrokerAccount as BA
-        query = session.query(BA).filter_by(broker_id=broker_id)
-        if user_id is not None:
-            query = query.filter_by(user_id=user_id)
+        query = session.query(BA).filter_by(broker_id=broker_id, user_id=user_id)
         row = query.first()
         session.close()
         if row and row.api_key_enc:
