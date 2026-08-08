@@ -1,6 +1,7 @@
 """AI Agent endpoints (start, stop, execute, stats, binance balance, trading mode, kill switch)."""
 
 import os
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -116,6 +117,31 @@ def _save_user_keys(user_id: int, groq_key: str | None = None, gemini_key: str |
         db.close()
 
 router = APIRouter(prefix="/api", tags=["ai-agent"])
+
+# Lock to prevent concurrent .env file writes
+_env_write_lock = threading.Lock()
+
+
+def _update_env_var(key: str, value: str) -> None:
+    """Thread-safe update of a single key in the .env file."""
+    from pathlib import Path
+    with _env_write_lock:
+        env_path = Path(".env")
+        if not env_path.exists():
+            return
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.startswith(f"{key}="):
+                new_lines.append(f"{key}={value}")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"{key}={value}")
+        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        os.environ[key] = value
 
 
 class AIStartRequest(BaseModel):
@@ -1613,23 +1639,8 @@ def set_ai_agent_broker(
 
     state.ai_selected_broker = broker_id
 
-    # Update .env for persistence
-    from pathlib import Path
-    env_path = Path(".env")
-    if env_path.exists():
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-        found = False
-        new_lines = []
-        for line in lines:
-            if line.startswith("AI_SELECTED_BROKER="):
-                new_lines.append(f"AI_SELECTED_BROKER={broker_id}")
-                found = True
-            else:
-                new_lines.append(line)
-        if not found:
-            new_lines.append(f"AI_SELECTED_BROKER={broker_id}")
-        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        os.environ["AI_SELECTED_BROKER"] = broker_id
+    # Update .env for persistence (thread-safe)
+    _update_env_var("AI_SELECTED_BROKER", broker_id)
 
     return {
         "status": "ok",
@@ -1670,25 +1681,10 @@ def set_ai_capital(amount: float = Query(0, ge=0)) -> dict:
     """
     state.ai_allocated_capital = amount
 
-    # Persist to .env file
-    from pathlib import Path
-    env_path = Path(".env")
-    if env_path.exists():
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-        found = False
-        new_lines = []
-        for line in lines:
-            if line.startswith("AI_ALLOCATED_CAPITAL="):
-                new_lines.append(f"AI_ALLOCATED_CAPITAL={amount}")
-                found = True
-            else:
-                new_lines.append(line)
-        if not found:
-            new_lines.append(f"AI_ALLOCATED_CAPITAL={amount}")
-        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        os.environ["AI_ALLOCATED_CAPITAL"] = str(amount)
-        # Clear cached settings
-        get_settings.cache_clear()
+    # Persist to .env file (thread-safe)
+    _update_env_var("AI_ALLOCATED_CAPITAL", str(amount))
+    # Clear cached settings
+    get_settings.cache_clear()
 
     return {
         "allocated_capital": amount,
