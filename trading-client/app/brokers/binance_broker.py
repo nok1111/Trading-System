@@ -61,7 +61,7 @@ class BinanceBroker(Broker):
             self._base_url = base_url.rstrip("/")
 
     def _get_symbol_filters(self, symbol: str) -> dict:
-        """Fetch and cache LOT_SIZE step and MIN_NOTIONAL for a symbol."""
+        """Fetch and cache LOT_SIZE step, MIN_NOTIONAL, and PRICE_FILTER tickSize for a symbol."""
         symbol = symbol.upper()
         if symbol in self._symbol_filters_cache:
             return self._symbol_filters_cache[symbol]
@@ -74,16 +74,18 @@ class BinanceBroker(Broker):
             resp.raise_for_status()
             data = resp.json()
             filters = data.get("symbols", [{}])[0].get("filters", [])
-            result = {"step_size": None, "min_notional": None}
+            result = {"step_size": None, "min_notional": None, "tick_size": None}
             for f in filters:
                 if f.get("filterType") == "LOT_SIZE":
                     result["step_size"] = Decimal(str(f.get("stepSize", "0")))
-                elif f.get("filterType") == "NOTIONAL":
+                elif f.get("filterType") in ("NOTIONAL", "MIN_NOTIONAL"):
                     result["min_notional"] = Decimal(str(f.get("minNotional", "0")))
+                elif f.get("filterType") == "PRICE_FILTER":
+                    result["tick_size"] = Decimal(str(f.get("tickSize", "0")))
             self._symbol_filters_cache[symbol] = result
             return result
         except Exception:
-            return {"step_size": None, "min_notional": None}
+            return {"step_size": None, "min_notional": None, "tick_size": None}
 
     def _round_quantity(self, symbol: str, qty: Decimal) -> Decimal:
         """Round quantity to valid LOT_SIZE step for the symbol."""
@@ -122,7 +124,7 @@ class BinanceBroker(Broker):
         }
 
         if order.order_type.lower() == "limit" and order.price:
-            params["price"] = self._format_price(order.price)
+            params["price"] = self._format_price(order.symbol, order.price)
             params["timeInForce"] = "GTC"
 
         if order.client_order_id:
@@ -163,12 +165,12 @@ class BinanceBroker(Broker):
             "side": "SELL",
             "type": _ORDER_TYPE_MAP.get(order_type, "STOP_LOSS"),
             "quantity": self._format_quantity(quantity),
-            "stopPrice": self._format_price(stop_price),
+            "stopPrice": self._format_price(symbol, stop_price),
         }
         if order_type == "stop_limit":
             # Limit price should be slightly below stop price to ensure fill on gap down
             eff_limit = limit_price if limit_price is not None else stop_price * Decimal("0.999")
-            params["price"] = self._format_price(eff_limit)
+            params["price"] = self._format_price(symbol, eff_limit)
             params["timeInForce"] = "GTC"
 
         resp = self._signed_request("POST", "/api/v3/order", params)
@@ -202,11 +204,11 @@ class BinanceBroker(Broker):
             "side": "SELL",
             "type": _ORDER_TYPE_MAP.get(order_type, "TAKE_PROFIT"),
             "quantity": self._format_quantity(quantity),
-            "stopPrice": self._format_price(tp_price),
+            "stopPrice": self._format_price(symbol, tp_price),
         }
         if order_type == "take_profit_limit":
             eff_limit = limit_price if limit_price is not None else tp_price
-            params["price"] = self._format_price(eff_limit)
+            params["price"] = self._format_price(symbol, eff_limit)
             params["timeInForce"] = "GTC"
 
         resp = self._signed_request("POST", "/api/v3/order", params)
@@ -377,9 +379,19 @@ class BinanceBroker(Broker):
     def _format_quantity(qty: Decimal) -> str:
         return f"{qty:.8f}".rstrip("0").rstrip(".") or "0"
 
-    @staticmethod
-    def _format_price(price: Decimal) -> str:
-        return f"{price:.8f}".rstrip("0").rstrip(".") or "0"
+    def _round_price(self, symbol: str, price: Decimal) -> Decimal:
+        """Round price to valid PRICE_FILTER tickSize for the symbol."""
+        filters = self._get_symbol_filters(symbol)
+        tick = filters.get("tick_size")
+        if tick and tick > 0:
+            rounded = (price / tick).quantize(Decimal("1")) * tick
+            return rounded.normalize()
+        return price
+
+    def _format_price(self, symbol: str, price: Decimal) -> str:
+        """Format price, rounded to valid tickSize for the symbol."""
+        rounded = self._round_price(symbol, price)
+        return f"{rounded:.8f}".rstrip("0").rstrip(".") or "0"
 
     def sync_from_db(self, open_positions: list, initial_cash: Decimal) -> None:
         """Sync state from DB positions after a restart.
