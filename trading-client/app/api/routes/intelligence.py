@@ -2138,12 +2138,9 @@ def buy_live_recommendation(
         if available <= 0:
             return {"status": "rejected", "symbol": symbol, "reason": f"Capital asignado (${allocated:.2f}) ya está comprometido en {len(open_positions)} posiciones."}
 
-        # Max positions
-        base_max = getattr(settings, "MAX_OPEN_POSITIONS", 5)
-        dynamic_max = base_max + max(0, int((allocated - 50000) / 20000))
+        # Max positions — limit removed per user request, no cap
         open_count = len(open_positions)
-        if open_count >= dynamic_max:
-            return {"status": "rejected", "symbol": symbol, "reason": f"Máximo de {dynamic_max} posiciones alcanzado."}
+        dynamic_max = 999
 
         # SL/TP from recommendation
         sl_pct = float(rec.stop_loss_pct) if rec.stop_loss_pct else float(getattr(settings, "DEFAULT_STOP_LOSS_PERCENT", 3.0))

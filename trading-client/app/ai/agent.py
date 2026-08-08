@@ -33,9 +33,9 @@ logger = logging.getLogger(__name__)
 
 # ─── Single source of truth for profile → risk limits ─────────────────────────
 PROFILE_RISK_LIMITS: dict[str, dict[str, Any]] = {
-    "conservative": {"sl_range": (2.0, 3.0), "tp_range": (4.0, 8.0),  "min_confidence": 0.7, "max_positions": 3},
-    "moderate":     {"sl_range": (3.0, 4.0), "tp_range": (6.0, 10.0), "min_confidence": 0.6, "max_positions": 5},
-    "aggressive":   {"sl_range": (4.0, 5.0), "tp_range": (8.0, 15.0), "min_confidence": 0.5, "max_positions": 7},
+    "conservative": {"sl_range": (2.0, 3.0), "tp_range": (4.0, 8.0),  "min_confidence": 0.7, "max_positions": 999},
+    "moderate":     {"sl_range": (3.0, 4.0), "tp_range": (6.0, 10.0), "min_confidence": 0.6, "max_positions": 999},
+    "aggressive":   {"sl_range": (4.0, 5.0), "tp_range": (8.0, 15.0), "min_confidence": 0.5, "max_positions": 999},
 }
 
 # Models that benefit from few-shot examples in the prompt
@@ -1890,8 +1890,8 @@ class AITradingAgent:
             positions = self._api_get("/api/positions?status=open&limit=20")
             open_count = len(positions) if isinstance(positions, list) else 0
         if open_count >= limits["max_positions"]:
-            self._add_log("info", f"Máximo de posiciones para tu perfil ({limits['max_positions']}) alcanzado — no se compra {action.get('symbol')}")
-            return None
+            self._add_log("info", f"Posiciones abiertas: {open_count} — continuando compra de {action.get('symbol')} (límite removido)")
+            # Don't block — just log. Position limit removed per user request.
 
         # Clamp SL/TP to profile range
         sl_lo, sl_hi = limits["sl_range"]

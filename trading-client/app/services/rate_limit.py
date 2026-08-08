@@ -8,15 +8,15 @@ from __future__ import annotations
 
 PLAN_LIMITS: dict[str, dict] = {
     "free": {
-        "max_pairs": 3,
-        "max_positions": 3,
+        "max_pairs": 999,
+        "max_positions": 999,
         "max_ai_requests_per_day": 50,
         "max_ai_interval_seconds": 120,
         "features": ["paper_trading", "ai_agent_analysis", "ai_agent_autotrade"],
     },
     "pro": {
-        "max_pairs": 10,
-        "max_positions": 10,
+        "max_pairs": 999,
+        "max_positions": 999,
         "max_ai_requests_per_day": 500,
         "max_ai_interval_seconds": 15,
         "features": ["paper_trading", "ai_agent_analysis", "ai_agent_autotrade", "telegram_notifications", "ai_provider_keys", "ai_premium_providers"],

@@ -356,9 +356,9 @@ def _get_profile_risk_limits(risk_tolerance: str) -> dict[str, Any]:
     except ImportError:
         # Fallback if import fails
         defaults = {
-            "conservative": {"sl_range": (2.0, 3.0), "tp_range": (4.0, 8.0), "min_confidence": 0.7, "max_positions": 3},
-            "moderate": {"sl_range": (3.0, 4.0), "tp_range": (6.0, 10.0), "min_confidence": 0.6, "max_positions": 5},
-            "aggressive": {"sl_range": (4.0, 5.0), "tp_range": (8.0, 15.0), "min_confidence": 0.5, "max_positions": 7},
+            "conservative": {"sl_range": (2.0, 3.0), "tp_range": (4.0, 8.0), "min_confidence": 0.7, "max_positions": 999},
+            "moderate": {"sl_range": (3.0, 4.0), "tp_range": (6.0, 10.0), "min_confidence": 0.6, "max_positions": 999},
+            "aggressive": {"sl_range": (4.0, 5.0), "tp_range": (8.0, 15.0), "min_confidence": 0.5, "max_positions": 999},
         }
         limits = defaults.get(risk_tolerance, defaults["moderate"])
         return {
