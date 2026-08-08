@@ -1,11 +1,15 @@
 """Shared helper functions across API routers."""
 
+import logging
+
 from fastapi import HTTPException
 
 from app.brokers.models import BrokerCredentials
 from app.config import get_settings
 from app.database.session import SessionLocal
 from app.services.crypto import decrypt
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
@@ -31,8 +35,8 @@ def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
                 session.close()
                 return (key, secret)
         session.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("resolve_binancekeys failed for user_id=%s: %s", user_id, exc)
     return None
 
 
@@ -65,12 +69,9 @@ def resolve_broker_credentials(
                 passphrase=decrypt(row.passphrase_enc) if row.passphrase_enc else None,
                 testnet=row.environment in ("testnet", "demo", "sandbox"),
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("resolve_broker_credentials failed for broker_id=%s: %s", broker_id, exc)
     return None
-
-
-def build_strategy(name: str, settings):
     """Construye una estrategia por nombre."""
     if name == "ml":
         from pathlib import Path
@@ -178,7 +179,8 @@ def create_ai_snapshot(broker) -> None:
         )
         session.add(snapshot)
         session.commit()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to save account snapshot: %s", exc)
         session.rollback()
     finally:
         session.close()
@@ -238,8 +240,8 @@ def get_or_create_agent():
                     if s.ai_premium_model:
                         state.ai_premium_model = s.ai_premium_model
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to load AI keys from DB: %s", exc)
 
             state.ai_agent = AITradingAgent(
                 provider=provider,

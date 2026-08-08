@@ -449,8 +449,8 @@ class AITradingAgent:
                     "cycle": log.cycle,
                     **(log.metadata_json or {}),
                 } for log in logs]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to load persisted logs: %s", exc)
         return list(reversed(self._log[-limit:]))
 
     def get_status(self) -> dict:
@@ -534,8 +534,8 @@ class AITradingAgent:
             ).delete(synchronize_session=False)
             db.commit()
             db.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to persist logs to DB: %s", exc)
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
