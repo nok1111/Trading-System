@@ -340,11 +340,11 @@ class BinanceAdapter(BrokerAdapter):
         }
 
         if request.order_type == OrderType.LIMIT and request.price:
-            params["price"] = self._broker._format_price(request.price)
+            params["price"] = self._broker._format_price(broker_symbol, request.price)
             params["timeInForce"] = request.time_in_force
 
         if request.stop_price:
-            params["stopPrice"] = self._broker._format_price(request.stop_price)
+            params["stopPrice"] = self._broker._format_price(broker_symbol, request.stop_price)
 
         if request.client_order_id:
             params["newClientOrderId"] = request.client_order_id
