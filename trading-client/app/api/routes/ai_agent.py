@@ -1020,7 +1020,7 @@ class ManualOrderRequest(BaseModel):
 @router.post("/binance/manual-order")
 def place_binance_manual_order(
     req: ManualOrderRequest,
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:
     """Place a manual order on Binance (buy/sell, market/limit)."""
     creds = resolve_broker_credentials("binance", current_user)
@@ -1360,7 +1360,7 @@ def get_binance_resumen(
 
 @router.post("/binance/import-positions")
 def import_binance_positions(
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:
     """Importa posiciones reales de Binance (spot + futures) a la DB local."""
     creds = resolve_broker_credentials("binance", current_user)
@@ -1791,7 +1791,7 @@ def update_ai_symbol_settings(
 @router.post("/ai-agent/execute")
 def ai_agent_execute(
     req: AIExecuteRequest,
-    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:
     """Ejecuta una operación de trading directamente desde el agente IA.
 
