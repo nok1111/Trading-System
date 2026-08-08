@@ -33,6 +33,8 @@ def _call_llm(
     1. agent_config (si tiene provider, model, api_key definidos)
     2. model_config (level_router por plan)
     3. settings defaults (.env)
+
+    Fallback automático: si el provider principal falla, prueba Gemini directo.
     """
     s = get_settings()
 
@@ -79,8 +81,8 @@ def _call_llm(
             tokens = data.get("usage", {}).get("total_tokens", 0)
             return content, tokens
         except Exception as exc:  # noqa: BLE001
-            logger.error("LLM call failed (groq): %s", exc)
-            return None, 0
+            logger.error("LLM call failed (groq): %s — trying Gemini fallback", exc)
+            return _call_gemini_direct(s, system_prompt, user_message, max_tokens, model_config.temperature)
 
     elif provider == "gemini":
         key = api_key or s.GEMINI_API_KEY
@@ -143,13 +145,56 @@ def _call_llm(
             return content, tokens
         except httpx.ConnectError as exc:
             logger.error("OmniRoute no disponible en %s: %s. Instala: npm i -g omniroute && omniroute", url, exc)
-            return None, 0
+            # Fallback a Gemini directo si OmniRoute está caído
+            return _call_gemini_direct(s, system_prompt, user_message, max_tokens, model_config.temperature)
         except Exception as exc:  # noqa: BLE001
-            logger.error("LLM call failed (omniroute): %s", exc)
-            return None, 0
+            logger.error("LLM call failed (omniroute): %s — trying Gemini fallback", exc)
+            return _call_gemini_direct(s, system_prompt, user_message, max_tokens, model_config.temperature)
 
     logger.warning("No LLM provider available for %s", provider)
     return None, 0
+
+
+def _call_gemini_direct(
+    s: Any,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int,
+    temperature: float,
+) -> tuple[str | None, int]:
+    """Fallback directo a Gemini API (sin OmniRoute) cuando el provider principal falla.
+
+    Usa la API nativa de Google con la GEMINI_API_KEY del .env.
+    Gemini es excelente para análisis de texto, noticias y sentimiento.
+    """
+    key = s.GEMINI_API_KEY
+    if not key:
+        logger.warning("Gemini fallback skipped: no GEMINI_API_KEY configured")
+        return None, 0
+    gemini_model = s.GEMINI_MODEL
+    try:
+        resp = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={key}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_message}\n\nReturn ONLY valid JSON."}]}],
+                "generationConfig": {
+                    "maxOutputTokens": max_tokens,
+                    "temperature": temperature,
+                    "responseMimeType": "application/json",
+                },
+            },
+            timeout=s.AGENT_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["candidates"][0]["content"]["parts"][0]["text"]
+        tokens = data.get("usageMetadata", {}).get("totalTokenCount", 0)
+        logger.info("Gemini fallback successful: %d tokens", tokens)
+        return content, tokens
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Gemini fallback failed: %s", exc)
+        return None, 0
 
 
 def _parse_json(content: str | None) -> dict | None:
