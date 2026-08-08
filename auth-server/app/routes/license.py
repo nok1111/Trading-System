@@ -68,7 +68,12 @@ def verify_hmac(
             detail="Missing HMAC headers",
         )
 
-    hmac_secret = getattr(settings, "HMAC_SECRET", None) or getattr(settings, "JWT_SECRET", "")
+    hmac_secret = getattr(settings, "HMAC_SECRET", None)
+    if not hmac_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="HMAC_SECRET not configured on server",
+        )
     payload = f"{x_hmac_timestamp}\n{x_hmac_nonce}\nverify"
     expected = hmac.new(hmac_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
