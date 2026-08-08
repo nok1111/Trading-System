@@ -56,9 +56,6 @@ class RiskManager:
         account: AccountSnapshot,
         open_positions: list[Position],
     ) -> RiskResult:
-        # Max positions limit removed per user request — no cap on open positions
-        pass
-
         if signal.entry_price is None or signal.entry_price <= 0:
             return RiskResult(allowed=False, reason="Precio de entrada inválido")
 
