@@ -4,10 +4,10 @@ import os
 import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 import app.api.state as state
@@ -132,17 +132,16 @@ class AIStartRequest(BaseModel):
 
 class AIExecuteRequest(BaseModel):
     """Payload para que el agente IA ejecute una operación directamente."""
-    action_type: str  # "buy", "sell", or "short"
+    action_type: Literal["buy", "sell", "short"]
     symbol: str
-    confidence: float = 0.7
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     reason: str = ""
-    stop_loss_pct: float | None = None
-    take_profit_pct: float | None = None
-    position_size_usd: float | None = None  # Nivel 2: risk-based position sizing
+    stop_loss_pct: float | None = Field(default=None, ge=0.0, le=100.0)
+    take_profit_pct: float | None = Field(default=None, ge=0.0, le=100.0)
+    position_size_usd: float | None = Field(default=None, ge=0.0)  # Nivel 2: risk-based position sizing
     partial_exit: bool = False  # Nivel 2: partial exit flag
-    partial_pct: float | None = None  # Nivel 2: percentage to sell (for partial exits)
-    leverage: int = 1  # Fase 1: futures leverage (1x-10x)
-    partial_pct: float | None = None  # Nivel 2: percentage to sell (for partial exits)
+    partial_pct: float | None = Field(default=None, ge=0.0, le=100.0)  # Nivel 2: percentage to sell (for partial exits)
+    leverage: int = Field(default=1, ge=1, le=10)  # Fase 1: futures leverage (1x-10x)
 
 
 @router.post("/ai-agent/start")
