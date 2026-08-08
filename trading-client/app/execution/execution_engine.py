@@ -140,7 +140,7 @@ class ExecutionEngine:
         return self.session.query(Position).where(
             Position.status == "open",
             Position.user_id == self.user_id,
-        ).all()
+        ).with_for_update().all()
 
     def _get_live_price(self, symbol: str) -> Decimal | None:
         """Get real-time price from WebSocket if available."""
