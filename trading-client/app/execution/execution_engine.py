@@ -353,14 +353,27 @@ class ExecutionEngine:
         position: Position,
         signal_db: Signal,
     ) -> None:
-        position.closed_at = datetime.now(tz=UTC)
-        position.status = "closed"
         sell_price = order.price or Decimal("0")
         entry_price = position.entry_price
         qty = order.filled_quantity
         realized = (sell_price - entry_price) * qty
-        position.realized_pnl = realized
-        position.current_price = sell_price
+
+        # Handle partial fills: only close position if fully sold
+        if qty < position.quantity:
+            # Partial close: reduce quantity, keep position open
+            position.quantity = position.quantity - qty
+            position.realized_pnl = (position.realized_pnl or Decimal("0")) + realized
+            position.current_price = sell_price
+            logger.info(
+                "Partial close %s: sold %s of %s, %s remaining",
+                order.symbol, qty, position.quantity + qty, position.quantity,
+            )
+        else:
+            # Full close
+            position.closed_at = datetime.now(tz=UTC)
+            position.status = "closed"
+            position.realized_pnl = realized
+            position.current_price = sell_price
         self.session.add(position)
         self.session.flush()
 
