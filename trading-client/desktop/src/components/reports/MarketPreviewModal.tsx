@@ -5,6 +5,9 @@ import { cn } from "../../lib/utils";
 import { api, cacheInvalidate } from "../../lib/api";
 import { CryptoIcon } from "../CryptoIcon";
 import { toast } from "../ui/Toast";
+import { useBrokerContext } from "../../context/BrokerContext";
+import { isBrokerConnected } from "../../lib/brokerTypes";
+import * as brokerApi from "../../lib/brokerApi";
 
 interface LiveData {
   usdt_balance: number | null;
@@ -53,15 +56,6 @@ interface MarketPreviewModalProps {
   onAction: () => void;
 }
 
-interface Ticker24h {
-  lastPrice: string;
-  priceChangePercent: string;
-  highPrice: string;
-  lowPrice: string;
-  volume: string;
-  quoteVolume: string;
-}
-
 interface KlinePoint {
   time: number;
   price: number;
@@ -69,11 +63,17 @@ interface KlinePoint {
 }
 
 export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewModalProps) {
-  const [ticker, setTicker] = useState<Ticker24h | null>(null);
+  const { connectedAccounts } = useBrokerContext();
+  const [ticker, setTicker] = useState<any>(null);
   const [klines, setKlines] = useState<KlinePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [buyLiveLoading, setBuyLiveLoading] = useState(false);
+
+  // Editable trade parameters
+  const [slPctInput, setSlPctInput] = useState<string>("");
+  const [tpPctInput, setTpPctInput] = useState<string>("");
+  const [amountInput, setAmountInput] = useState<string>("");
 
   const isPositionAnalysis = report.action_type === "position_analysis";
   const meta = report.metadata || {};
@@ -81,57 +81,71 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
     ? (meta.symbol as string) || `${report.asset}USDT`
     : `${report.asset}USDT`;
 
+  // Resolve broker ID from connected accounts
+  const firstConnected = connectedAccounts.find((a) => isBrokerConnected(a.status));
+  const brokerId = firstConnected?.brokerId || "binance";
+
   const loadMarketData = useCallback(async () => {
     setLoading(true);
     try {
+      // Use backend proxy via brokerApi instead of direct Binance fetch
       const [t, k] = await Promise.all([
-        fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`).then((r) => r.json()),
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=24`).then((r) => r.json()),
+        brokerApi.getTicker(brokerId, symbol).catch(() => null),
+        brokerApi.getKlines(brokerId, symbol, "1h", 24).catch(() => null),
       ]);
-      setTicker(t);
-      const parsed: KlinePoint[] = (k as any[]).map((candle: any) => {
-        const ts = candle[0] as number;
-        const d = new Date(ts);
-        const hh = d.getHours().toString().padStart(2, "0");
-        const mm = d.getMinutes().toString().padStart(2, "0");
-        return {
-          time: ts,
-          price: parseFloat(candle[4]),
-          label: `${hh}:${mm}`,
-        };
-      });
-      setKlines(parsed);
+      if (t) setTicker(t);
+      if (k && Array.isArray(k)) {
+        const parsed: KlinePoint[] = k.map((candle: any) => {
+          const ts = candle.timestamp || candle.time || 0;
+          const d = new Date(ts);
+          const hh = d.getHours().toString().padStart(2, "0");
+          const mm = d.getMinutes().toString().padStart(2, "0");
+          return {
+            time: ts,
+            price: parseFloat(candle.close || candle.price || 0),
+            label: `${hh}:${mm}`,
+          };
+        });
+        setKlines(parsed);
+      }
     } catch {
       // ignore
     }
     setLoading(false);
-  }, [symbol]);
+  }, [symbol, brokerId]);
 
   useEffect(() => {
     loadMarketData();
   }, [loadMarketData]);
 
-  const currentPrice = ticker ? parseFloat(ticker.lastPrice) : null;
-  const change24h = ticker ? parseFloat(ticker.priceChangePercent) : null;
+  // Initialize editable inputs from report defaults
+  useEffect(() => {
+    if (report.stop_loss_pct != null) setSlPctInput(String(report.stop_loss_pct));
+    else setSlPctInput("3");
+    if (report.take_profit_pct != null) setTpPctInput(String(report.take_profit_pct));
+    else setTpPctInput("6");
+    if (report.live_data?.estimated_value != null) setAmountInput(String(Math.round(report.live_data.estimated_value)));
+    else setAmountInput("");
+  }, [report]);
 
-  // Calculate SL/TP
+  const currentPrice = ticker ? parseFloat(ticker.lastPrice || ticker.last_price || ticker.price || 0) : null;
+  const change24h = ticker ? parseFloat(ticker.priceChangePercent || ticker.price_change_pct || 0) : null;
+
+  // Calculate SL/TP from editable inputs
+  const slPctNum = parseFloat(slPctInput) || 0;
+  const tpPctNum = parseFloat(tpPctInput) || 0;
+  const amountNum = parseFloat(amountInput) || 0;
+
   const slPrice = isPositionAnalysis
     ? meta.suggested_sl
-    : currentPrice != null && report.stop_loss_pct != null
-      ? currentPrice * (1 - report.stop_loss_pct / 100)
+    : currentPrice != null && slPctNum > 0
+      ? currentPrice * (1 - slPctNum / 100)
       : null;
   const tpPrice = isPositionAnalysis
     ? meta.suggested_tp
-    : currentPrice != null && report.take_profit_pct != null
-      ? currentPrice * (1 + report.take_profit_pct / 100)
+    : currentPrice != null && tpPctNum > 0
+      ? currentPrice * (1 + tpPctNum / 100)
       : null;
-
-  const slPct = isPositionAnalysis && currentPrice != null && slPrice != null
-    ? ((currentPrice - slPrice) / currentPrice * 100)
-    : report.stop_loss_pct;
-  const tpPct = isPositionAnalysis && currentPrice != null && tpPrice != null
-    ? ((tpPrice - currentPrice) / currentPrice * 100)
-    : report.take_profit_pct;
 
   const timeHorizon = meta.time_horizon || "";
   const reason = report.reason || report.sections?.outlook || "";
@@ -144,12 +158,16 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
     const recId = parseInt(report.id.replace("rec-", ""));
     setActionLoading(true);
     try {
-      // For position_analysis: use /accept (updates SL/TP only)
-      // For BUY: use /buy-live (executes real trade)
       const endpoint = isPositionAnalysis
         ? `/api/intelligence/reports/${recId}/accept`
         : `/api/intelligence/reports/${recId}/buy-live`;
-      const res = await api<any>(endpoint, { method: "POST" });
+      const body: any = {};
+      if (!isPositionAnalysis) {
+        if (slPctNum > 0) body.sl_pct = slPctNum;
+        if (tpPctNum > 0) body.tp_pct = tpPctNum;
+        if (amountNum > 0) body.amount = amountNum;
+      }
+      const res = await api<any>(endpoint, { method: "POST", body: JSON.stringify(body) });
       cacheInvalidate("/api/positions");
       cacheInvalidate("/api/intelligence/paper-positions");
       if (res?.status === "applied") {
@@ -188,11 +206,18 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
     const recId = parseInt(report.id.replace("rec-", ""));
     setBuyLiveLoading(true);
     try {
-      const res = await api<any>(`/api/intelligence/reports/${recId}/buy-live`, { method: "POST" });
+      const body: any = {};
+      if (slPctNum > 0) body.sl_pct = slPctNum;
+      if (tpPctNum > 0) body.tp_pct = tpPctNum;
+      if (amountNum > 0) body.amount = amountNum;
+      const res = await api<any>(`/api/intelligence/reports/${recId}/buy-live`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
       cacheInvalidate("/api/positions");
       cacheInvalidate("/api/intelligence/paper-positions");
       if (res?.status === "executed") {
-        toast(`Compra LIVE ejecutada: ${res.quantity} ${res.symbol} @ ${res.price}`, true);
+        toast(`Compra LIVE ejecutada: ${res.quantity} ${res.symbol} @ $${res.price}`, true);
         onAction();
         onClose();
       } else if (res?.status === "rejected") {
@@ -236,13 +261,16 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
     return [lo - pad, hi + pad] as [number, number];
   })();
 
+  // Estimated quantity from editable amount
+  const estQuantity = currentPrice != null && amountNum > 0 ? amountNum / currentPrice : null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-[480px] max-w-[90vw] max-h-[90vh] overflow-y-auto panel p-5 space-y-4"
+        className="w-[520px] max-w-[90vw] max-h-[90vh] overflow-y-auto panel p-5 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -330,23 +358,72 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
           <div className="rounded-[8px] p-2.5 bg-red-500/5 border border-red-500/20">
             <div className="text-[9px] font-bold text-red-400 uppercase tracking-wide">Stop Loss</div>
             <div className="text-[13px] font-bold text-red-400 mt-1">{fmtPrice(slPrice)}</div>
-            {slPct != null && (
-              <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">-{Math.abs(slPct).toFixed(1)}%</div>
+            {slPctNum > 0 && (
+              <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">-{slPctNum.toFixed(1)}%</div>
             )}
           </div>
           <div className="rounded-[8px] p-2.5 bg-green-500/5 border border-green-500/20">
             <div className="text-[9px] font-bold text-green-400 uppercase tracking-wide">Take Profit</div>
             <div className="text-[13px] font-bold text-green-400 mt-1">{fmtPrice(tpPrice)}</div>
-            {tpPct != null && (
-              <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">+{Math.abs(tpPct).toFixed(1)}%</div>
+            {tpPctNum > 0 && (
+              <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">+{tpPctNum.toFixed(1)}%</div>
             )}
           </div>
         </div>
 
-        {/* Live trading data: balance, quantity, risk summary */}
-        {report.live_data && !isPositionAnalysis && report.action_type === "BUY" && report.status === "pending" && (
+        {/* Editable trade parameters (only for non-position_analysis) */}
+        {!isPositionAnalysis && report.status === "pending" && (
+          <div className="rounded-[10px] p-3 bg-[var(--color-surface-2)] border border-[var(--color-border)] space-y-3">
+            <div className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Parámetros de Compra</div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[9px] font-bold text-red-400 uppercase">SL %</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="50"
+                  value={slPctInput}
+                  onChange={(e) => setSlPctInput(e.target.value)}
+                  className="w-full h-8 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[12px] font-bold text-red-400 focus:outline-none focus:border-red-500/50"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-green-400 uppercase">TP %</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="100"
+                  value={tpPctInput}
+                  onChange={(e) => setTpPctInput(e.target.value)}
+                  className="w-full h-8 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[12px] font-bold text-green-400 focus:outline-none focus:border-green-500/50"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase">Cantidad USD</label>
+                <input
+                  type="number"
+                  step="10"
+                  min="10"
+                  placeholder="Auto"
+                  value={amountInput}
+                  onChange={(e) => setAmountInput(e.target.value)}
+                  className="w-full h-8 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[12px] font-bold text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]/50"
+                />
+              </div>
+            </div>
+            {estQuantity != null && currentPrice != null && (
+              <div className="text-[10px] text-[var(--color-text-muted)]">
+                ≈ {estQuantity.toLocaleString("en-US", { maximumFractionDigits: 6 })} {report.asset} @ {fmtPrice(currentPrice)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Live trading data: balance, risk summary */}
+        {report.live_data && !isPositionAnalysis && report.status === "pending" && (
           <div className="space-y-2">
-            {/* Balance & Quantity */}
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-[8px] p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)]">
                 <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Saldo USDT</div>
@@ -358,35 +435,14 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
                 </div>
               </div>
               <div className="rounded-[8px] p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-                <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Cantidad estimada</div>
+                <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Posiciones abiertas</div>
                 <div className="text-[13px] font-bold text-[var(--color-text)] mt-1">
-                  {report.live_data.estimated_quantity != null ? `${report.live_data.estimated_quantity.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${report.asset}` : "N/A"}
+                  {report.live_data.open_positions_count}
                 </div>
-                <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">
-                  Valor: {report.live_data.estimated_value != null ? `$${report.live_data.estimated_value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A"}
-                </div>
+                {report.live_data.has_existing_position && (
+                  <div className="text-[9px] text-amber-400 font-bold mt-0.5">⚠ Ya tienes posición en {report.asset}</div>
+                )}
               </div>
-            </div>
-
-            {/* Risk summary */}
-            <div className="rounded-[8px] p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-              <div className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">Resumen de Riesgo</div>
-              <div className="flex items-center justify-between text-[11px] mb-1">
-                <span className="text-[var(--color-text-muted)]">Posiciones abiertas</span>
-                <span className="font-bold text-[var(--color-text)]">{report.live_data.open_positions_count} / {report.live_data.max_positions}</span>
-              </div>
-              {report.live_data.has_existing_position && (
-                <div className="text-[10px] text-amber-400 font-bold mt-1">⚠ Ya tienes posición en {report.asset}</div>
-              )}
-              {report.live_data.kill_switch_active && (
-                <div className="text-[10px] text-red-400 font-bold mt-1">🛑 Kill switch activado</div>
-              )}
-              {!report.live_data.has_existing_position && !report.live_data.kill_switch_active && report.live_data.available_capital != null && report.live_data.available_capital > 0 && (
-                <div className="text-[10px] text-green-400 font-bold mt-1">✓ Dentro de límites del perfil</div>
-              )}
-              {report.live_data.available_capital != null && report.live_data.available_capital <= 0 && (
-                <div className="text-[10px] text-red-400 font-bold mt-1">✗ Sin capital disponible</div>
-              )}
             </div>
           </div>
         )}
@@ -440,10 +496,10 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
         {/* Action buttons */}
         {report.id?.startsWith("rec-") && report.status === "pending" && (
           <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
-            {!isPositionAnalysis && report.action_type === "BUY" && (
+            {!isPositionAnalysis && (
               <button
                 className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-                disabled={buyLiveLoading || actionLoading || (report.live_data?.kill_switch_active ?? false) || (report.live_data?.has_existing_position ?? false) || (report.live_data?.available_capital != null && report.live_data.available_capital <= 0)}
+                disabled={buyLiveLoading || actionLoading}
                 onClick={handleBuyLive}
               >
                 {buyLiveLoading ? "Ejecutando..." : "Comprar LIVE"}

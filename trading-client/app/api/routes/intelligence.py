@@ -2006,9 +2006,17 @@ def decline_recommendation(rec_id: int) -> dict:
         db.close()
 
 
+class BuyLiveRequest(_BM):
+    """Optional overrides for live buy execution."""
+    sl_pct: float | None = None
+    tp_pct: float | None = None
+    amount: float | None = None  # USD amount to invest (overrides auto budget)
+
+
 @router.post("/reports/{rec_id}/buy-live")
 def buy_live_recommendation(
     rec_id: int,
+    req: BuyLiveRequest = BuyLiveRequest(),
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
     """Execute a real BUY order from an AI recommendation via the configured broker.
@@ -2039,8 +2047,7 @@ def buy_live_recommendation(
             return {"status": "error", "reason": "Recomendación no encontrada"}
         if rec.status != "pending":
             return {"status": "error", "reason": f"Recomendación ya {rec.status}"}
-        if rec.action_type != "BUY":
-            return {"status": "error", "reason": "Solo se pueden ejecutar compras LIVE"}
+        # Allow buying from any recommendation type (not just BUY)
 
         symbol = rec.asset.upper() + "USDT"
         is_live = settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED
@@ -2142,15 +2149,20 @@ def buy_live_recommendation(
         open_count = len(open_positions)
         dynamic_max = 999
 
-        # SL/TP from recommendation
-        sl_pct = float(rec.stop_loss_pct) if rec.stop_loss_pct else float(getattr(settings, "DEFAULT_STOP_LOSS_PERCENT", 3.0))
-        tp_pct = float(rec.take_profit_pct) if rec.take_profit_pct else float(getattr(settings, "DEFAULT_TAKE_PROFIT_PERCENT", 6.0))
+        # SL/TP from request overrides or recommendation defaults
+        sl_pct = float(req.sl_pct) if req.sl_pct else (float(rec.stop_loss_pct) if rec.stop_loss_pct else float(getattr(settings, "DEFAULT_STOP_LOSS_PERCENT", 3.0)))
+        tp_pct = float(req.tp_pct) if req.tp_pct else (float(rec.take_profit_pct) if rec.take_profit_pct else float(getattr(settings, "DEFAULT_TAKE_PROFIT_PERCENT", 6.0)))
         stop_loss = live_price * (Dec(1) - Dec(str(sl_pct)) / Dec(100))
         take_profit = live_price * (Dec(1) + Dec(str(tp_pct)) / Dec(100))
 
-        # Position budget
-        remaining_slots = max(1, dynamic_max - open_count)
-        position_budget = available / remaining_slots
+        # Position budget — use custom amount if provided, else auto-calculate
+        if req.amount and req.amount > 0:
+            position_budget = Dec(str(req.amount))
+            if position_budget > Dec(str(available)):
+                position_budget = Dec(str(available))
+        else:
+            remaining_slots = max(1, dynamic_max - open_count)
+            position_budget = available / remaining_slots
 
         from app.database.models.account_snapshot import AccountSnapshot as AcctModel
         acct_override = AcctModel(
