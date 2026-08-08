@@ -25,6 +25,12 @@ def _mask_api_key(key: str) -> str:
 
 def _to_safe_dict(account: BrokerAccountModel) -> dict[str, Any]:
     """Convert a BrokerAccount model to a safe dict (no secrets)."""
+    api_key_preview = "****"
+    if account.api_key_enc:
+        try:
+            api_key_preview = _mask_api_key(decrypt(account.api_key_enc))
+        except Exception:
+            api_key_preview = "****"
     return {
         "id": account.id,
         "brokerId": account.broker_id,
@@ -37,7 +43,7 @@ def _to_safe_dict(account: BrokerAccountModel) -> dict[str, Any]:
         },
         "environment": account.environment,
         "lastSyncAt": account.last_sync_at.isoformat() if account.last_sync_at else None,
-        "apiKeyPreview": _mask_api_key(decrypt(account.api_key_enc)) if account.api_key_enc else "",
+        "apiKeyPreview": api_key_preview,
     }
 
 
