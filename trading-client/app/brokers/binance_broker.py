@@ -43,6 +43,9 @@ class BinanceBroker(Broker):
 
     # Cache for exchange symbol filters: {symbol: {step_size, min_notional, ...}}
     _symbol_filters_cache: dict[str, dict] = {}
+    _symbol_filters_cache_time: dict[str, float] = {}  # symbol -> timestamp when cached
+    _filters_cache_lock = __import__("threading").Lock()
+    _FILTERS_CACHE_TTL = 3600  # 1 hour
 
     def __init__(
         self,
@@ -63,8 +66,13 @@ class BinanceBroker(Broker):
     def _get_symbol_filters(self, symbol: str) -> dict:
         """Fetch and cache LOT_SIZE step, MIN_NOTIONAL, and PRICE_FILTER tickSize for a symbol."""
         symbol = symbol.upper()
-        if symbol in self._symbol_filters_cache:
-            return self._symbol_filters_cache[symbol]
+        import time as _time
+        now = _time.time()
+        with self._filters_cache_lock:
+            cached = self._symbol_filters_cache.get(symbol)
+            cached_time = self._symbol_filters_cache_time.get(symbol, 0)
+            if cached is not None and (now - cached_time) < self._FILTERS_CACHE_TTL:
+                return cached
         try:
             resp = httpx.get(
                 f"{self._base_url}/api/v3/exchangeInfo",
@@ -82,7 +90,9 @@ class BinanceBroker(Broker):
                     result["min_notional"] = Decimal(str(f.get("minNotional", "0")))
                 elif f.get("filterType") == "PRICE_FILTER":
                     result["tick_size"] = Decimal(str(f.get("tickSize", "0")))
-            self._symbol_filters_cache[symbol] = result
+            with self._filters_cache_lock:
+                self._symbol_filters_cache[symbol] = result
+                self._symbol_filters_cache_time[symbol] = now
             return result
         except Exception:
             return {"step_size": None, "min_notional": None, "tick_size": None}
