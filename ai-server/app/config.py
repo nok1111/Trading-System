@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # Service-to-service HMAC
-    HMAC_SECRET: str = "change-me-in-production"
+    HMAC_SECRET: str = Field(default="change-me-in-production", description="Must be overridden in production via env var")
     HMAC_TIMESTAMP_WINDOW_SECONDS: int = 300  # 5 min
 
     # Auth Server URL for JWT validation
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     CACHE_TTL_SECONDS: int = 60
 
     # CORS
-    CORS_ORIGINS: str = "*"
+    CORS_ORIGINS: str = "http://localhost:1420,http://127.0.0.1:1420,http://localhost:8080"
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = Field(default=30, ge=1)
@@ -77,7 +77,7 @@ class Settings(BaseSettings):
 
     # Intelligence API (Phase F)
     USE_INTELLIGENCE_API: bool = False
-    INTELLIGENCE_REQUIRE_JWT: bool = False
+    INTELLIGENCE_REQUIRE_JWT: bool = True
 
     # Database (Phase C — Market Knowledge Base)
     DATABASE_URL: str = "sqlite:///./data/ai_server.db"

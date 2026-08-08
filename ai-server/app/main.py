@@ -20,6 +20,11 @@ from app.config import get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate critical config before starting
+    if settings.APP_ENV != "development" and settings.HMAC_SECRET == "change-me-in-production":
+        raise RuntimeError("HMAC_SECRET must be overridden in non-development environments")
+    if settings.APP_ENV != "development" and settings.CORS_ORIGINS == "*":
+        raise RuntimeError("CORS_ORIGINS must not be '*' in non-development environments")
     # Start the intelligence scheduler automatically
     from app.services.scheduler import get_scheduler
     sched = get_scheduler()
