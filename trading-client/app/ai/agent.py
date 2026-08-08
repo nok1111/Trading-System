@@ -1008,6 +1008,9 @@ class AITradingAgent:
 
         # 3. Gather local technical context (movers, RSI, MACD, positions, etc.)
         local_context = self._gather_context()
+        if local_context is None:
+            self._add_log("warn", "Contexto local no disponible, abortando ciclo", {"cycle": self._cycle, "phase": "error"})
+            return
 
         # 4. Build combined context for LLM: remote signals + local technical data
         combined_context: dict[str, Any] = dict(local_context)  # Start with local context (acc, positions, spot, futures, technical, etc.)
@@ -1677,11 +1680,16 @@ class AITradingAgent:
             except Exception:
                 pass
 
+            # Abort if critical context (account info) is missing — don't trade blind
+            if "acc" not in ctx:
+                self._add_log("warn", "Contexto incompleto: sin datos de cuenta. Abortando ciclo.")
+                return None
+
             return ctx
 
         except Exception as exc:
             self._add_log("error", f"Error recopilando contexto: {exc}")
-            return {}
+            return None
 
     # Cached set of valid spot symbols
     _valid_symbols_cache: set[str] | None = None
