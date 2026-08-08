@@ -71,20 +71,28 @@ export function ReportsPage() {
     return () => clearInterval(interval);
   }, [load]);
 
-  const handleAccept = async (e: React.MouseEvent, recId: number) => {
+  const handleAccept = async (e: React.MouseEvent, recId: number, actionType?: string) => {
     e.stopPropagation();
     const id = `rec-${recId}`;
     setActionLoading(id);
     try {
-      const res = await api<any>(`/api/intelligence/reports/${recId}/accept`, { method: "POST" });
+      // For BUY recommendations, execute a LIVE trade via /buy-live (not paper)
+      // For position_analysis, use /accept which just updates SL/TP
+      const endpoint = actionType === "position_analysis"
+        ? `/api/intelligence/reports/${recId}/accept`
+        : `/api/intelligence/reports/${recId}/buy-live`;
+      const res = await api<any>(endpoint, { method: "POST" });
       await load();
-      // Invalidate positions cache so BrokerPage shows updated SL/TP
       cacheInvalidate("/api/positions");
       cacheInvalidate("/api/intelligence/paper-positions");
       if (res?.status === "applied") {
         toast(`SL/TP actualizado para posición #${res.position_id}${res.broker_updated ? " (broker actualizado)" : ""}`, true);
+      } else if (res?.status === "executed") {
+        toast(`Compra LIVE ejecutada: ${res.quantity} ${res.symbol} @ $${res.price}`, true);
+      } else if (res?.status === "rejected") {
+        toast(res?.reason || "Compra rechazada", false);
       } else {
-        toast("Paper trade creado. Míralo en Posiciones → Paper", true);
+        toast(res?.reason || "Error al aceptar recomendación", false);
       }
     } catch (err) {
       console.error("Accept failed:", err);
@@ -410,9 +418,9 @@ export function ReportsPage() {
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
                           disabled={actionLoading === r.id}
-                          onClick={(e) => handleAccept(e, parseInt(r.id.replace("rec-", "")))}
+                          onClick={(e) => handleAccept(e, parseInt(r.id.replace("rec-", "")), r.action_type)}
                         >
-                          {actionLoading === r.id ? "Procesando..." : "✓ Aceptar"}
+                          {actionLoading === r.id ? "Procesando..." : "✓ Comprar LIVE"}
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
@@ -459,9 +467,9 @@ export function ReportsPage() {
                     )}
                     {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type !== "position_analysis" && (
                       <div className="text-[10px] text-[var(--color-success)] font-bold pt-1 flex items-center gap-1">
-                        ✓ Recomendación aceptada y ejecutada como paper trade
+                        ✓ Compra LIVE ejecutada en tu broker
                         <span className="text-[var(--color-text-muted)]">→</span>
-                        <span className="text-[var(--color-info)]">Posiciones → Paper</span>
+                        <span className="text-[var(--color-info)]">Posiciones</span>
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "dismissed" && (

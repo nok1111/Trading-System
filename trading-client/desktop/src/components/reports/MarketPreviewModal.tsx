@@ -144,13 +144,20 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
     const recId = parseInt(report.id.replace("rec-", ""));
     setActionLoading(true);
     try {
-      const res = await api<any>(`/api/intelligence/reports/${recId}/accept`, { method: "POST" });
+      // For position_analysis: use /accept (updates SL/TP only)
+      // For BUY: use /buy-live (executes real trade)
+      const endpoint = isPositionAnalysis
+        ? `/api/intelligence/reports/${recId}/accept`
+        : `/api/intelligence/reports/${recId}/buy-live`;
+      const res = await api<any>(endpoint, { method: "POST" });
       cacheInvalidate("/api/positions");
       cacheInvalidate("/api/intelligence/paper-positions");
       if (res?.status === "applied") {
         toast(`SL/TP actualizado para posición #${res.position_id}${res.broker_updated ? " (broker actualizado)" : ""}`, true);
       } else if (res?.status === "executed") {
-        toast("Paper trade creado. Míralo en Posiciones → Paper", true);
+        toast(`Compra LIVE ejecutada: ${res.quantity} ${res.symbol} @ $${res.price}`, true);
+      } else if (res?.status === "rejected") {
+        toast(res?.reason || "Compra rechazada", false);
       } else {
         toast(res?.reason || "Error al aceptar recomendación", false);
       }
@@ -442,14 +449,16 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
                 {buyLiveLoading ? "Ejecutando..." : "Comprar LIVE"}
               </button>
             )}
-            <button
-              className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-              disabled={actionLoading || buyLiveLoading}
-              onClick={handleAccept}
-            >
-              <Check size={14} />
-              {actionLoading ? "Procesando..." : isPositionAnalysis ? "Aceptar ajustes" : "Aceptar (Paper)"}
-            </button>
+            {isPositionAnalysis && (
+              <button
+                className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                disabled={actionLoading || buyLiveLoading}
+                onClick={handleAccept}
+              >
+                <Check size={14} />
+                {actionLoading ? "Procesando..." : "Aceptar ajustes"}
+              </button>
+            )}
             <button
               className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
               disabled={actionLoading || buyLiveLoading}
