@@ -340,14 +340,12 @@ INTELLIGENCE_AGENTS: dict[str, IntelligenceAgentConfig] = {
         role="Evalúa impacto de noticias",
         system_prompt=_NEWS_PROMPT, output_schema=_NEWS_SCHEMA,
         max_tokens=500, interval_minutes=30, is_optional=True,
-        provider="gemini", model="gemini-2.0-flash",
     ),
     "sentiment_analyst": IntelligenceAgentConfig(
         id="sentiment_analyst", name="Sentiment Analyst",
         role="Analiza sentimiento de redes sociales",
         system_prompt=_SENTIMENT_PROMPT, output_schema=_SENTIMENT_SCHEMA,
         max_tokens=500, interval_minutes=30, is_optional=True,
-        provider="gemini", model="gemini-2.0-flash",
     ),
     "onchain_analyst": IntelligenceAgentConfig(
         id="onchain_analyst", name="On-chain Analyst",
