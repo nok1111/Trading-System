@@ -119,7 +119,15 @@ class Settings(BaseSettings):
         from decimal import Decimal as _Decimal
 
         safe = self.model_dump()
-        for key in ("BROKER_API_KEY", "BROKER_API_SECRET"):
+        for key in (
+            "BROKER_API_KEY", "BROKER_API_SECRET",
+            "GROQ_API_KEY", "GEMINI_API_KEY",
+            "ENCRYPTION_KEY",
+            "WHATSAPP_ACCESS_TOKEN",
+            "TELEGRAM_BOT_TOKEN",
+            "REMOTE_AI_TOKEN",
+            "OMNIROUTE_API_KEY",
+        ):
             if safe.get(key):
                 safe[key] = "***REDACTED***"
         for key, value in safe.items():
