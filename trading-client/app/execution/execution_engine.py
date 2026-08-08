@@ -80,6 +80,7 @@ class ExecutionEngine:
                 return None
 
             # RiskEngine determinista con circuit breaker (veto adicional)
+            engine_decision = None
             if self.risk_engine is not None:
                 engine_decision = self.risk_engine.evaluate_order(
                     side=signal_create.signal_type.lower(),
@@ -108,7 +109,7 @@ class ExecutionEngine:
                     return None
 
             if signal_create.signal_type == "BUY":
-                return self._execute_buy(signal_create, signal_db, account)
+                return self._execute_buy(signal_create, signal_db, account, engine_decision)
             if signal_create.signal_type == "SELL":
                 return self._execute_sell(signal_create, signal_db, open_positions)
 
@@ -160,9 +161,13 @@ class ExecutionEngine:
         signal: SignalCreate,
         signal_db: Signal,
         account: AccountSnapshot,
+        engine_decision=None,
     ) -> Order:
         price = self._get_live_price(signal.symbol) or signal.entry_price or self.broker.get_quote(signal.symbol)
         quantity = self.risk_manager.calculate_position_size(signal, account)
+        # If RiskEngine computed an adjusted_quantity (e.g. circuit breaker reduced it), use that
+        if engine_decision is not None and getattr(engine_decision, "adjusted_quantity", None) is not None:
+            quantity = engine_decision.adjusted_quantity
 
         if self.order_manager is not None:
             order = self.order_manager.process_order_lifecycle(
