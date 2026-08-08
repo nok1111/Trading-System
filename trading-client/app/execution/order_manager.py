@@ -77,9 +77,15 @@ class OrderManager:
         price: Decimal,
         side: str = "BUY",
         order_type: str = "market",
+        idempotency_key: str | None = None,
     ) -> Order:
         """Crea una orden en estado DRAFT con idempotency key única."""
-        idempotency_key = uuid4().hex[:36]
+        if idempotency_key:
+            existing = self.find_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                logger.info("Order with idempotency_key=%s already exists (status=%s), returning existing", idempotency_key, existing.internal_status)
+                return existing
+        idempotency_key = idempotency_key or uuid4().hex[:36]
         client_order_id = uuid4().hex[:36]
 
         order = Order(
@@ -286,13 +292,20 @@ class OrderManager:
         quantity: Decimal,
         price: Decimal,
         side: str = "BUY",
+        idempotency_key: str | None = None,
     ) -> Order | None:
         """Ejecuta el ciclo completo: DRAFT → VALIDATED → RISK_APPROVED → (PENDING_APPROVAL) → SUBMITTED → FILLED.
 
         Si LIVE_CONFIRMATION_REQUIRED=True, se detiene en PENDING_APPROVAL
         y devuelve la orden para aprobación manual posterior.
+
+        Si se pasa idempotency_key, se verifica si ya existe una orden con
+        esa key antes de crear una nueva (anti-duplicado).
         """
-        order = self.create_draft(signal, signal_db, quantity, price, side)
+        order = self.create_draft(signal, signal_db, quantity, price, side, idempotency_key=idempotency_key)
+        # If create_draft returned an existing order (idempotency hit), return it
+        if order.internal_status not in ("DRAFT",):
+            return order
         self.validate(order)
         self.risk_approve(order)
 
