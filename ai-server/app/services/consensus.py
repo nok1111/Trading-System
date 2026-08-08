@@ -330,6 +330,33 @@ def compute_agreement(agent_results: dict[str, dict | None]) -> dict[str, int]:
     return {"positive": positive, "neutral": neutral, "negative": negative}
 
 
+def resolve_tie(agreement: dict[str, int]) -> str:
+    """Resolve a tie in agreement votes deterministically.
+
+    When positive == negative, default to NEUTRAL (don't trade).
+    When positive == neutral or negative == neutral, the dominant
+    non-neutral side wins.
+
+    Returns: "positive", "negative", or "neutral".
+    """
+    p = agreement.get("positive", 0)
+    n = agreement.get("negative", 0)
+    z = agreement.get("neutral", 0)
+
+    if p > n and p > z:
+        return "positive"
+    if n > p and n > z:
+        return "negative"
+    if p == n and p > 0:
+        # Tie between positive and negative — default to neutral (no trade)
+        return "neutral"
+    if p == z and p > n:
+        return "positive"
+    if n == z and n > p:
+        return "negative"
+    return "neutral"
+
+
 def generate_default_scenarios(
     current_price: float,
     volatility: float | None = None,
