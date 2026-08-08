@@ -181,6 +181,9 @@ class ExecutionEngine:
             if order.internal_status == "FILLED" and order.filled_quantity > 0:
                 self._record_trade_and_position(order, signal_db)
                 self._place_exchange_sl_tp(order, signal_db)
+            elif order.internal_status == "PARTIALLY_FILLED" and order.filled_quantity > 0:
+                self._record_trade_and_position(order, signal_db)
+                self._place_exchange_sl_tp(order, signal_db)
             self._notify_trade(order, signal_db)
             self.session.commit()
             return order
@@ -211,7 +214,7 @@ class ExecutionEngine:
         self.session.add(filled_order)
 
         try:
-            if filled_order.status == "filled" and filled_order.filled_quantity > 0:
+            if filled_order.status in ("filled", "partially_filled") and filled_order.filled_quantity > 0:
                 self._record_trade_and_position(filled_order, signal_db)
                 self._place_exchange_sl_tp(filled_order, signal_db)
 
