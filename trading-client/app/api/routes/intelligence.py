@@ -2006,7 +2006,7 @@ def decline_recommendation(rec_id: int) -> dict:
         db.close()
 
 
-class BuyLiveRequest(_BM):
+class BuyLiveRequest(_BaseModel):
     """Optional overrides for live buy execution."""
     sl_pct: float | None = None
     tp_pct: float | None = None
