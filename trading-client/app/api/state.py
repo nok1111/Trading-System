@@ -14,6 +14,7 @@ ai_agent = None
 ai_lock = threading.Lock()
 ai_shared_broker = None
 ai_shared_broker_keys: tuple | None = None
+ai_broker_lock = threading.Lock()
 ai_allocated_capital: float = float(get_settings().AI_ALLOCATED_CAPITAL) if get_settings().AI_ALLOCATED_CAPITAL else 0.0
 ai_jwt_token: str | None = None  # JWT token for Auth Server grant requests
 # Broker where AI Agent executes trades — fall back to BROKER_PROVIDER from settings (not "paper")

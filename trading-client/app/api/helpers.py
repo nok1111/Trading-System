@@ -121,9 +121,10 @@ def get_shared_broker(binance_keys: tuple[str, str] | None = None):
     if schedulers:
         return schedulers[0].broker
 
-    # Si cambian las keys, recrear el broker
-    if state.ai_shared_broker is not None and state.ai_shared_broker_keys == binance_keys:
-        return state.ai_shared_broker
+    # Thread-safe check-and-set for shared broker
+    with state.ai_broker_lock:
+        if state.ai_shared_broker is not None and state.ai_shared_broker_keys == binance_keys:
+            return state.ai_shared_broker
 
     # Crear broker usando la factory (MockBroker o BinanceBroker según config)
     from app.database.models.position import Position as PosModel
@@ -148,8 +149,9 @@ def get_shared_broker(binance_keys: tuple[str, str] | None = None):
         finally:
             session.close()
 
-    state.ai_shared_broker = broker
-    state.ai_shared_broker_keys = binance_keys
+    with state.ai_broker_lock:
+        state.ai_shared_broker = broker
+        state.ai_shared_broker_keys = binance_keys
     return broker
 
 
