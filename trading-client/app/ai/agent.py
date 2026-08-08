@@ -312,6 +312,7 @@ class AITradingAgent:
         self._user_id = user_id
         self._auth_server_url = auth_server_url
         self._grant_fail_streak = 0  # consecutive grant failures
+        self._price_fail_streak = 0  # consecutive price fetch failures in auto-close
         self._intelligence_provider: IntelligenceProvider | None = None
         self._last_signals_snapshot: dict[str, str] = {}  # asset -> decision (for consensus change detection)
 
@@ -624,12 +625,19 @@ class AITradingAgent:
                             current_price = float(ticker_data["price"])
                         else:
                             continue
-                except Exception:
+                except Exception as exc:
+                    self._price_fail_streak += 1
+                    if self._price_fail_streak >= 3:
+                        self._add_log("error", f"Auto-close: fallo de precio {self._price_fail_streak} veces consecutivas. Ultimo error: {exc}. Monitoreo de posiciones comprometido.")
+                    logger.warning("Auto-close price fetch failed for %s: %s", symbol, exc)
                     continue
 
                 # Detect position side (long or short)
                 pos_side = (pos.get("side") or "long").lower()
                 is_short = pos_side == "short"
+
+                # Price fetch succeeded — reset fail streak
+                self._price_fail_streak = 0
 
                 # Use RiskEngine for trailing stop evaluation (Decimal-based)
                 if is_short:
