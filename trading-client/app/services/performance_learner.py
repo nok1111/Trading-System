@@ -45,8 +45,9 @@ class PerformanceLearner:
                 PredictionRecord.user_id == self._user_id,
                 PredictionRecord.evaluated == False,  # noqa: E712
                 PredictionRecord.timestamp < cutoff,
-                PredictionRecord.metadata_json["source"].astext == "ai_agent",
             ).limit(50).all()
+            # Filter by metadata source in Python (compatible with both SQLite and PostgreSQL)
+            records = [r for r in records if (r.metadata_json or {}).get("source") == "ai_agent"]
 
             for record in records:
                 try:
@@ -143,8 +144,9 @@ class PerformanceLearner:
             records = session.query(PredictionRecord).filter(
                 PredictionRecord.user_id == self._user_id,
                 PredictionRecord.evaluated == True,  # noqa: E712
-                PredictionRecord.metadata_json["source"].astext == "ai_agent",
             ).order_by(PredictionRecord.timestamp.desc()).limit(500).all()
+            # Filter by metadata source in Python (compatible with both SQLite and PostgreSQL)
+            records = [r for r in records if (r.metadata_json or {}).get("source") == "ai_agent"]
 
             if len(records) < 5:
                 return {

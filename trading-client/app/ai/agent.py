@@ -2247,8 +2247,9 @@ class AITradingAgent:
                 records = db.query(PredictionRecord).filter(
                     PredictionRecord.user_id == self._user_id,
                     PredictionRecord.evaluated == True,
-                    PredictionRecord.metadata_json["source"].astext == "ai_agent",
                 ).limit(200).all()
+                # Filter by metadata source in Python (PostgreSQL compatible)
+                records = [r for r in records if (r.metadata_json or {}).get("source") == "ai_agent"]
 
                 if not records or len(records) < 5:
                     return {"status": "insufficient_data", "count": len(records)}
