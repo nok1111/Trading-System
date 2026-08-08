@@ -160,11 +160,11 @@ export function NotificationDropdown({ open, onClose, onNavigate, onUnreadCountC
             const sev = SEVERITY_STYLES[n.severity] || SEVERITY_STYLES.info;
             const typeIcon = TYPE_ICONS[n.type] || "🔔";
             return (
-              <button
+              <div
                 key={n.id}
                 onClick={() => handleClick(n)}
                 className={cn(
-                  "w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-[var(--color-surface-hover)] transition-colors",
+                  "w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer",
                   !n.read && "bg-[var(--color-primary)]/5"
                 )}
               >
@@ -211,7 +211,7 @@ export function NotificationDropdown({ open, onClose, onNavigate, onUnreadCountC
                     <Check size={13} />
                   </button>
                 )}
-              </button>
+              </div>
             );
           })
         )}
