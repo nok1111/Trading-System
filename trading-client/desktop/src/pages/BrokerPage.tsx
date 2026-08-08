@@ -1581,10 +1581,12 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
       }));
 
     try {
-      // Use the selected broker, or the first connected broker, or "paper" if none connected
+      // Use the selected broker, or the first connected broker — never default to "paper"
       const firstConnected = connectedAccounts.find((a) => a.status === "CONNECTED_READ_ONLY" || a.status === "CONNECTED_TRADING");
-      const effectiveBroker = brokerId || firstConnected?.brokerId || "paper";
-      const body: any = { positions: selectedData, broker: effectiveBroker };
+      const effectiveBroker = brokerId || firstConnected?.brokerId || undefined;
+      const body: any = { positions: selectedData };
+      if (effectiveBroker) body.broker = effectiveBroker;
+      // If no broker specified, backend will use settings.BROKER_PROVIDER from .env
       if (aiProvider) body.provider = aiProvider;
       if (aiModel) body.model = aiModel;
       const res = await api<any>("/api/ai-agent/analyze-positions", {

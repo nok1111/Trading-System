@@ -16,7 +16,11 @@ ai_shared_broker = None
 ai_shared_broker_keys: tuple | None = None
 ai_allocated_capital: float = float(get_settings().AI_ALLOCATED_CAPITAL) if get_settings().AI_ALLOCATED_CAPITAL else 0.0
 ai_jwt_token: str | None = None  # JWT token for Auth Server grant requests
-ai_selected_broker: str = os.environ.get("AI_SELECTED_BROKER", "paper")  # Broker where AI Agent executes trades
+# Broker where AI Agent executes trades — fall back to BROKER_PROVIDER from settings (not "paper")
+_env_broker = os.environ.get("AI_SELECTED_BROKER")
+if not _env_broker:
+    _env_broker = getattr(get_settings(), "BROKER_PROVIDER", None) or "paper"
+ai_selected_broker: str = _env_broker
 
 # ML training
 ml_status: dict = {

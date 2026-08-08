@@ -410,7 +410,7 @@ def ai_agent_sessions(
 class AnalyzePositionsRequest(BaseModel):
     """Payload for position analysis — list of positions to analyze."""
     positions: list[dict] = []
-    broker: str = "paper"
+    broker: str | None = None  # If None, backend uses settings.BROKER_PROVIDER
     provider: str | None = None
     model: str | None = None
 
@@ -538,7 +538,8 @@ def ai_agent_analyze_positions(
     # 6. Run analysis in background thread
     from threading import Thread
     positions_data = req.positions
-    broker = req.broker or "paper"
+    # Use the broker from request, or fall back to the server's configured broker (not "paper")
+    broker = req.broker or getattr(settings, "BROKER_PROVIDER", None) or getattr(state, "ai_selected_broker", None) or "paper"
 
     def _run_analysis():
         try:

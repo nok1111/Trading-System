@@ -242,7 +242,7 @@ export function AIAgentPage() {
   const [provider, setProvider] = useState("gemini");
   const [model, setModel] = useState("gemini-flash-latest");
   const [interval, setIntervalVal] = useState(30);
-  const [tradeMode, setTradeMode] = useState<"paper" | "live">("paper");
+  const [tradeMode, setTradeMode] = useState<"paper" | "live">("live");
   const [autoTrade, setAutoTrade] = useState(true);
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
@@ -252,7 +252,7 @@ export function AIAgentPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [plan, setPlan] = useState<any>(null);
   const [brokers, setBrokers] = useState<any[]>([]);
-  const [selectedBroker, setSelectedBroker] = useState<string>("paper");
+  const [selectedBroker, setSelectedBroker] = useState<string>("binance");
   const [brokerBalance, setBrokerBalance] = useState<any>(null);
   const [allocatedCapital, setAllocatedCapital] = useState<number>(0);
   const [capitalInput, setCapitalInput] = useState<string>("");
@@ -314,7 +314,7 @@ export function AIAgentPage() {
     try {
       const r = await api<any>("/api/ai-agent/brokers");
       setBrokers(r.brokers || []);
-      setSelectedBroker(r.current || "paper");
+      setSelectedBroker(r.current || "binance");
     } catch {}
   }, []);
 
