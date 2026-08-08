@@ -148,6 +148,12 @@ tr:hover { background: var(--panel-hover); }
   color: var(--text); font-size: 13px;
 }
 .modal-field input:focus, .modal-field select:focus { outline: none; border-color: var(--accent); }
+.form-input {
+  width: 100%; padding: 8px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 13px; box-sizing: border-box;
+}
+.form-input:focus { outline: none; border-color: var(--accent); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
 .toast {
@@ -206,6 +212,7 @@ tr:hover { background: var(--panel-hover); }
     <div class="tab" onclick="switchTab('ai-usage')">Cuotas IA</div>
     <div class="tab" onclick="switchTab('services')">Servicios</div>
     <div class="tab" onclick="switchTab('omniroute')">OmniRoute</div>
+    <div class="tab" onclick="switchTab('providers')">AI Providers</div>
     <div class="tab" onclick="switchTab('server')">Servidor</div>
   </div>
 
@@ -294,6 +301,21 @@ tr:hover { background: var(--panel-hover); }
           <span class="panel-title">Errores recientes (últimos 20)</span>
         </div>
         <div id="omniRouteErrors"></div>
+      </div>
+    </div>
+
+    <!-- AI Providers Tab -->
+    <div class="tab-content" id="tab-providers">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Providers de IA — OmniRoute</span>
+          <button class="btn btn-ghost btn-sm" onclick="loadProviders()">Actualizar</button>
+        </div>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px">
+          Configura tus API keys de cada provider. OmniRoute las usa con auto-fallback: si uno cae, salta al siguiente.
+          Los providers <strong>Free</strong> no necesitan key (ya activos).
+        </p>
+        <div id="providersList"></div>
       </div>
     </div>
 
@@ -461,6 +483,7 @@ function switchTab(name) {
   if (name === 'ai-usage') loadAiUsage();
   if (name === 'services') loadServicesStatus();
   if (name === 'omniroute') loadOmniRouteStatus();
+  if (name === 'providers') loadProviders();
   if (name === 'server') loadServerStatus();
 }
 
@@ -894,6 +917,166 @@ async function loadOmniRouteStatus() {
     html += '</tbody></table>';
     errorsDiv.innerHTML = html;
   }
+}
+
+// ─── AI Providers ───
+let providersData = [];
+
+async function loadProviders() {
+  const resp = await apiCall('/api/admin/omniroute/providers');
+  if (!resp) return;
+  const data = await resp.json();
+  providersData = data.providers || [];
+  renderProviders();
+}
+
+function renderProviders() {
+  const div = document.getElementById('providersList');
+  if (!providersData.length) {
+    div.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:24px">Cargando providers...</p>';
+    return;
+  }
+
+  let html = '';
+  const paid = providersData.filter(p => !p.free);
+  const free = providersData.filter(p => p.free);
+
+  // Paid providers
+  html += '<h4 style="margin:0 0 12px;font-size:13px;color:var(--text)">Providers con API Key</h4>';
+  html += '<div style="display:flex;flex-direction:column;gap:12px">';
+  for (const p of paid) {
+    html += renderProviderCard(p);
+  }
+  html += '</div>';
+
+  // Free providers
+  html += '<h4 style="margin:20px 0 12px;font-size:13px;color:var(--text)">Providers Gratis (sin key)</h4>';
+  html += '<div style="display:flex;flex-direction:column;gap:12px">';
+  for (const p of free) {
+    html += renderProviderCard(p);
+  }
+  html += '</div>';
+
+  div.innerHTML = html;
+}
+
+function renderProviderCard(p) {
+  const isConfigured = p.configured;
+  const isFree = p.free;
+  const statusBadge = isFree
+    ? '<span class="badge" style="background:var(--success);color:white">FREE</span>'
+    : isConfigured
+      ? (p.test_status === 'ok' || p.is_active
+        ? '<span class="badge" style="background:var(--success);color:white">✓ Configurado</span>'
+        : '<span class="badge" style="background:var(--warning);color:#000">Configurado</span>')
+      : '<span class="badge" style="background:var(--surface-2);color:var(--text-dim)">Sin configurar</span>';
+
+  const rateLimitBadge = p.rate_limited_until
+    ? '<span class="badge" style="background:var(--danger);color:white;margin-left:4px">RATE LIMITED</span>'
+    : '';
+
+  const errorBadge = p.last_error
+    ? `<div style="margin-top:6px;font-size:11px;color:var(--danger)">⚠ ${p.last_error.substring(0,120)}</div>`
+    : '';
+
+  const keyInput = isFree
+    ? '<input type="text" class="form-input" value="— Free, sin key —" disabled style="opacity:0.6">'
+    : `<input type="password" id="key-${p.id}" class="form-input" value="${p.api_key || ''}" placeholder="Pega tu API key aquí..." style="font-family:monospace;font-size:12px">`;
+
+  const saveBtn = isFree
+    ? ''
+    : `<button class="btn btn-primary btn-sm" onclick="saveProviderKey('${p.id}')" style="white-space:nowrap">Guardar</button>`;
+
+  const testBtn = `<button class="btn btn-ghost btn-sm" onclick="testProvider('${p.id}')" id="test-btn-${p.id}" style="white-space:nowrap">Test API</button>`;
+
+  const deleteBtn = (isConfigured && !isFree)
+    ? `<button class="btn btn-danger btn-sm" onclick="deleteProvider('${p.id}')" style="white-space:nowrap">Eliminar</button>`
+    : '';
+
+  const urlLink = p.url
+    ? `<a href="${p.url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none">Obtener key →</a>`
+    : '';
+
+  return `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--panel)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <span style="font-weight:600;font-size:14px">${p.name}</span>
+          ${statusBadge}
+          ${rateLimitBadge}
+        </div>
+        <div style="font-size:11px;color:var(--text-dim)">${p.description}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-weight:600">API Key</label>
+          ${keyInput}
+        </div>
+        ${saveBtn}
+        ${testBtn}
+        ${deleteBtn}
+      </div>
+      <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+        ${urlLink}
+        <div id="test-result-${p.id}" style="font-size:11px"></div>
+      </div>
+      ${errorBadge}
+    </div>
+  `;
+}
+
+async function saveProviderKey(providerId) {
+  const input = document.getElementById(`key-${providerId}`);
+  if (!input) return;
+  const apiKey = input.value.trim();
+  if (!apiKey) {
+    toast('Ingresa una API key', 'error');
+    return;
+  }
+  const resp = await apiCall(`/api/admin/omniroute/providers/${providerId}`, 'POST', { api_key: apiKey });
+  if (!resp) return;
+  const data = await resp.json();
+  if (data.saved) {
+    toast(data.message, 'success');
+    loadProviders();
+  } else {
+    toast(data.detail || 'Error', 'error');
+  }
+}
+
+async function deleteProvider(providerId) {
+  if (!confirm(`¿Eliminar la API key de ${providerId}?`)) return;
+  const resp = await apiCall(`/api/admin/omniroute/providers/${providerId}`, 'DELETE');
+  if (!resp) return;
+  const data = await resp.json();
+  if (data.deleted) {
+    toast('Provider eliminado', 'success');
+    loadProviders();
+  }
+}
+
+async function testProvider(providerId) {
+  const btn = document.getElementById(`test-btn-${providerId}`);
+  const result = document.getElementById(`test-result-${providerId}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Testeando...'; }
+  if (result) { result.innerHTML = '<span style="color:var(--text-dim)">⏳ Probando...</span>'; }
+
+  const resp = await apiCall(`/api/admin/omniroute/providers/${providerId}/test`, 'POST');
+  if (!resp) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test API'; }
+    return;
+  }
+  const data = await resp.json();
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Test API'; }
+  if (result) {
+    if (data.success) {
+      result.innerHTML = `<span style="color:var(--success)">✓ ${data.message} — ${data.latency_ms}ms, ${data.tokens} tokens</span>`;
+    } else {
+      result.innerHTML = `<span style="color:var(--danger)">${data.message}</span>`;
+    }
+  }
+  toast(data.message, data.success ? 'success' : 'error');
 }
 
 // ─── Init ───

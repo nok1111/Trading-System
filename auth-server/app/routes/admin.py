@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
+import uuid as _uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -668,3 +669,283 @@ def omniroute_status(
 
     conn.close()
     return result
+
+
+# ─── OmniRoute Providers Management ───
+
+# Catalog of all providers supported by OmniRoute
+# free=True means no API key needed (built-in free tier)
+OMNIROUTE_PROVIDER_CATALOG = [
+    # Paid providers (require API key)
+    {"id": "groq", "name": "Groq", "category": "api-key", "free": False,
+     "url": "https://console.groq.com/keys",
+     "test_model": "groq/llama-3.1-8b-instant",
+     "description": "Llama 3.3 70B, ultra-fast inference (gratis con rate limit alto)"},
+    {"id": "google", "name": "Google AI (Gemini)", "category": "api-key", "free": False,
+     "url": "https://aistudio.google.com/apikey",
+     "test_model": "google/gemini-2.0-flash",
+     "description": "Gemini 2.0 Flash, Gemini Pro (gratis con rate limit)"},
+    {"id": "openai", "name": "OpenAI", "category": "api-key", "free": False,
+     "url": "https://platform.openai.com/api-keys",
+     "test_model": "openai/gpt-4o-mini",
+     "description": "GPT-4o, GPT-4o mini, o1 (pago)"},
+    {"id": "anthropic", "name": "Anthropic (Claude)", "category": "api-key", "free": False,
+     "url": "https://console.anthropic.com/settings/keys",
+     "test_model": "anthropic/claude-sonnet-4-5",
+     "description": "Claude Sonnet 4.5, Claude Opus, Claude Haiku (pago)"},
+    {"id": "openrouter", "name": "OpenRouter", "category": "api-key", "free": False,
+     "url": "https://openrouter.ai/keys",
+     "test_model": "openrouter/auto",
+     "description": "Gateway a 100+ modelos (Claude, GPT, DeepSeek, etc.) — $1 credit gratis"},
+    {"id": "mistral", "name": "Mistral AI", "category": "api-key", "free": False,
+     "url": "https://console.mistral.ai/api-keys",
+     "test_model": "mistral/mistral-small-latest",
+     "description": "Mistral Large, Small, Codestral (free tier disponible)"},
+    # Free providers (no key needed, built-in)
+    {"id": "felo-web", "name": "Felo (Free)", "category": "free", "free": True,
+     "url": None,
+     "test_model": "felo/felo-chat",
+     "description": "Felo Chat, Search, Scholar — gratis sin key (rate limit)"},
+    {"id": "duckduckgo-web", "name": "DuckDuckGo (Free)", "category": "free", "free": True,
+     "url": None,
+     "test_model": "ddgw/gpt-5.4-mini",
+     "description": "GPT-5.4 mini, Claude Haiku, Mistral Small — gratis sin key"},
+    {"id": "auggie", "name": "Auggie (Free)", "category": "free", "free": True,
+     "url": None,
+     "test_model": "aug/haiku4.5",
+     "description": "Sonnet 4.6, Fable 5, Haiku 4.5 — gratis sin key"},
+    {"id": "chipotle", "name": "Chipotle (Free)", "category": "free", "free": True,
+     "url": None,
+     "test_model": "pepper/pepper-1",
+     "description": "Pepper-1 — gratis sin key"},
+]
+
+
+class SaveProviderKeyRequest(BaseModel):
+    api_key: str
+
+
+@router.get("/omniroute/providers")
+def omniroute_providers(
+    admin: Annotated[User, Depends(require_admin)],
+) -> dict:
+    """List all available OmniRoute providers with current key status.
+
+    Returns the actual API key for configured providers (admin only).
+    """
+    conn = _omniroute_db()
+    connections_map: dict[str, dict] = {}
+    if conn:
+        try:
+            rows = conn.execute(
+                """SELECT id, provider, name, is_active, api_key,
+                          test_status, error_code, last_error, last_error_at,
+                          rate_limited_until, backoff_level, last_used_at
+                   FROM provider_connections"""
+            ).fetchall()
+            for r in rows:
+                connections_map[r["provider"]] = {
+                    "connection_id": r["id"],
+                    "name": r["name"],
+                    "is_active": bool(r["is_active"]),
+                    "api_key": r["api_key"] or "",
+                    "test_status": r["test_status"],
+                    "error_code": r["error_code"],
+                    "last_error": r["last_error"],
+                    "last_error_at": r["last_error_at"],
+                    "rate_limited_until": r["rate_limited_until"],
+                    "backoff_level": r["backoff_level"],
+                    "last_used_at": r["last_used_at"],
+                }
+        except Exception:
+            pass
+        conn.close()
+
+    providers = []
+    for p in OMNIROUTE_PROVIDER_CATALOG:
+        conn_data = connections_map.get(p["id"])
+        providers.append({
+            "id": p["id"],
+            "name": p["name"],
+            "category": p["category"],
+            "free": p["free"],
+            "url": p["url"],
+            "description": p["description"],
+            "test_model": p["test_model"],
+            "configured": conn_data is not None,
+            "is_active": conn_data["is_active"] if conn_data else False,
+            "api_key": conn_data["api_key"] if conn_data else "",
+            "test_status": conn_data["test_status"] if conn_data else None,
+            "last_error": conn_data["last_error"] if conn_data else None,
+            "rate_limited_until": conn_data["rate_limited_until"] if conn_data else None,
+            "backoff_level": conn_data["backoff_level"] if conn_data else 0,
+            "last_used_at": conn_data["last_used_at"] if conn_data else None,
+        })
+
+    return {
+        "providers": providers,
+        "total": len(providers),
+        "configured": sum(1 for p in providers if p["configured"]),
+        "free_active": sum(1 for p in providers if p["free"]),
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.post("/omniroute/providers/{provider_id}")
+def omniroute_save_provider_key(
+    provider_id: str,
+    req: SaveProviderKeyRequest,
+    admin: Annotated[User, Depends(require_admin)],
+) -> dict:
+    """Save or update an API key for an OmniRoute provider.
+
+    Inserts a new provider_connection or updates the existing one.
+    """
+    # Validate provider exists in catalog
+    catalog_entry = next((p for p in OMNIROUTE_PROVIDER_CATALOG if p["id"] == provider_id), None)
+    if not catalog_entry:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' no encontrado en el catálogo")
+
+    api_key = req.api_key.strip()
+    if not api_key and not catalog_entry["free"]:
+        raise HTTPException(status_code=400, detail="API key requerida para providers de pago")
+
+    conn = _omniroute_db()
+    if conn is None:
+        raise HTTPException(status_code=500, detail="Base de datos de OmniRoute no disponible")
+
+    now = datetime.now(UTC).isoformat()
+    try:
+        # Check if connection already exists
+        existing = conn.execute(
+            "SELECT id FROM provider_connections WHERE provider = ?", (provider_id,)
+        ).fetchone()
+
+        if existing:
+            # Update existing
+            conn.execute(
+                """UPDATE provider_connections
+                   SET api_key = ?, is_active = 1, test_status = 'pending',
+                       error_code = NULL, last_error = NULL, backoff_level = 0,
+                       rate_limited_until = NULL, updated_at = ?
+                   WHERE provider = ?""",
+                (api_key, now, provider_id),
+            )
+            conn.commit()
+            action = "updated"
+        else:
+            # Insert new
+            conn_id = str(_uuid.uuid4())
+            conn.execute(
+                """INSERT INTO provider_connections
+                   (id, provider, auth_type, name, display_name, is_active,
+                    api_key, test_status, backoff_level, consecutive_use_count,
+                    created_at, updated_at)
+                   VALUES (?, ?, 'api_key', ?, ?, 1, ?, 'pending', 0, 0, ?, ?)""",
+                (conn_id, provider_id, catalog_entry["name"], catalog_entry["name"],
+                 api_key, now, now),
+            )
+            conn.commit()
+            action = "created"
+
+        conn.close()
+        return {
+            "saved": True,
+            "provider": provider_id,
+            "action": action,
+            "message": f"API key para {catalog_entry['name']} guardada correctamente",
+        }
+    except Exception as exc:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Error guardando key: {exc}")
+
+
+@router.delete("/omniroute/providers/{provider_id}")
+def omniroute_delete_provider_key(
+    provider_id: str,
+    admin: Annotated[User, Depends(require_admin)],
+) -> dict:
+    """Remove a provider connection from OmniRoute."""
+    conn = _omniroute_db()
+    if conn is None:
+        raise HTTPException(status_code=500, detail="Base de datos de OmniRoute no disponible")
+    try:
+        conn.execute("DELETE FROM provider_connections WHERE provider = ?", (provider_id,))
+        conn.commit()
+        conn.close()
+        return {"deleted": True, "provider": provider_id}
+    except Exception as exc:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Error eliminando provider: {exc}")
+
+
+@router.post("/omniroute/providers/{provider_id}/test")
+def omniroute_test_provider(
+    provider_id: str,
+    admin: Annotated[User, Depends(require_admin)],
+) -> dict:
+    """Test a provider connection by sending a simple chat request via OmniRoute."""
+    catalog_entry = next((p for p in OMNIROUTE_PROVIDER_CATALOG if p["id"] == provider_id), None)
+    if not catalog_entry:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' no encontrado")
+
+    test_model = catalog_entry["test_model"]
+    start = datetime.now(UTC)
+
+    try:
+        resp = httpx.post(
+            f"{OMNIROUTE_URL}/v1/chat/completions",
+            headers={
+                "Authorization": "Bearer omniroute",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": test_model,
+                "messages": [{"role": "user", "content": "Responde solo: OK"}],
+                "max_tokens": 10,
+                "stream": False,
+                "temperature": 0,
+            },
+            timeout=30,
+        )
+        elapsed = (datetime.now(UTC) - start).total_seconds()
+
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            tokens = data.get("usage", {}).get("total_tokens", 0)
+            return {
+                "success": True,
+                "provider": provider_id,
+                "model": test_model,
+                "status": 200,
+                "response": content[:100],
+                "tokens": tokens,
+                "latency_ms": round(elapsed * 1000),
+                "message": f"✓ {catalog_entry['name']} funciona correctamente ({round(elapsed*1000)}ms)",
+            }
+        else:
+            error_body = resp.text[:300]
+            return {
+                "success": False,
+                "provider": provider_id,
+                "model": test_model,
+                "status": resp.status_code,
+                "error": error_body,
+                "latency_ms": round(elapsed * 1000),
+                "message": f"✗ {catalog_entry['name']} devolvió HTTP {resp.status_code}",
+            }
+    except httpx.ConnectError:
+        return {
+            "success": False,
+            "provider": provider_id,
+            "error": "OmniRoute no está corriendo",
+            "message": "✗ OmniRoute no disponible. Ejecuta: systemctl start omniroute",
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "provider": provider_id,
+            "error": str(exc)[:300],
+            "message": f"✗ Error testeando {catalog_entry['name']}: {str(exc)[:100]}",
+        }
