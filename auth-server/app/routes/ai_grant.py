@@ -189,6 +189,20 @@ def report_ai_usage(
             )
         _consumed_grants[req.grant_id] = time.time()
 
+    # DB-backed single-use check: survives server restarts (anti-replay)
+    today = datetime.now(UTC).date()
+    existing = db.execute(
+        select(AIUsageLog).where(
+            AIUsageLog.user_id == current_user.id,
+            AIUsageLog.last_grant_id == req.grant_id,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Grant ya fue consumido (single-use, DB check)",
+        )
+
     # Only count successful cycles
     if not req.success:
         limits = get_plan_limits(current_user.subscription)
