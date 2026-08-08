@@ -527,7 +527,7 @@ class EventScheduler:
             risks = consensus_result.get("mainRisks", consensus_result.get("main_risks", []))
 
             # Mapear decision a signal_type
-            signal_type = decision if decision in ("BUY", "SELL", "HOLD", "TAKE_PROFIT", "AVOID") else "HOLD"
+            signal_type = decision if decision in ("BUY", "SELL", "HOLD", "TAKE_PROFIT", "AVOID", "WAIT", "WAIT_CONFIRMATION") else "HOLD"
 
             # Marcar señales anteriores del mismo asset como SUPERSEDED
             old_signals = session.execute(

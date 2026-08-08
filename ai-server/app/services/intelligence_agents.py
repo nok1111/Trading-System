@@ -255,7 +255,7 @@ _CONSENSUS_SCHEMA = {
     "required": ["asset", "decision", "confidence", "riskLevel", "agentVotes"],
     "properties": {
         "asset": {"type": "string"},
-        "decision": {"type": "string", "enum": ["BUY", "SELL", "BUY_ON_PULLBACK", "SELL_ON_RALLY", "HOLD", "TAKE_PROFIT", "AVOID", "WAIT_CONFIRMATION", "NO_ACTION"]},
+        "decision": {"type": "string", "enum": ["BUY", "SELL", "BUY_ON_PULLBACK", "SELL_ON_RALLY", "HOLD", "TAKE_PROFIT", "AVOID", "WAIT", "WAIT_CONFIRMATION", "NO_ACTION"]},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "riskLevel": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
         "validFrom": {"type": "string"},
