@@ -205,6 +205,7 @@ tr:hover { background: var(--panel-hover); }
     <div class="tab active" onclick="switchTab('users')">Usuarios</div>
     <div class="tab" onclick="switchTab('ai-usage')">Cuotas IA</div>
     <div class="tab" onclick="switchTab('services')">Servicios</div>
+    <div class="tab" onclick="switchTab('omniroute')">OmniRoute</div>
     <div class="tab" onclick="switchTab('server')">Servidor</div>
   </div>
 
@@ -264,6 +265,35 @@ tr:hover { background: var(--panel-hover); }
           <span class="panel-title">Scheduler 24/7 (Consensus)</span>
         </div>
         <div id="paperTradingStatus"></div>
+      </div>
+    </div>
+
+    <!-- OmniRoute Tab -->
+    <div class="tab-content" id="tab-omniroute">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">OmniRoute — Estado del Gateway</span>
+          <button class="btn btn-ghost btn-sm" onclick="loadOmniRouteStatus()">Actualizar</button>
+        </div>
+        <div id="omniRouteSummary" class="stat-grid"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Providers — Estado individual</span>
+        </div>
+        <div id="omniRouteProviders"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Circuit Breakers & Rate Limits</span>
+        </div>
+        <div id="omniRouteCircuits"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Errores recientes (últimos 20)</span>
+        </div>
+        <div id="omniRouteErrors"></div>
       </div>
     </div>
 
@@ -430,6 +460,7 @@ function switchTab(name) {
   if (name === 'users') loadUsers();
   if (name === 'ai-usage') loadAiUsage();
   if (name === 'services') loadServicesStatus();
+  if (name === 'omniroute') loadOmniRouteStatus();
   if (name === 'server') loadServerStatus();
 }
 
@@ -696,6 +727,173 @@ function toast(msg, type) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3000);
+}
+
+// ─── OmniRoute ───
+async function loadOmniRouteStatus() {
+  const resp = await apiCall('/api/admin/omniroute/status');
+  if (!resp) return;
+  const data = await resp.json();
+
+  // Summary
+  const summary = document.getElementById('omniRouteSummary');
+  const online = data.server_online;
+  const successRate = data.total_calls > 0
+    ? ((data.total_ok / data.total_calls) * 100).toFixed(1)
+    : '—';
+  summary.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Servidor</div>
+      <div class="stat-value" style="color:${online ? 'var(--success)' : 'var(--danger)'}">
+        ${online ? '● Online' : '● Offline'}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Modelos disponibles</div>
+      <div class="stat-value">${data.models_count}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total llamadas</div>
+      <div class="stat-value">${data.total_calls}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tasa de éxito</div>
+      <div class="stat-value" style="color:${parseFloat(successRate) < 50 ? 'var(--danger)' : 'var(--success)'}">${successRate}${successRate !== '—' ? '%' : ''}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tokens entrada</div>
+      <div class="stat-value">${data.total_tokens_in.toLocaleString()}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tokens salida</div>
+      <div class="stat-value">${data.total_tokens_out.toLocaleString()}</div>
+    </div>
+  `;
+
+  // Providers
+  const providersDiv = document.getElementById('omniRouteProviders');
+  if (!data.provider_stats || data.provider_stats.length === 0) {
+    providersDiv.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:16px">Sin datos de providers aún</p>';
+  } else {
+    let html = '<table><thead><tr>'
+      + '<th>Provider</th><th>Modelo</th><th>Total</th><th>OK</th><th>Errores</th>'
+      + '<th>Éxito</th><th>Tokens in</th><th>Tokens out</th><th>Latencia</th><th>Estado</th>'
+      + '</tr></thead><tbody>';
+    for (const p of data.provider_stats) {
+      const exhausted = p.exhausted;
+      const rateLimited = p.rate_limited;
+      const statusBadge = exhausted
+        ? '<span class="badge" style="background:var(--danger);color:white">AGOTADO</span>'
+        : rateLimited
+        ? '<span class="badge" style="background:var(--warning);color:#000">RATE LIMITED</span>'
+        : '<span class="badge" style="background:var(--success);color:white">OK</span>';
+      const successColor = p.success_rate < 50 ? 'var(--danger)' : p.success_rate < 80 ? 'var(--warning)' : 'var(--success)';
+      html += `<tr>
+        <td><strong>${p.provider}</strong></td>
+        <td>${p.model}</td>
+        <td>${p.total}</td>
+        <td style="color:var(--success)">${p.ok}</td>
+        <td style="color:${p.err > 0 ? 'var(--danger)' : 'var(--text-dim)'}">${p.err}</td>
+        <td style="color:${successColor};font-weight:600">${p.success_rate}%</td>
+        <td>${p.tokens_in.toLocaleString()}</td>
+        <td>${p.tokens_out.toLocaleString()}</td>
+        <td>${p.avg_latency_ms > 0 ? p.avg_latency_ms + 'ms' : '—'}</td>
+        <td>${statusBadge}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    providersDiv.innerHTML = html;
+  }
+
+  // Circuit breakers & lockouts
+  const circuitsDiv = document.getElementById('omniRouteCircuits');
+  const circuits = data.circuit_breakers || [];
+  const lockouts = data.lockouts || [];
+  const connections = data.configured_connections || [];
+  if (circuits.length === 0 && lockouts.length === 0 && connections.length === 0) {
+    circuitsDiv.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:16px">Sin circuit breakers activos — OmniRoute usa providers free internos</p>';
+  } else {
+    let html = '';
+    if (connections.length > 0) {
+      html += '<h4 style="margin:0 0 8px;font-size:13px">Connections configuradas</h4><table><thead><tr>'
+        + '<th>Provider</th><th>Nombre</th><th>Activo</th><th>Test</th><th>Error</th><th>Rate limited</th><th>Backoff</th>'
+        + '</tr></thead><tbody>';
+      for (const c of connections) {
+        const active = c.is_active
+          ? '<span style="color:var(--success)">✓</span>'
+          : '<span style="color:var(--danger)">✗</span>';
+        const rl = c.rate_limited_until
+          ? `<span style="color:var(--danger)">hasta ${c.rate_limited_until}</span>`
+          : '—';
+        html += `<tr>
+          <td><strong>${c.provider}</strong></td>
+          <td>${c.name || '—'}</td>
+          <td>${active}</td>
+          <td>${c.test_status || '—'}</td>
+          <td style="color:var(--danger);font-size:11px">${c.last_error || '—'}</td>
+          <td>${rl}</td>
+          <td>${c.backoff_level || 0}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    if (circuits.length > 0) {
+      html += '<h4 style="margin:16px 0 8px;font-size:13px">Circuit Breakers</h4><table><thead><tr>'
+        + '<th>Nombre</th><th>Estado</th><th>Fallos</th><th>Último fallo</th>'
+        + '</tr></thead><tbody>';
+      for (const cb of circuits) {
+        const stateColor = cb.state === 'OPEN' ? 'var(--danger)' : cb.state === 'HALF_OPEN' ? 'var(--warning)' : 'var(--success)';
+        html += `<tr>
+          <td><strong>${cb.name}</strong></td>
+          <td style="color:${stateColor};font-weight:600">${cb.state}</td>
+          <td>${cb.failure_count}</td>
+          <td style="font-size:11px">${cb.last_failure_time || '—'}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    if (lockouts.length > 0) {
+      html += '<h4 style="margin:16px 0 8px;font-size:13px">Lockouts (rate limit activo)</h4><table><thead><tr>'
+        + '<th>Identifier</th><th>Intentos</th><th>Locked hasta</th><th>Estado</th>'
+        + '</tr></thead><tbody>';
+      for (const l of lockouts) {
+        html += `<tr>
+          <td><strong>${l.identifier}</strong></td>
+          <td>${l.attempts}</td>
+          <td style="font-size:11px">${l.locked_until}</td>
+          <td>${l.is_locked
+            ? '<span class="badge" style="background:var(--danger);color:white">BLOQUEADO</span>'
+            : '<span class="badge" style="background:var(--success);color:white">Expirado</span>'}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    circuitsDiv.innerHTML = html;
+  }
+
+  // Recent errors
+  const errorsDiv = document.getElementById('omniRouteErrors');
+  const errors = data.recent_errors || [];
+  if (errors.length === 0) {
+    errorsDiv.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:16px">Sin errores recientes</p>';
+  } else {
+    let html = '<table><thead><tr>'
+      + '<th>Timestamp</th><th>Provider</th><th>Modelo</th><th>Status</th><th>Error</th><th>Duración</th>'
+      + '</tr></thead><tbody>';
+    for (const e of errors) {
+      const statusColor = e.status === 429 ? 'var(--warning)' : e.status === 401 || e.status === 403 ? 'var(--danger)' : 'var(--danger)';
+      html += `<tr>
+        <td style="font-size:11px">${e.timestamp}</td>
+        <td><strong>${e.provider}</strong></td>
+        <td>${e.model}</td>
+        <td style="color:${statusColor};font-weight:600">${e.status}</td>
+        <td style="font-size:11px;color:var(--danger)">${e.error || '—'}</td>
+        <td>${e.duration_ms}ms</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    errorsDiv.innerHTML = html;
+  }
 }
 
 // ─── Init ───

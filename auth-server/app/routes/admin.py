@@ -6,8 +6,10 @@ All endpoints require admin privileges (is_admin=True on the user).
 from __future__ import annotations
 
 import os
+import sqlite3
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 import httpx
@@ -24,6 +26,10 @@ from app.services.auth import get_current_user, hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 settings = get_settings()
+
+# OmniRoute SQLite database path (same VPS)
+OMNIROUTE_DB = Path.home() / ".omniroute" / "storage.sqlite"
+OMNIROUTE_URL = "http://localhost:20128"
 
 
 def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
@@ -443,3 +449,222 @@ def services_status(
         "scheduler": scheduler,
         "timestamp": datetime.now(UTC).isoformat(),
     }
+
+
+# ─── OmniRoute Status ───
+
+
+def _omniroute_db() -> sqlite3.Connection | None:
+    """Open OmniRoute SQLite DB read-only."""
+    if not OMNIROUTE_DB.exists():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{OMNIROUTE_DB}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except Exception:
+        return None
+
+
+@router.get("/omniroute/status")
+def omniroute_status(
+    admin: Annotated[User, Depends(require_admin)],
+) -> dict:
+    """Get OmniRoute provider status, rate limits, and token usage.
+
+    Reads directly from OmniRoute's SQLite database (~/.omniroute/storage.sqlite)
+    and queries the HTTP API for model list and health.
+    """
+    result: dict = {
+        "server_online": False,
+        "version": None,
+        "models_count": 0,
+        "providers": [],
+        "configured_connections": [],
+        "circuit_breakers": [],
+        "lockouts": [],
+        "provider_stats": [],
+        "recent_errors": [],
+        "total_calls": 0,
+        "total_ok": 0,
+        "total_errors": 0,
+        "total_tokens_in": 0,
+        "total_tokens_out": 0,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+    # 1) Check if OmniRoute server is online via /v1/models (no auth required)
+    try:
+        resp = httpx.get(f"{OMNIROUTE_URL}/v1/models", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("data", [])
+            result["server_online"] = True
+            result["models_count"] = len(models)
+            result["models"] = [
+                {"id": m.get("id"), "owned_by": m.get("owned_by")}
+                for m in models[:50]
+            ]
+    except Exception:
+        pass
+
+    # 2) Query SQLite DB for provider stats
+    conn = _omniroute_db()
+    if conn is None:
+        result["db_available"] = False
+        return result
+    result["db_available"] = True
+
+    try:
+        # 2a) Configured provider connections
+        rows = conn.execute(
+            """SELECT id, provider, name, display_name, is_active,
+                      test_status, error_code, last_error, last_error_at,
+                      rate_limited_until, backoff_level, last_used_at,
+                      consecutive_use_count, default_model
+               FROM provider_connections ORDER BY is_active DESC, provider"""
+        ).fetchall()
+        result["configured_connections"] = [
+            {
+                "id": r["id"],
+                "provider": r["provider"],
+                "name": r["name"] or r["display_name"],
+                "is_active": bool(r["is_active"]),
+                "test_status": r["test_status"],
+                "error_code": r["error_code"],
+                "last_error": r["last_error"],
+                "last_error_at": r["last_error_at"],
+                "rate_limited_until": r["rate_limited_until"],
+                "backoff_level": r["backoff_level"],
+                "last_used_at": r["last_used_at"],
+                "consecutive_use_count": r["consecutive_use_count"],
+                "default_model": r["default_model"],
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    try:
+        # 2b) Circuit breakers (rate limit / exhaustion state)
+        rows = conn.execute(
+            """SELECT name, state, failure_count, last_failure_time
+               FROM domain_circuit_breakers ORDER BY failure_count DESC"""
+        ).fetchall()
+        result["circuit_breakers"] = [
+            {
+                "name": r["name"],
+                "state": r["state"],
+                "failure_count": r["failure_count"],
+                "last_failure_time": r["last_failure_time"],
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    try:
+        # 2c) Lockout state (providers locked due to rate limits)
+        rows = conn.execute(
+            """SELECT identifier, attempts, locked_until
+               FROM domain_lockout_state WHERE locked_until IS NOT NULL"""
+        ).fetchall()
+        now_ts = datetime.now(UTC).timestamp()
+        result["lockouts"] = [
+            {
+                "identifier": r["identifier"],
+                "attempts": r["attempts"],
+                "locked_until": r["locked_until"],
+                "is_locked": r["locked_until"] is not None and r["locked_until"] > now_ts,
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    try:
+        # 2d) Provider stats from call_logs (aggregated)
+        rows = conn.execute(
+            """SELECT provider, model,
+                      COUNT(*) as total,
+                      SUM(CASE WHEN status=200 THEN 1 ELSE 0 END) as ok,
+                      SUM(CASE WHEN status!=200 THEN 1 ELSE 0 END) as err,
+                      SUM(tokens_in) as tok_in,
+                      SUM(tokens_out) as tok_out,
+                      AVG(duration) as avg_ms,
+                      MAX(timestamp) as last_call
+               FROM call_logs GROUP BY provider, model ORDER BY total DESC"""
+        ).fetchall()
+        stats = []
+        for r in rows:
+            total = r["total"] or 0
+            ok = r["ok"] or 0
+            err = r["err"] or 0
+            stats.append({
+                "provider": r["provider"],
+                "model": r["model"],
+                "total": total,
+                "ok": ok,
+                "err": err,
+                "success_rate": round(ok / total * 100, 1) if total else 0,
+                "tokens_in": r["tok_in"] or 0,
+                "tokens_out": r["tok_out"] or 0,
+                "avg_latency_ms": round(r["avg_ms"] or 0, 1),
+                "last_call": r["last_call"],
+                "exhausted": err > ok and ok == 0,
+                "rate_limited": err > 0 and ok > 0 and err / total > 0.5,
+            })
+        result["provider_stats"] = stats
+        result["total_calls"] = sum(s["total"] for s in stats)
+        result["total_ok"] = sum(s["ok"] for s in stats)
+        result["total_errors"] = sum(s["err"] for s in stats)
+        result["total_tokens_in"] = sum(s["tokens_in"] for s in stats)
+        result["total_tokens_out"] = sum(s["tokens_out"] for s in stats)
+    except Exception:
+        pass
+
+    try:
+        # 2e) Recent error calls (last 20)
+        rows = conn.execute(
+            """SELECT timestamp, provider, model, status, error_summary, duration
+               FROM call_logs WHERE status != 200
+               ORDER BY timestamp DESC LIMIT 20"""
+        ).fetchall()
+        result["recent_errors"] = [
+            {
+                "timestamp": r["timestamp"],
+                "provider": r["provider"],
+                "model": r["model"],
+                "status": r["status"],
+                "error": r["error_summary"],
+                "duration_ms": r["duration"],
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    try:
+        # 2f) Daily usage summary
+        rows = conn.execute(
+            """SELECT provider, model, date,
+                      total_requests, total_input_tokens, total_output_tokens, total_cost
+               FROM daily_usage_summary ORDER BY date DESC LIMIT 30"""
+        ).fetchall()
+        result["daily_usage"] = [
+            {
+                "provider": r["provider"],
+                "model": r["model"],
+                "date": r["date"],
+                "requests": r["total_requests"],
+                "tokens_in": r["total_input_tokens"],
+                "tokens_out": r["total_output_tokens"],
+                "cost": r["total_cost"],
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    conn.close()
+    return result
