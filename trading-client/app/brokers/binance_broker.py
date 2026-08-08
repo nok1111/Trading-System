@@ -146,7 +146,7 @@ class BinanceBroker(Broker):
             order.price = avg_price
         return order
 
-    def place_stop_loss(self, symbol: str, quantity: Decimal, stop_price: Decimal, order_type: str = "stop") -> Order:
+    def place_stop_loss(self, symbol: str, quantity: Decimal, stop_price: Decimal, order_type: str = "stop", limit_price: Decimal | None = None) -> Order:
         """Places a STOP_LOSS or STOP_LOSS_LIMIT sell order on Binance.
 
         Args:
@@ -154,6 +154,7 @@ class BinanceBroker(Broker):
             quantity: Amount to sell when stop triggers
             stop_price: Trigger price for the stop loss
             order_type: 'stop' (market) or 'stop_limit' (limit)
+            limit_price: Limit price for STOP_LOSS_LIMIT (defaults to 0.1% below stop to ensure fill)
 
         Returns the created Order with broker_order_id set.
         """
@@ -165,7 +166,9 @@ class BinanceBroker(Broker):
             "stopPrice": self._format_price(stop_price),
         }
         if order_type == "stop_limit":
-            params["price"] = self._format_price(stop_price)
+            # Limit price should be slightly below stop price to ensure fill on gap down
+            eff_limit = limit_price if limit_price is not None else stop_price * Decimal("0.999")
+            params["price"] = self._format_price(eff_limit)
             params["timeInForce"] = "GTC"
 
         resp = self._signed_request("POST", "/api/v3/order", params)
@@ -182,7 +185,7 @@ class BinanceBroker(Broker):
             price=stop_price,
         )
 
-    def place_take_profit(self, symbol: str, quantity: Decimal, tp_price: Decimal, order_type: str = "take_profit") -> Order:
+    def place_take_profit(self, symbol: str, quantity: Decimal, tp_price: Decimal, order_type: str = "take_profit", limit_price: Decimal | None = None) -> Order:
         """Places a TAKE_PROFIT or TAKE_PROFIT_LIMIT sell order on Binance.
 
         Args:
@@ -190,6 +193,7 @@ class BinanceBroker(Broker):
             quantity: Amount to sell when take profit triggers
             tp_price: Trigger price for the take profit
             order_type: 'take_profit' (market) or 'take_profit_limit' (limit)
+            limit_price: Limit price for TAKE_PROFIT_LIMIT (defaults to tp_price)
 
         Returns the created Order with broker_order_id set.
         """
@@ -201,7 +205,8 @@ class BinanceBroker(Broker):
             "stopPrice": self._format_price(tp_price),
         }
         if order_type == "take_profit_limit":
-            params["price"] = self._format_price(tp_price)
+            eff_limit = limit_price if limit_price is not None else tp_price
+            params["price"] = self._format_price(eff_limit)
             params["timeInForce"] = "GTC"
 
         resp = self._signed_request("POST", "/api/v3/order", params)
