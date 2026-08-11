@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "../lib/api";
+import { useLivePrices } from "../hooks/useLivePrices";
 import { useBrokerContext } from "../context/BrokerContext";
 import { isBrokerConnected } from "../lib/brokerTypes";
 import { Card } from "../components/ui/Card";
@@ -29,11 +30,6 @@ interface BrokerBalance {
   error?: string;
 }
 
-interface PriceInfo {
-  symbol: string;
-  price: number;
-}
-
 interface Position {
   id: number;
   symbol: string;
@@ -51,10 +47,15 @@ export function WalletPage() {
   const activeBrokerId = firstConnectedBroker?.brokerId || null;
 
   const [balance, setBalance] = useState<BrokerBalance | null>(null);
-  const [prices, setPrices] = useState<PriceInfo[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Real-time prices via WebSocket
+  const { prices: wsPrices } = useLivePrices([], 10000);
+  const prices = useMemo(() => {
+    return Object.entries(wsPrices).map(([symbol, price]) => ({ symbol, price }));
+  }, [wsPrices]);
 
   const loadData = useCallback(async () => {
     try {
@@ -66,15 +67,6 @@ export function WalletPage() {
       }
     } catch {}
     try {
-      const pr = await api<any>("/api/prices/live");
-      const priceList = Array.isArray(pr)
-        ? pr
-        : pr?.prices
-          ? Object.entries(pr.prices).map(([symbol, price]) => ({ symbol, price: Number(price) }))
-          : [];
-      setPrices(priceList);
-    } catch {}
-    try {
       const p = await api<any>("/api/positions");
       setPositions(Array.isArray(p) ? p : []);
     } catch {}
@@ -84,7 +76,7 @@ export function WalletPage() {
 
   useEffect(() => {
     loadData();
-    const id = setInterval(loadData, 5000);
+    const id = setInterval(loadData, 15000);
     return () => clearInterval(id);
   }, [loadData]);
 

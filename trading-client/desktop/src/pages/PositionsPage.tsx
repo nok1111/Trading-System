@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "../lib/api";
+import { useLivePrices } from "../hooks/useLivePrices";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -15,7 +16,6 @@ export function PositionsPage() {
   const [positions, setPositions] = useState<any[]>([]);
   const [riskEvents, setRiskEvents] = useState<any[]>([]);
   const [filter, setFilter] = useState("");
-  const [prices, setPrices] = useState<Record<string, number>>({});
   const priceHistoryRef = useRef<Record<string, number[]>>({});
   const [paperStatus, setPaperStatus] = useState<any>(null);
   const [paperAction, setPaperAction] = useState("");
@@ -23,6 +23,19 @@ export function PositionsPage() {
   const [paperInterval, setPaperInterval] = useState("30");
   const [activeTab, setActiveTab] = useState<"live" | "paper">("live");
   const [paperPositions, setPaperPositions] = useState<any[]>([]);
+
+  // Real-time prices via WebSocket
+  const { prices: wsPrices } = useLivePrices([], 5000);
+
+  // Update price history on WS updates
+  useEffect(() => {
+    for (const [symbol, price] of Object.entries(wsPrices)) {
+      const hist = priceHistoryRef.current[symbol] || [];
+      hist.push(price);
+      if (hist.length > 60) hist.shift();
+      priceHistoryRef.current[symbol] = hist;
+    }
+  }, [wsPrices]);
 
   const load = useCallback(async () => {
     try {
@@ -35,28 +48,11 @@ export function PositionsPage() {
       const r = await api<any[]>("/api/risk-events");
       setRiskEvents(r);
     } catch {}
-    try {
-      const pr = await api<any>("/api/prices/live");
-      const priceList = Array.isArray(pr)
-        ? pr
-        : pr?.prices
-          ? Object.entries(pr.prices).map(([symbol, price]) => ({ symbol, price: Number(price) }))
-          : [];
-      const priceMap: Record<string, number> = {};
-      for (const p of priceList) {
-        priceMap[p.symbol] = Number(p.price);
-        const hist = priceHistoryRef.current[p.symbol] || [];
-        hist.push(Number(p.price));
-        if (hist.length > 60) hist.shift();
-        priceHistoryRef.current[p.symbol] = hist;
-      }
-      setPrices(priceMap);
-    } catch {}
   }, [filter]);
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 3000);
+    const id = setInterval(load, 10000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -502,7 +498,7 @@ export function PositionsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {open.map((p) => {
               const entry = Number(p.entry_price || 0);
-              const current = Number(p.current_price || prices[p.symbol] || 0);
+              const current = Number(p.current_price || wsPrices[p.symbol] || 0);
               const sl = Number(p.stop_loss || 0);
               const tp = Number(p.take_profit || 0);
               const pnl = Number(p.unrealized_pnl || p.pnl || 0);

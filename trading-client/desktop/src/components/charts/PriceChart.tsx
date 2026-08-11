@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useKlineStream } from "../../hooks/useKlineStream";
 import {
   createChart,
   ColorType,
@@ -518,6 +519,36 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     load();
     return () => { alive = false; };
   }, [symbol, interval, brokerId, indicators]);
+
+  // ─── Real-time kline updates via WebSocket ─────────────────────────────────
+  const { lastKline } = useKlineStream(symbol, interval);
+
+  useEffect(() => {
+    if (!lastKline || !seriesRef.current || !volumeRef.current) return;
+
+    // Update the last candle (or add a new one if the candle closed)
+    const candleData = {
+      time: lastKline.time as any,
+      open: lastKline.open,
+      high: lastKline.high,
+      low: lastKline.low,
+      close: lastKline.close,
+    };
+    const volumeData = {
+      time: lastKline.time as any,
+      value: lastKline.volume,
+      color: lastKline.close >= lastKline.open
+        ? "rgba(34, 211, 154, 0.4)"
+        : "rgba(255, 95, 109, 0.4)",
+    };
+
+    try {
+      seriesRef.current.update(candleData);
+      volumeRef.current.update(volumeData);
+    } catch {
+      // update can fail if the time is before the last data point
+    }
+  }, [lastKline]);
 
   // ─── Draw SL/TP/entry price lines ──────────────────────────────────────────
   const drawPriceLines = useCallback(() => {

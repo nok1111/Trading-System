@@ -46,6 +46,7 @@ class PriceStream:
         self._reconnect_count = 0
         self._last_message_time: float = 0.0
         self._ws = None
+        self._subscribers: list[Callable[[str, Decimal, float], None]] = []
 
     @property
     def is_connected(self) -> bool:
@@ -98,6 +99,17 @@ class PriceStream:
                     pass
         else:
             logger.debug("Symbol %s already in stream", sym)
+
+    def add_subscriber(self, callback: Callable[[str, Decimal, float], None]) -> None:
+        """Register a callback that gets called on every price update."""
+        self._subscribers.append(callback)
+
+    def remove_subscriber(self, callback: Callable[[str, Decimal, float], None]) -> None:
+        """Remove a previously registered subscriber callback."""
+        try:
+            self._subscribers.remove(callback)
+        except ValueError:
+            pass
 
     def _run_loop(self) -> None:
         self._loop = asyncio.new_event_loop()
@@ -191,6 +203,13 @@ class PriceStream:
                 self._on_price(symbol, price, self._timestamps[symbol])
             except Exception:
                 logger.exception("Error in on_price callback for %s", symbol)
+
+        # Notify all subscribers
+        for sub in list(self._subscribers):
+            try:
+                sub(symbol, price, self._timestamps[symbol])
+            except Exception:
+                logger.exception("Error in subscriber callback for %s", symbol)
 
 
 # Singleton instance

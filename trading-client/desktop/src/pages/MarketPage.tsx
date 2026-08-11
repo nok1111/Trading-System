@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "../lib/api";
+import { useLivePrices } from "../hooks/useLivePrices";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Select } from "../components/ui/Input";
@@ -13,8 +14,13 @@ export function MarketPage() {
     gainers: any[];
     losers: any[];
   } | null>(null);
-  const [livePrices, setLivePrices] = useState<any[]>([]);
   const [marketType, setMarketType] = useState("spot");
+
+  // Real-time prices via WebSocket
+  const { prices: wsPrices, connected: wsConnected, lastUpdate } = useLivePrices([], 10000);
+  const livePrices = useMemo(() => {
+    return Object.entries(wsPrices).map(([symbol, price]) => ({ symbol, price }));
+  }, [wsPrices]);
 
   const loadMovers = useCallback(async () => {
     try {
@@ -23,27 +29,9 @@ export function MarketPage() {
     } catch {}
   }, [marketType]);
 
-  const loadLivePrices = useCallback(async () => {
-    try {
-      const r = await api<any>("/api/prices/live");
-      const priceList = Array.isArray(r)
-        ? r
-        : r?.prices
-          ? Object.entries(r.prices).map(([symbol, price]) => ({ symbol, price }))
-          : [];
-      setLivePrices(priceList);
-    } catch {}
-  }, []);
-
   useEffect(() => {
     loadMovers();
   }, [loadMovers]);
-
-  useEffect(() => {
-    loadLivePrices();
-    const id = setInterval(loadLivePrices, 5000);
-    return () => clearInterval(id);
-  }, [loadLivePrices]);
 
   const importSignal = async (
     symbol: string,
@@ -185,9 +173,17 @@ export function MarketPage() {
 
       {/* Live prices */}
       <Card>
-        <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-3">
-          Precios en Tiempo Real (WebSocket)
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-[var(--color-primary)]">
+            Precios en Tiempo Real
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"} animate-pulse`} />
+            <span className="text-[10px] font-bold text-[var(--color-text-muted)]">
+              {wsConnected ? "WebSocket LIVE" : "Polling..."}
+            </span>
+          </div>
+        </div>
         <Table>
           <thead>
             <Tr>
@@ -214,7 +210,9 @@ export function MarketPage() {
                   </Td>
                   <Td>${fmt(p.price)}</Td>
                   <Td className="text-[var(--color-text-muted)]">
-                    {new Date(p.timestamp).toLocaleTimeString("es-ES")}
+                    {lastUpdate > 0
+                      ? new Date(lastUpdate).toLocaleTimeString("es-ES")
+                      : "--"}
                   </Td>
                 </Tr>
               ))

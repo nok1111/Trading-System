@@ -34,6 +34,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../lib/api";
+import { useLivePrices } from "../hooks/useLivePrices";
 import { useBrokerContext } from "../context/BrokerContext";
 import { isBrokerConnected } from "../lib/brokerTypes";
 import { Panel, StatCard } from "../components/ui/Card";
@@ -107,11 +108,26 @@ export function OverviewPage() {
   const [signals, setSignals] = useState<any[]>([]);
   const [aiLog, setAiLog] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
-  const [prices, setPrices] = useState<any[]>([]);
   const [txFilter, setTxFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
   const [rangeN, setRangeN] = useState(20);
   const [resumen, setResumen] = useState<any>(null);
   const sparkRef = useRef<Record<string, number[]>>({});
+
+  // Real-time prices via WebSocket (falls back to REST polling)
+  const { prices: wsPrices } = useLivePrices([], 10000);
+  const prices = useMemo(() => {
+    return Object.entries(wsPrices).map(([symbol, price]) => ({ symbol, price }));
+  }, [wsPrices]);
+
+  // Update sparkline data on price updates
+  useEffect(() => {
+    for (const [symbol, price] of Object.entries(wsPrices)) {
+      const arr = sparkRef.current[symbol] || [];
+      arr.push(price);
+      if (arr.length > 40) arr.shift();
+      sparkRef.current[symbol] = arr;
+    }
+  }, [wsPrices]);
 
   const loadData = useCallback(async () => {
     try {
@@ -125,21 +141,6 @@ export function OverviewPage() {
     try {
       const p = await api<any>("/api/positions");
       setPositions(Array.isArray(p) ? p : []);
-    } catch {}
-    try {
-      const pr = await api<any>("/api/prices/live");
-      const priceList = Array.isArray(pr)
-        ? pr
-        : pr?.prices
-          ? Object.entries(pr.prices).map(([symbol, price]) => ({ symbol, price }))
-          : [];
-      setPrices(priceList);
-      for (const t of priceList) {
-        const arr = sparkRef.current[t.symbol] || [];
-        arr.push(Number(t.price) || 0);
-        if (arr.length > 40) arr.shift();
-        sparkRef.current[t.symbol] = arr;
-      }
     } catch {}
     try {
       const st = await api<any>("/api/stats");
@@ -180,7 +181,7 @@ export function OverviewPage() {
 
   useEffect(() => {
     loadData();
-    const id = setInterval(loadData, 5000);
+    const id = setInterval(loadData, 15000);
     return () => clearInterval(id);
   }, [loadData]);
 
