@@ -131,6 +131,47 @@ def list_leaders(
     return [_leader_dict(r, include_stats=True) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Broker Leaderboard — real stats from connected broker accounts
+# ---------------------------------------------------------------------------
+
+@router.get("/leaderboard")
+def get_broker_leaderboard(
+    db: Annotated[Session, Depends(get_db)],
+    broker_id: str | None = Query(None, description="Filtrar por broker (binance, bybit, kraken, etc.)"),
+    limit: int = Query(50, ge=1, le=200),
+    sort: str = Query("roi_30d", pattern="^(roi_30d|roi_90d|roi_all|win_rate|total_followers|total_trades|sharpe_ratio|max_drawdown)$"),
+) -> list[dict]:
+    """Leaderboard con stats reales calculadas desde las cuentas de broker conectadas.
+
+    No está hardcodeado a ningún broker — funciona con cualquier broker que
+    el líder tenga conectado (Binance, Bybit, Kraken, OKX, KuCoin, etc.).
+
+    Stats calculadas en tiempo real desde AccountSnapshot:
+    - ROI 30d, 90d, all-time
+    - Win rate (from closed signals)
+    - Max drawdown (from equity curve)
+    - Sharpe ratio (from daily PnL)
+    - Open positions, total followers
+    - Latest equity, total PnL
+    """
+    from app.services.broker_leaderboard import get_leaderboard
+    return get_leaderboard(db, broker_id=broker_id, limit=limit, sort=sort)
+
+
+@router.get("/leaderboard/brokers")
+def get_leaderboard_brokers(
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict]:
+    """Lista de brokers que tienen al menos un líder público.
+
+    Útil para mostrar filtros en el frontend. No es una lista hardcodeada —
+    se genera dinámicamente desde los líderes registrados.
+    """
+    from app.services.broker_leaderboard import get_available_brokers
+    return get_available_brokers(db)
+
+
 @router.get("/leaders/{leader_id}")
 def get_leader(
     leader_id: int,

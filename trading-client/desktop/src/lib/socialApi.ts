@@ -84,6 +84,35 @@ export async function getLeaders(sort: string = "roi_30d", limit: number = 50): 
   return api<SocialLeader[]>(`/api/social/leaders?sort=${sort}&limit=${limit}`);
 }
 
+// ─── Broker Leaderboard ─────────────────────────────────────────────────────
+
+export interface LeaderboardEntry extends SocialLeader {
+  latest_equity_usd?: number;
+  total_pnl_usd?: number;
+  has_broker_account?: boolean;
+  broker_display_name?: string;
+}
+
+export interface LeaderboardBroker {
+  broker_id: string;
+  display_name: string;
+  leader_count: number;
+}
+
+export async function getLeaderboard(
+  brokerId?: string,
+  sort: string = "roi_30d",
+  limit: number = 50,
+): Promise<LeaderboardEntry[]> {
+  const params = new URLSearchParams({ sort, limit: String(limit) });
+  if (brokerId) params.set("broker_id", brokerId);
+  return api<LeaderboardEntry[]>(`/api/social/leaderboard?${params}`);
+}
+
+export async function getLeaderboardBrokers(): Promise<LeaderboardBroker[]> {
+  return api<LeaderboardBroker[]>("/api/social/leaderboard/brokers");
+}
+
 export async function getLeader(leaderId: number): Promise<SocialLeader> {
   return api<SocialLeader>(`/api/social/leaders/${leaderId}`);
 }

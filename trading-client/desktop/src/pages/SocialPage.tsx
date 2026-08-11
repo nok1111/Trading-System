@@ -30,13 +30,16 @@ type Tab = "feed" | "leaders" | "myFollows" | "myCopies" | "beLeader" | "publish
 
 export function SocialPage() {
   const [tab, setTab] = useState<Tab>("feed");
-  const [leaders, setLeaders] = useState<SocialLeader[]>([]);
+  const [leaders, setLeaders] = useState<socialApi.LeaderboardEntry[]>([]);
   const [signals, setSignals] = useState<SocialSignal[]>([]);
   const [myFollows, setMyFollows] = useState<any[]>([]);
   const [myCopyTrades, setMyCopyTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [copySignal, setCopySignal] = useState<SocialSignal | null>(null);
   const [myLeaderProfile, setMyLeaderProfile] = useState<SocialLeader | null>(null);
+  const [leaderboardBrokers, setLeaderboardBrokers] = useState<socialApi.LeaderboardBroker[]>([]);
+  const [brokerFilter, setBrokerFilter] = useState<string>("");
+  const [leaderSort, setLeaderSort] = useState<string>("roi_30d");
 
   // WebSocket for real-time signals
   const { connected: wsConnected } = useWebSocket("/api/social/ws/feed", {
@@ -53,8 +56,15 @@ export function SocialPage() {
 
   const loadLeaders = useCallback(async () => {
     try {
-      const r = await socialApi.getLeaders("roi_30d", 50);
+      const r = await socialApi.getLeaderboard(brokerFilter || undefined, leaderSort, 50);
       setLeaders(r);
+    } catch {}
+  }, [brokerFilter, leaderSort]);
+
+  const loadLeaderboardBrokers = useCallback(async () => {
+    try {
+      const r = await socialApi.getLeaderboardBrokers();
+      setLeaderboardBrokers(r);
     } catch {}
   }, []);
 
@@ -87,8 +97,13 @@ export function SocialPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadLeaders(), loadSignals(), loadMyFollows(), loadMyCopies(), loadMyLeaderProfile()]).finally(() => setLoading(false));
+    Promise.all([loadLeaders(), loadSignals(), loadMyFollows(), loadMyCopies(), loadMyLeaderProfile(), loadLeaderboardBrokers()]).finally(() => setLoading(false));
   }, []);
+
+  // Reload leaderboard when filter or sort changes
+  useEffect(() => {
+    if (!loading) loadLeaders();
+  }, [brokerFilter, leaderSort]);
 
   return (
     <div className="p-5 space-y-4">
@@ -138,7 +153,7 @@ export function SocialPage() {
       ) : tab === "feed" ? (
         <SignalFeed signals={signals} onCopy={setCopySignal} />
       ) : tab === "leaders" ? (
-        <Leaderboard leaders={leaders} onFollow={loadMyFollows} />
+        <Leaderboard leaders={leaders} onFollow={loadMyFollows} brokers={leaderboardBrokers} brokerFilter={brokerFilter} setBrokerFilter={setBrokerFilter} leaderSort={leaderSort} setLeaderSort={setLeaderSort} />
       ) : tab === "myFollows" ? (
         <MyFollows follows={myFollows} onUpdate={loadMyFollows} />
       ) : tab === "myCopies" ? (
@@ -268,7 +283,23 @@ function SignalCard({ signal, onCopy }: { signal: SocialSignal; onCopy: () => vo
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
-function Leaderboard({ leaders, onFollow }: { leaders: SocialLeader[]; onFollow: () => void }) {
+function Leaderboard({
+  leaders,
+  onFollow,
+  brokers,
+  brokerFilter,
+  setBrokerFilter,
+  leaderSort,
+  setLeaderSort,
+}: {
+  leaders: socialApi.LeaderboardEntry[];
+  onFollow: () => void;
+  brokers: socialApi.LeaderboardBroker[];
+  brokerFilter: string;
+  setBrokerFilter: (v: string) => void;
+  leaderSort: string;
+  setLeaderSort: (v: string) => void;
+}) {
   const [followLoading, setFollowLoading] = useState<number | null>(null);
 
   const handleFollow = async (leaderId: number) => {
@@ -284,70 +315,141 @@ function Leaderboard({ leaders, onFollow }: { leaders: SocialLeader[]; onFollow:
     }
   };
 
-  if (leaders.length === 0) {
-    return (
-      <Card>
-        <div className="text-center py-16">
-          <Award size={32} className="mx-auto text-[var(--color-text-muted)] opacity-50" />
-          <p className="text-[13px] text-[var(--color-text-muted)] mt-3">No hay líderes registrados todavía</p>
-        </div>
-      </Card>
-    );
-  }
+  const sortOptions = [
+    { value: "roi_30d", label: "ROI 30d" },
+    { value: "roi_90d", label: "ROI 90d" },
+    { value: "roi_all", label: "ROI Total" },
+    { value: "win_rate", label: "Win Rate" },
+    { value: "sharpe_ratio", label: "Sharpe" },
+    { value: "total_followers", label: "Followers" },
+    { value: "total_trades", label: "Trades" },
+  ];
 
   return (
-    <Card>
-      <Table>
-        <thead>
-          <Tr>
-            <Th>#</Th>
-            <Th>Líder</Th>
-            <Th>Broker</Th>
-            <Th>ROI 30d</Th>
-            <Th>Win Rate</Th>
-            <Th>Trades</Th>
-            <Th>Followers</Th>
-            <Th>Acción</Th>
-          </Tr>
-        </thead>
-        <tbody>
-          {leaders.map((l, i) => (
-            <Tr key={l.id}>
-              <Td className="font-bold text-[var(--color-primary)]">#{i + 1}</Td>
-              <Td>
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/20 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)]">
-                    {l.display_name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-bold text-[var(--color-text)]">{l.display_name}</div>
-                    <div className="text-[9px] text-[var(--color-text-muted)]">{l.bio?.slice(0, 40)}</div>
-                  </div>
-                </div>
-              </Td>
-              <Td><span className="text-[10px] font-bold uppercase">{l.broker_id}</span></Td>
-              <Td className={cn("font-bold", (l.roi_30d || 0) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
-                {(l.roi_30d || 0) >= 0 ? "+" : ""}{(l.roi_30d || 0).toFixed(1)}%
-              </Td>
-              <Td className="font-bold">{(l.win_rate || 0).toFixed(0)}%</Td>
-              <Td>{l.total_trades || 0}</Td>
-              <Td className="flex items-center gap-1"><Users size={11} /> {l.total_followers || 0}</Td>
-              <Td>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleFollow(l.id)}
-                  disabled={followLoading === l.id}
-                  className="!h-7 !text-[10px]"
-                >
-                  <UserPlus size={11} /> Seguir
-                </Button>
-              </Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
-    </Card>
+    <div className="space-y-3">
+      {/* Filters */}
+      <Card>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Broker filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Broker:</span>
+            <button
+              onClick={() => setBrokerFilter("")}
+              className={cn(
+                "px-2.5 h-6 rounded-[5px] text-[10px] font-bold transition-colors",
+                !brokerFilter ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+              )}
+            >
+              Todos
+            </button>
+            {brokers.map((b) => (
+              <button
+                key={b.broker_id}
+                onClick={() => setBrokerFilter(b.broker_id)}
+                className={cn(
+                  "px-2.5 h-6 rounded-[5px] text-[10px] font-bold transition-colors flex items-center gap-1",
+                  brokerFilter === b.broker_id ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                )}
+              >
+                {b.display_name}
+                <span className={cn("text-[8px]", brokerFilter === b.broker_id ? "text-white/70" : "text-[var(--color-text-muted)]")}>
+                  {b.leader_count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Sort selector */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Orden:</span>
+            <select
+              value={leaderSort}
+              onChange={(e) => setLeaderSort(e.target.value)}
+              className="h-6 px-2 rounded-[5px] bg-[var(--color-surface-2)] text-[10px] font-bold text-[var(--color-text)] border-none outline-none cursor-pointer"
+            >
+              {sortOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      {/* Leaderboard table */}
+      {leaders.length === 0 ? (
+        <Card>
+          <div className="text-center py-16">
+            <Award size={32} className="mx-auto text-[var(--color-text-muted)] opacity-50" />
+            <p className="text-[13px] text-[var(--color-text-muted)] mt-3">
+              {brokerFilter ? `No hay líderes de ${brokerFilter.charAt(0).toUpperCase() + brokerFilter.slice(1)} todavía` : "No hay líderes registrados todavía"}
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <Table>
+            <thead>
+              <Tr>
+                <Th>#</Th>
+                <Th>Líder</Th>
+                <Th>Broker</Th>
+                <Th>ROI 30d</Th>
+                <Th>Win Rate</Th>
+                <Th>Sharpe</Th>
+                <Th>Max DD</Th>
+                <Th>Equity</Th>
+                <Th>Followers</Th>
+                <Th>Acción</Th>
+              </Tr>
+            </thead>
+            <tbody>
+              {leaders.map((l, i) => (
+                <Tr key={l.id}>
+                  <Td className="font-bold text-[var(--color-primary)]">#{i + 1}</Td>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/20 flex items-center justify-center text-[10px] font-bold text-[var(--color-primary)]">
+                        {l.display_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-[var(--color-text)]">{l.display_name}</div>
+                        <div className="text-[9px] text-[var(--color-text-muted)]">{l.bio?.slice(0, 40)}</div>
+                      </div>
+                    </div>
+                  </Td>
+                  <Td>
+                    <span className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">{l.broker_id}</span>
+                  </Td>
+                  <Td className={cn("font-bold", (l.roi_30d || 0) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                    {(l.roi_30d || 0) >= 0 ? "+" : ""}{(l.roi_30d || 0).toFixed(1)}%
+                  </Td>
+                  <Td className="font-bold">{(l.win_rate || 0).toFixed(0)}%</Td>
+                  <Td className={cn("font-bold", (l.sharpe_ratio || 0) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                    {(l.sharpe_ratio || 0).toFixed(2)}
+                  </Td>
+                  <Td className="text-[var(--color-danger)]">{(l.max_drawdown || 0).toFixed(1)}%</Td>
+                  <Td className="font-bold text-[var(--color-text)]">
+                    ${(l.latest_equity_usd || 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                  </Td>
+                  <Td className="flex items-center gap-1"><Users size={11} /> {l.total_followers || 0}</Td>
+                  <Td>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleFollow(l.id)}
+                      disabled={followLoading === l.id}
+                      className="!h-7 !text-[10px]"
+                    >
+                      <UserPlus size={11} /> Seguir
+                    </Button>
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      )}
+    </div>
   );
 }
 
