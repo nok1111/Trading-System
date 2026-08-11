@@ -11,6 +11,7 @@ from app.api.schemas import HealthOut
 from app.config import get_settings
 from app.data.price_stream import get_price_stream, init_price_stream, stop_price_stream
 from app.intelligence.scheduler import start_scheduler as start_intel_scheduler, stop_scheduler as stop_intel_scheduler
+from app.services.social_scheduler import start_social_scheduler, stop_social_scheduler
 from app.services.license import validate_license
 
 app = FastAPI(
@@ -242,12 +243,19 @@ def _startup_services() -> None:
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Failed to start intelligence scheduler: %s", exc)
+    # Start social trading scheduler (auto-copy + stats)
+    try:
+        start_social_scheduler()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to start social scheduler: %s", exc)
 
 
 @app.on_event("shutdown")
 def _shutdown_services() -> None:
     stop_price_stream()
     stop_intel_scheduler()
+    stop_social_scheduler()
 
 
 # ---------------------------------------------------------------------------

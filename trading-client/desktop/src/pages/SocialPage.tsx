@@ -9,6 +9,7 @@ import {
   Award,
   X,
   Radio,
+  Star,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/Card";
@@ -25,7 +26,7 @@ import * as socialApi from "../lib/socialApi";
 import type { SocialLeader, SocialSignal } from "../lib/socialApi";
 import { fmt } from "../lib/utils";
 
-type Tab = "feed" | "leaders" | "myFollows" | "myCopies";
+type Tab = "feed" | "leaders" | "myFollows" | "myCopies" | "beLeader" | "publish";
 
 export function SocialPage() {
   const [tab, setTab] = useState<Tab>("feed");
@@ -35,6 +36,7 @@ export function SocialPage() {
   const [myCopyTrades, setMyCopyTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [copySignal, setCopySignal] = useState<SocialSignal | null>(null);
+  const [myLeaderProfile, setMyLeaderProfile] = useState<SocialLeader | null>(null);
 
   // WebSocket for real-time signals
   const { connected: wsConnected } = useWebSocket("/api/social/ws/feed", {
@@ -77,8 +79,15 @@ export function SocialPage() {
     } catch {}
   }, []);
 
+  const loadMyLeaderProfile = useCallback(async () => {
+    try {
+      const r = await socialApi.getMyLeaderProfile();
+      setMyLeaderProfile(r);
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    Promise.all([loadLeaders(), loadSignals(), loadMyFollows(), loadMyCopies()]).finally(() => setLoading(false));
+    Promise.all([loadLeaders(), loadSignals(), loadMyFollows(), loadMyCopies(), loadMyLeaderProfile()]).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -103,6 +112,8 @@ export function SocialPage() {
             { id: "leaders", label: "Líderes", icon: <Award size={13} /> },
             { id: "myFollows", label: "Mis Follows", icon: <UserPlus size={13} /> },
             { id: "myCopies", label: "Mis Copies", icon: <Copy size={13} /> },
+            { id: "beLeader", label: "Ser Líder", icon: <Star size={13} /> },
+            ...(myLeaderProfile ? [{ id: "publish", label: "Publicar", icon: <TrendingUp size={13} /> }] : []),
           ].map((t) => (
             <button
               key={t.id}
@@ -130,6 +141,12 @@ export function SocialPage() {
         <Leaderboard leaders={leaders} onFollow={loadMyFollows} />
       ) : tab === "myFollows" ? (
         <MyFollows follows={myFollows} onUpdate={loadMyFollows} />
+      ) : tab === "myCopies" ? (
+        <MyCopies trades={myCopyTrades} />
+      ) : tab === "beLeader" ? (
+        <BecomeLeader onRegistered={() => { loadMyLeaderProfile(); }} />
+      ) : tab === "publish" ? (
+        <PublishSignal onPublished={() => { loadSignals(); }} />
       ) : (
         <MyCopies trades={myCopyTrades} />
       )}
@@ -601,6 +618,239 @@ function CopyModal({ signal, onClose, onCopied }: { signal: SocialSignal; onClos
             {loading ? "Ejecutando..." : "Copiar Trade"}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Become Leader ───────────────────────────────────────────────────────────
+
+function BecomeLeader({ onRegistered }: { onRegistered: () => void }) {
+  const { connectedAccounts } = useBrokerContext();
+  const connectedBrokers = useMemo(
+    () => connectedAccounts.filter((a) => isBrokerConnected(a.status)),
+    [connectedAccounts]
+  );
+  const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
+  const [brokerId, setBrokerId] = useState(connectedBrokers[0]?.brokerId || "binance");
+  const [isPublic, setIsPublic] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [existingProfile, setExistingProfile] = useState<SocialLeader | null>(null);
+
+  useEffect(() => {
+    socialApi.getMyLeaderProfile().then((r) => setExistingProfile(r || null)).catch(() => {});
+  }, []);
+
+  const handleRegister = async () => {
+    if (!displayName.trim()) {
+      toast("Ingresa tu nombre público", false);
+      return;
+    }
+    setLoading(true);
+    try {
+      await socialApi.registerLeader({
+        display_name: displayName,
+        bio,
+        broker_id: brokerId,
+        is_public: isPublic,
+      });
+      toast("¡Ahora eres líder! Ya puedes publicar señales");
+      onRegistered();
+      socialApi.getMyLeaderProfile().then((r) => setExistingProfile(r || null));
+    } catch (e: any) {
+      toast(e.message || "Error al registrarse", false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (existingProfile) {
+    return (
+      <Card>
+        <div className="p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-full bg-[var(--color-primary)]/20 flex items-center justify-center text-[16px] font-bold text-[var(--color-primary)]">
+              {existingProfile.display_name.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h3 className="text-[14px] font-bold text-[var(--color-text)]">{existingProfile.display_name}</h3>
+              <p className="text-[11px] text-[var(--color-text-muted)]">{existingProfile.bio || "Sin bio"}</p>
+            </div>
+            <Badge variant="success" className="ml-auto"><Star size={10} /> Líder</Badge>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <StatBox label="ROI 30d" value={`${(existingProfile.roi_30d || 0).toFixed(1)}%`} positive={(existingProfile.roi_30d || 0) >= 0} />
+            <StatBox label="Win Rate" value={`${(existingProfile.win_rate || 0).toFixed(0)}%`} />
+            <StatBox label="Trades" value={`${existingProfile.total_trades || 0}`} />
+            <StatBox label="Followers" value={`${existingProfile.total_followers || 0}`} />
+          </div>
+
+          <div className="text-[11px] text-[var(--color-text-muted)] mb-3">
+            Broker: <span className="font-bold uppercase">{existingProfile.broker_id}</span> ·
+            Público: {existingProfile.is_public ? "Sí" : "No"}
+          </div>
+
+          <p className="text-[11px] text-[var(--color-text-muted)]">
+            Ve a la pestaña <span className="font-bold text-[var(--color-primary)]">"Publicar"</span> para crear nuevas señales.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div className="p-5 max-w-md">
+        <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-2">Convertirse en Líder</h3>
+        <p className="text-[11px] text-[var(--color-text-muted)] mb-4">
+          Publica señales de trading para que otros usuarios puedan copiarlas en sus brokers.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Nombre público</label>
+            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="ej: CryptoWhale" />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Bio (opcional)</label>
+            <Input value={bio} onChange={(e) => setBio(e.target.value)} placeholder="ej: Swing trader, 5 años de experiencia" />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Tu broker principal</label>
+            <Select value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+              {connectedBrokers.length > 0 ? (
+                connectedBrokers.map((b) => (
+                  <option key={b.brokerId} value={b.brokerId}>{b.brokerId}</option>
+                ))
+              ) : (
+                <option value="binance">binance</option>
+              )}
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              className="w-4 h-4 rounded accent-[var(--color-primary)]"
+            />
+            <label className="text-[11px] text-[var(--color-text)]">Perfil público (otros usuarios pueden verte)</label>
+          </div>
+
+          <Button variant="primary" onClick={handleRegister} disabled={loading || !displayName.trim()} className="w-full">
+            {loading ? "Registrando..." : "Registrarse como Líder"}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Publish Signal ──────────────────────────────────────────────────────────
+
+function PublishSignal({ onPublished }: { onPublished: () => void }) {
+  const [symbol, setSymbol] = useState("");
+  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [sizePct, setSizePct] = useState("5");
+  const [entryPrice, setEntryPrice] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
+  const [takeProfit, setTakeProfit] = useState("");
+  const [comment, setComment] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handlePublish = async () => {
+    if (!symbol.trim()) {
+      toast("Ingresa un símbolo (ej: BTCUSDT)", false);
+      return;
+    }
+    setLoading(true);
+    try {
+      await socialApi.publishSignal({
+        symbol: symbol.toUpperCase(),
+        side,
+        size_pct: parseFloat(sizePct) || 5,
+        entry_price: entryPrice ? parseFloat(entryPrice) : undefined,
+        stop_loss: stopLoss ? parseFloat(stopLoss) : undefined,
+        take_profit: takeProfit ? parseFloat(takeProfit) : undefined,
+        comment,
+      });
+      toast("Señal publicada");
+      setSymbol(""); setEntryPrice(""); setStopLoss(""); setTakeProfit(""); setComment("");
+      onPublished();
+    } catch (e: any) {
+      toast(e.message || "Error al publicar", false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <div className="p-5 max-w-md">
+        <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-4">Publicar Señal</h3>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Símbolo</label>
+              <Input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="BTCUSDT" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Side</label>
+              <Select value={side} onChange={(e) => setSide(e.target.value as "BUY" | "SELL")}>
+                <option value="BUY">BUY</option>
+                <option value="SELL">SELL</option>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">% del portfolio</label>
+            <Input type="number" value={sizePct} onChange={(e) => setSizePct(e.target.value)} min="0.1" step="0.5" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Entry</label>
+              <Input type="number" value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} placeholder="Auto" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">SL</label>
+              <Input type="number" value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="Opcional" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">TP</label>
+              <Input type="number" value={takeProfit} onChange={(e) => setTakeProfit(e.target.value)} placeholder="Opcional" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Comentario</label>
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="ej: Breakout de resistencia" />
+          </div>
+
+          <Button variant="primary" onClick={handlePublish} disabled={loading || !symbol.trim()} className="w-full">
+            {loading ? "Publicando..." : "Publicar Señal"}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Stat Box ────────────────────────────────────────────────────────────────
+
+function StatBox({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+  return (
+    <div className="rounded-[8px] bg-[var(--color-surface-2)] p-2 text-center">
+      <div className="text-[9px] text-[var(--color-text-muted)] uppercase">{label}</div>
+      <div className={cn("text-[13px] font-bold", positive === true ? "text-[var(--color-success)]" : positive === false ? "text-[var(--color-danger)]" : "text-[var(--color-text)]")}>
+        {value}
       </div>
     </div>
   );

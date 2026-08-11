@@ -605,6 +605,32 @@ def my_copy_trades(
     return [_copy_trade_dict(r) for r in rows]
 
 
+@router.get("/scheduler/status")
+def social_scheduler_status(
+    user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Estado del social scheduler (auto-copy + stats)."""
+    from app.services.social_scheduler import get_social_scheduler
+    sched = get_social_scheduler()
+    if not sched:
+        return {"running": False}
+    return sched.get_status()
+
+
+@router.get("/my-leader-profile")
+def my_leader_profile(
+    user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict | None:
+    """Obtener mi perfil de líder (si soy líder)."""
+    leader = db.execute(
+        select(SocialLeader).where(SocialLeader.user_id == user.id)
+    ).scalar_one_or_none()
+    if not leader:
+        return None
+    return _leader_dict(leader, include_stats=True)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

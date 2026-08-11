@@ -199,3 +199,21 @@ export async function copySignal(signalId: number, data: {
 export async function getMyCopyTrades(): Promise<CopyTrade[]> {
   return api<CopyTrade[]>("/api/social/my-copy-trades");
 }
+
+export async function getMyLeaderProfile(): Promise<SocialLeader | null> {
+  return api<SocialLeader | null>("/api/social/my-leader-profile");
+}
+
+export async function getSchedulerStatus(): Promise<{
+  running: boolean;
+  copy_interval?: number;
+  stats_interval?: number;
+  last_copy_run?: string;
+  last_stats_run?: string;
+  copies_executed?: number;
+  copies_failed?: number;
+  stats_updated?: number;
+  errors?: number;
+}> {
+  return api("/api/social/scheduler/status");
+}
