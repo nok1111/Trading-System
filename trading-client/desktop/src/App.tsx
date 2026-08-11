@@ -81,6 +81,8 @@ function BrokerAwareContent({
   const { hasConnectedAccounts, isLoading } = useBrokerContext();
   const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(new Set(["dashboard"]));
 
+  console.log("[App] BrokerAwareContent:", { hasConnectedAccounts, isLoading, showOnboarding, brokerSkipped });
+
   useEffect(() => {
     setVisitedTabs((prev) => {
       if (prev.has(activeTab)) return prev;

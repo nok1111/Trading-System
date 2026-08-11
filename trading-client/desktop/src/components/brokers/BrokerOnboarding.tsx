@@ -49,15 +49,18 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
   );
 
   const handleValidate = async (req: CredentialValidationRequest): Promise<CredentialValidationResponse> => {
+    console.log("[Onboarding] handleValidate called", req.brokerId);
     setIsValidating(true);
     setError(null);
     setValidationResult(null);
     setPendingRequest(req);
     try {
       const result = await validate(req);
+      console.log("[Onboarding] Validate result:", result);
       setValidationResult(result);
       return result;
     } catch (err) {
+      console.error("[Onboarding] Validate failed:", err);
       const msg = err instanceof Error ? err.message : "Error al validar";
       setError(msg);
       throw err;
@@ -67,7 +70,15 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
   };
 
   const handleConnect = async () => {
-    if (!pendingRequest || !validationResult?.valid) return;
+    console.log("[Onboarding] handleConnect called", {
+      hasPending: !!pendingRequest,
+      valid: validationResult?.valid,
+      brokerId: pendingRequest?.brokerId,
+    });
+    if (!pendingRequest || !validationResult?.valid) {
+      console.log("[Onboarding] handleConnect aborted: no pending request or invalid");
+      return;
+    }
     setError(null);
     try {
       const req: CreateBrokerAccountRequest = {
@@ -77,9 +88,14 @@ export function BrokerOnboarding({ onConnected, onSkip }: BrokerOnboardingProps)
         passphrase: pendingRequest.passphrase,
         environment: pendingRequest.environment,
       };
-      await connect(req);
+      console.log("[Onboarding] Calling connect...", req.brokerId);
+      const result = await connect(req);
+      console.log("[Onboarding] Connect succeeded:", result);
+      console.log("[Onboarding] Calling onConnected...");
       onConnected();
+      console.log("[Onboarding] onConnected called");
     } catch (err) {
+      console.error("[Onboarding] Connect failed:", err);
       setError(err instanceof Error ? err.message : "Error al conectar");
     }
   };

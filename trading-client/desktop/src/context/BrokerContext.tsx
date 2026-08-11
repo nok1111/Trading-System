@@ -82,11 +82,14 @@ export function BrokerProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(
     async (req: CreateBrokerAccountRequest): Promise<BrokerAccount> => {
+      console.log("[BrokerContext] connect called", req.brokerId);
       const account = await createBrokerAccount(req);
+      console.log("[BrokerContext] createBrokerAccount succeeded:", account);
       await refresh();
+      console.log("[BrokerContext] refresh done, connectedAccounts:", connectedAccounts.length);
       return account;
     },
-    [refresh]
+    [refresh, connectedAccounts.length]
   );
 
   const disconnect = useCallback(
