@@ -20,6 +20,7 @@ import { Badge } from "../components/ui/Badge";
 import { toast } from "../components/ui/Toast";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { SymbolSelector } from "../components/SymbolSelector";
+import { LeaderProfile } from "../components/LeaderProfile";
 import { useBrokerContext } from "../context/BrokerContext";
 import { isBrokerConnected } from "../lib/brokerTypes";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -41,6 +42,7 @@ export function SocialPage() {
   const [leaderboardBrokers, setLeaderboardBrokers] = useState<socialApi.LeaderboardBroker[]>([]);
   const [brokerFilter, setBrokerFilter] = useState<string>("");
   const [leaderSort, setLeaderSort] = useState<string>("roi_30d");
+  const [selectedLeaderId, setSelectedLeaderId] = useState<number | null>(null);
 
   // WebSocket for real-time signals
   const { connected: wsConnected } = useWebSocket("/api/social/ws/feed", {
@@ -151,10 +153,12 @@ export function SocialPage() {
       {/* Content */}
       {loading ? (
         <div className="text-center py-20 text-[var(--color-text-muted)] text-[13px]">Cargando...</div>
+      ) : selectedLeaderId ? (
+        <LeaderProfile leaderId={selectedLeaderId} onBack={() => setSelectedLeaderId(null)} />
       ) : tab === "feed" ? (
         <SignalFeed signals={signals} onCopy={setCopySignal} />
       ) : tab === "leaders" ? (
-        <Leaderboard leaders={leaders} onFollow={loadMyFollows} brokers={leaderboardBrokers} brokerFilter={brokerFilter} setBrokerFilter={setBrokerFilter} leaderSort={leaderSort} setLeaderSort={setLeaderSort} />
+        <Leaderboard leaders={leaders} onFollow={loadMyFollows} brokers={leaderboardBrokers} brokerFilter={brokerFilter} setBrokerFilter={setBrokerFilter} leaderSort={leaderSort} setLeaderSort={setLeaderSort} onSelectLeader={setSelectedLeaderId} />
       ) : tab === "myFollows" ? (
         <MyFollows follows={myFollows} onUpdate={loadMyFollows} />
       ) : tab === "myCopies" ? (
@@ -292,6 +296,7 @@ function Leaderboard({
   setBrokerFilter,
   leaderSort,
   setLeaderSort,
+  onSelectLeader,
 }: {
   leaders: socialApi.LeaderboardEntry[];
   onFollow: () => void;
@@ -300,6 +305,7 @@ function Leaderboard({
   setBrokerFilter: (v: string) => void;
   leaderSort: string;
   setLeaderSort: (v: string) => void;
+  onSelectLeader: (id: number) => void;
 }) {
   const [followLoading, setFollowLoading] = useState<number | null>(null);
 
@@ -405,7 +411,7 @@ function Leaderboard({
             </thead>
             <tbody>
               {leaders.map((l, i) => (
-                <Tr key={l.id}>
+                <Tr key={l.id} className="cursor-pointer hover:bg-[var(--color-surface-hover)]" onClick={() => onSelectLeader(l.id)}>
                   <Td className="font-bold text-[var(--color-primary)]">#{i + 1}</Td>
                   <Td>
                     <div className="flex items-center gap-2">
@@ -437,7 +443,7 @@ function Leaderboard({
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => handleFollow(l.id)}
+                      onClick={(e) => { e.stopPropagation(); handleFollow(l.id); }}
                       disabled={followLoading === l.id}
                       className="!h-7 !text-[10px]"
                     >

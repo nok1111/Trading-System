@@ -204,6 +204,205 @@ def get_leader_signals(
     return [_signal_dict(s) for s in rows]
 
 
+@router.get("/leaders/{leader_id}/equity-curve")
+def get_leader_equity_curve(
+    leader_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    days: int = Query(30, ge=1, le=365),
+) -> dict:
+    """Equity curve del líder desde AccountSnapshot.
+
+    Devuelve puntos {timestamp, equity, pnl} para graficar.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    leader = db.execute(
+        select(SocialLeader).where(SocialLeader.id == leader_id)
+    ).scalar_one_or_none()
+    if not leader:
+        raise HTTPException(status_code=404, detail="Líder no encontrado")
+
+    since = datetime.now(UTC) - timedelta(days=days)
+    stmt = (
+        select(AccountSnapshot)
+        .where(
+            AccountSnapshot.user_id == leader.user_id,
+            AccountSnapshot.broker_id == leader.broker_id,
+            AccountSnapshot.timestamp >= since,
+        )
+        .order_by(AccountSnapshot.timestamp.asc())
+        .limit(1000)
+    )
+    snaps = db.execute(stmt).scalars().all()
+
+    points = [
+        {
+            "timestamp": s.timestamp.isoformat(),
+            "equity": float(s.equity),
+            "pnl": float(s.total_pnl),
+            "daily_pnl": float(s.daily_pnl),
+        }
+        for s in snaps
+    ]
+
+    return {
+        "leader_id": leader_id,
+        "days": days,
+        "points": points,
+        "count": len(points),
+    }
+
+
+@router.get("/leaders/{leader_id}/profile")
+def get_leader_profile(
+    leader_id: int,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Perfil completo del líder con stats detalladas, señales recientes y equity.
+
+    Combina:
+    - Datos del líder (display_name, bio, broker, fees)
+    - Stats reales calculadas desde AccountSnapshot
+    - Señales recientes (últimas 20)
+    - Equity curve (últimos 30 días, resumida)
+    - Followers count
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.database.models.social_follow import SocialFollow
+    from app.services.broker_leaderboard import (
+        _compute_max_drawdown,
+        _compute_roi_from_snapshots,
+        _compute_sharpe,
+    )
+
+    leader = db.execute(
+        select(SocialLeader).where(SocialLeader.id == leader_id)
+    ).scalar_one_or_none()
+    if not leader:
+        raise HTTPException(status_code=404, detail="Líder no encontrado")
+
+    # Snapshots for stats
+    now = datetime.now(UTC)
+    since_30d = now - timedelta(days=30)
+    since_90d = now - timedelta(days=90)
+
+    snap_stmt = (
+        select(AccountSnapshot)
+        .where(
+            AccountSnapshot.user_id == leader.user_id,
+            AccountSnapshot.broker_id == leader.broker_id,
+        )
+        .order_by(AccountSnapshot.timestamp.desc())
+        .limit(500)
+    )
+    all_snaps = db.execute(snap_stmt).scalars().all()
+    snaps_30d = [s for s in all_snaps if s.timestamp >= since_30d]
+    snaps_90d = [s for s in all_snaps if s.timestamp >= since_90d]
+
+    # Real stats
+    roi_30d = _compute_roi_from_snapshots(snaps_30d, since_30d) if snaps_30d else leader.roi_30d
+    roi_90d = _compute_roi_from_snapshots(snaps_90d, since_90d) if snaps_90d else leader.roi_90d
+    roi_all = _compute_roi_from_snapshots(all_snaps, datetime(2020, 1, 1, tzinfo=UTC)) if all_snaps else leader.roi_all
+    max_dd = _compute_max_drawdown(all_snaps) if all_snaps else leader.max_drawdown
+    sharpe = _compute_sharpe(all_snaps) if len(all_snaps) >= 3 else leader.sharpe_ratio
+
+    # Signal stats
+    closed_signals = db.execute(
+        select(SocialSignal).where(
+            SocialSignal.leader_id == leader.id,
+            SocialSignal.status == "closed",
+        )
+    ).scalars().all()
+    total_closed = len(closed_signals)
+    wins = sum(1 for s in closed_signals if s.pnl_pct > 0)
+    win_rate = (wins / total_closed * 100) if total_closed > 0 else 0.0
+
+    # Best/worst trade
+    best_trade = max((s.pnl_pct for s in closed_signals), default=0.0)
+    worst_trade = min((s.pnl_pct for s in closed_signals), default=0.0)
+    avg_trade = (
+        sum(s.pnl_pct for s in closed_signals) / total_closed if total_closed > 0 else 0.0
+    )
+
+    # Active signals
+    active_count = db.execute(
+        select(func.count(SocialSignal.id)).where(
+            SocialSignal.leader_id == leader.id,
+            SocialSignal.status == "active",
+        )
+    ).scalar() or 0
+
+    # Follower count
+    follower_count = db.execute(
+        select(func.count(SocialFollow.id)).where(
+            SocialFollow.leader_id == leader.id,
+            SocialFollow.active == True,  # noqa: E712
+        )
+    ).scalar() or 0
+
+    # Recent signals (last 20)
+    recent_signals = db.execute(
+        select(SocialSignal)
+        .where(SocialSignal.leader_id == leader.id)
+        .order_by(desc(SocialSignal.created_at))
+        .limit(20)
+    ).scalars().all()
+
+    # Equity curve (last 30 days, max 60 points)
+    since_30d_snap = now - timedelta(days=30)
+    curve_snaps = [s for s in all_snaps if s.timestamp >= since_30d_snap]
+    # Downsample to max 60 points
+    if len(curve_snaps) > 60:
+        step = len(curve_snaps) // 60
+        curve_snaps = curve_snaps[::step]
+    curve_snaps = sorted(curve_snaps, key=lambda s: s.timestamp)
+
+    equity_curve = [
+        {"timestamp": s.timestamp.isoformat(), "equity": float(s.equity)}
+        for s in curve_snaps
+    ]
+
+    # Latest equity
+    latest_equity = float(all_snaps[0].equity) if all_snaps else 0.0
+    latest_pnl = float(all_snaps[0].total_pnl) if all_snaps else 0.0
+
+    return {
+        "id": leader.id,
+        "user_id": leader.user_id,
+        "display_name": leader.display_name,
+        "bio": leader.bio,
+        "avatar_url": leader.avatar_url,
+        "broker_id": leader.broker_id,
+        "is_public": leader.is_public,
+        "fee_percent": leader.fee_percent,
+        "min_copy_amount_usd": leader.min_copy_amount_usd,
+        "created_at": leader.created_at.isoformat() if leader.created_at else None,
+        "stats_updated_at": leader.stats_updated_at.isoformat() if leader.stats_updated_at else None,
+        # Real stats
+        "roi_30d": round(roi_30d, 2),
+        "roi_90d": round(roi_90d, 2),
+        "roi_all": round(roi_all, 2),
+        "win_rate": round(win_rate, 2),
+        "total_trades": max(total_closed, leader.total_trades),
+        "total_followers": follower_count,
+        "max_drawdown": round(max_dd, 2),
+        "sharpe_ratio": round(sharpe, 2),
+        "open_positions": active_count,
+        "latest_equity_usd": round(latest_equity, 2),
+        "total_pnl_usd": round(latest_pnl, 2),
+        # Advanced stats
+        "best_trade_pct": round(float(best_trade), 2),
+        "worst_trade_pct": round(float(worst_trade), 2),
+        "avg_trade_pct": round(float(avg_trade), 2),
+        "wins": wins,
+        "losses": total_closed - wins,
+        # Data
+        "recent_signals": [_signal_dict(s) for s in recent_signals],
+        "equity_curve": equity_curve,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Signal endpoints
 # ---------------------------------------------------------------------------

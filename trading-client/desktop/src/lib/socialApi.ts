@@ -84,6 +84,59 @@ export async function getLeaders(sort: string = "roi_30d", limit: number = 50): 
   return api<SocialLeader[]>(`/api/social/leaders?sort=${sort}&limit=${limit}`);
 }
 
+// ─── Leader Profile ──────────────────────────────────────────────────────────
+
+export interface EquityPoint {
+  timestamp: string;
+  equity: number;
+}
+
+export interface LeaderProfile {
+  id: number;
+  user_id: number;
+  display_name: string;
+  bio: string;
+  avatar_url: string | null;
+  broker_id: string;
+  is_public: boolean;
+  fee_percent: number;
+  min_copy_amount_usd: number;
+  created_at: string | null;
+  stats_updated_at: string | null;
+  roi_30d: number;
+  roi_90d: number;
+  roi_all: number;
+  win_rate: number;
+  total_trades: number;
+  total_followers: number;
+  max_drawdown: number;
+  sharpe_ratio: number;
+  open_positions: number;
+  latest_equity_usd: number;
+  total_pnl_usd: number;
+  best_trade_pct: number;
+  worst_trade_pct: number;
+  avg_trade_pct: number;
+  wins: number;
+  losses: number;
+  recent_signals: SocialSignal[];
+  equity_curve: EquityPoint[];
+}
+
+export async function getLeaderProfile(leaderId: number): Promise<LeaderProfile> {
+  return api<LeaderProfile>(`/api/social/leaders/${leaderId}/profile`);
+}
+
+export async function getLeaderSignals(
+  leaderId: number,
+  status: "all" | "active" | "closed" = "all",
+  limit: number = 50,
+): Promise<SocialSignal[]> {
+  return api<SocialSignal[]>(
+    `/api/social/leaders/${leaderId}/signals?status=${status}&limit=${limit}`,
+  );
+}
+
 // ─── Broker Leaderboard ─────────────────────────────────────────────────────
 
 export interface LeaderboardEntry extends SocialLeader {
