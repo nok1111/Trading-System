@@ -57,6 +57,7 @@ async def license_check(request: Request, call_next):
         or path.startswith("/api/signals")
         or path.startswith("/api/ws/")
         or path.startswith("/api/social/leaders")
+        or path.startswith("/api/social/leaderboard")
         or path.startswith("/api/social/signals/feed")
         or (
             path.startswith("/api/broker/")
