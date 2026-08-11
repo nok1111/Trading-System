@@ -674,23 +674,31 @@ def copy_signal(
     if signal.status != "active":
         raise HTTPException(status_code=400, detail="Esta señal ya no está activa")
 
-    # Get follower's broker account
-    accounts = list_accounts(db, user.id)
-    broker_account = next((a for a in accounts if a.get("broker_id") == req.broker_id), None)
+    # Get follower's broker account (query model directly to access encrypted credentials)
+    from app.database.models.broker_account import BrokerAccount as BrokerAccountModel
+    broker_account = db.execute(
+        select(BrokerAccountModel).where(
+            BrokerAccountModel.user_id == user.id,
+            BrokerAccountModel.broker_id == req.broker_id,
+        )
+    ).scalar_one_or_none()
     if not broker_account:
+        # List available brokers for error message
+        available = list_accounts(db, user.id)
+        available_ids = [a.get("brokerId", "?") for a in available]
         raise HTTPException(
             status_code=400,
-            detail=f"No tienes el broker '{req.broker_id}' conectado. Brokers disponibles: {', '.join(a.get('broker_id', '?') for a in accounts)}"
+            detail=f"No tienes el broker '{req.broker_id}' conectado. Brokers disponibles: {', '.join(available_ids)}"
         )
 
     # Decrypt credentials
     try:
         creds = BrokerCredentials(
-            broker_id=broker_account["broker_id"],
-            api_key=decrypt(broker_account["api_key_enc"]),
-            api_secret=decrypt(broker_account["api_secret_enc"]),
-            passphrase=decrypt(broker_account["passphrase_enc"]) if broker_account.get("passphrase_enc") else None,
-            testnet=broker_account.get("environment") == "testnet",
+            broker_id=broker_account.broker_id,
+            api_key=decrypt(broker_account.api_key_enc),
+            api_secret=decrypt(broker_account.api_secret_enc),
+            passphrase=decrypt(broker_account.passphrase_enc) if broker_account.passphrase_enc else None,
+            testnet=broker_account.environment == "testnet",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error al desencriptar credenciales: {exc}") from exc

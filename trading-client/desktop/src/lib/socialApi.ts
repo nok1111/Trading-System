@@ -170,10 +170,6 @@ export async function getLeader(leaderId: number): Promise<SocialLeader> {
   return api<SocialLeader>(`/api/social/leaders/${leaderId}`);
 }
 
-export async function getLeaderSignals(leaderId: number, status: string = "all"): Promise<SocialSignal[]> {
-  return api<SocialSignal[]>(`/api/social/leaders/${leaderId}/signals?status=${status}`);
-}
-
 export async function registerLeader(data: {
   display_name: string;
   bio?: string;

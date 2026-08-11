@@ -187,25 +187,28 @@ class SocialScheduler:
         from app.brokers.registry import get_adapter
         from app.services.crypto import decrypt
         from app.database.models.social_copy_trade import SocialCopyTrade as _CT
-        from app.services.broker_account_service import list_accounts
+        from app.database.models.broker_account import BrokerAccount as BrokerAccountModel
         from app.services.signal_normalizer import calculate_quantity, check_slippage, normalize_symbol
 
-        # Get follower's broker accounts
-        accounts = list_accounts(db, follow.follower_id)
-        if not accounts:
-            raise ValueError(f"Follower {follow.follower_id} has no broker accounts")
+        # Get follower's broker account (query model directly for encrypted credentials)
+        broker_account = db.execute(
+            select(BrokerAccountModel).where(
+                BrokerAccountModel.user_id == follow.follower_id,
+                BrokerAccountModel.status == "CONNECTED_TRADING",
+            )
+        ).scalars().first()
+        if not broker_account:
+            raise ValueError(f"Follower {follow.follower_id} has no connected broker accounts")
 
-        # Use first connected account (or could be configurable)
-        broker_account = accounts[0]
-        broker_id = broker_account["broker_id"]
+        broker_id = broker_account.broker_id
 
         # Decrypt credentials
         creds = BrokerCredentials(
             broker_id=broker_id,
-            api_key=decrypt(broker_account["api_key_enc"]),
-            api_secret=decrypt(broker_account["api_secret_enc"]),
-            passphrase=decrypt(broker_account["passphrase_enc"]) if broker_account.get("passphrase_enc") else None,
-            testnet=broker_account.get("environment") == "testnet",
+            api_key=decrypt(broker_account.api_key_enc),
+            api_secret=decrypt(broker_account.api_secret_enc),
+            passphrase=decrypt(broker_account.passphrase_enc) if broker_account.passphrase_enc else None,
+            testnet=broker_account.environment == "testnet",
         )
 
         # Normalize symbol
