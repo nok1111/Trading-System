@@ -19,6 +19,7 @@ import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { Badge } from "../components/ui/Badge";
 import { toast } from "../components/ui/Toast";
 import { CryptoIcon } from "../components/CryptoIcon";
+import { SymbolSelector } from "../components/SymbolSelector";
 import { useBrokerContext } from "../context/BrokerContext";
 import { isBrokerConnected } from "../lib/brokerTypes";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -867,7 +868,7 @@ function PublishSignal({ onPublished }: { onPublished: () => void }) {
 
   const handlePublish = async () => {
     if (!symbol.trim()) {
-      toast("Ingresa un símbolo (ej: BTCUSDT)", false);
+      toast("Selecciona un símbolo", false);
       return;
     }
     setLoading(true);
@@ -898,10 +899,12 @@ function PublishSignal({ onPublished }: { onPublished: () => void }) {
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Símbolo</label>
-              <Input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="BTCUSDT" />
-            </div>
+            <SymbolSelector
+              value={symbol}
+              onChange={setSymbol}
+              label="Símbolo"
+              tooltip="Selecciona el par de trading del exchange. Busca por nombre (BTC, ETH, SOL, etc.)."
+            />
             <div>
               <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1 block">Side</label>
               <Select value={side} onChange={(e) => setSide(e.target.value as "BUY" | "SELL")}>
