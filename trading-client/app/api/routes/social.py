@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.database.models.account_snapshot import AccountSnapshot
 from app.database.models.social_follow import SocialCopyTrade, SocialFollow
 from app.database.models.social_leader import SocialLeader
 from app.database.models.social_signal import SocialSignal
