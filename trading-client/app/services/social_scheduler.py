@@ -217,7 +217,7 @@ class SocialScheduler:
         # Get current price
         adapter = get_adapter(broker_id, creds)
         ticker = adapter.get_ticker(target_symbol)
-        current_price = Decimal(str(ticker.last_price))
+        current_price = Decimal(str(ticker.price))
 
         # Check slippage
         if not check_slippage(signal.entry_price, current_price, max_slippage_pct=5.0):

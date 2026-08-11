@@ -710,7 +710,7 @@ def copy_signal(
     adapter = get_adapter(req.broker_id, creds)
     try:
         ticker = adapter.get_ticker(target_symbol)
-        current_price = Decimal(str(ticker.last_price))
+        current_price = Decimal(str(ticker.price))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Error al obtener precio de {target_symbol}: {exc}") from exc
 
