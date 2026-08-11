@@ -21,6 +21,9 @@ from app.database.models.prediction_record import PredictionRecord
 from app.database.models.risk_config import RiskConfig
 from app.database.models.risk_event import RiskEvent
 from app.database.models.signal import Signal
+from app.database.models.social_follow import SocialCopyTrade, SocialFollow
+from app.database.models.social_leader import SocialLeader
+from app.database.models.social_signal import SocialSignal
 from app.database.models.strategy_run import StrategyRun
 from app.database.models.system_event import SystemEvent
 from app.database.models.trade import Trade
@@ -52,6 +55,10 @@ __all__ = [
     "RiskConfig",
     "RiskEvent",
     "Signal",
+    "SocialCopyTrade",
+    "SocialFollow",
+    "SocialLeader",
+    "SocialSignal",
     "StrategyRun",
     "SystemEvent",
     "Trade",

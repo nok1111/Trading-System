@@ -19,6 +19,7 @@ import {
   FlaskConical,
   Bot,
   Grid3x3,
+  Users,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
@@ -53,7 +54,8 @@ export type TabId =
   | "preferences"
   | "broker"
   | "ai-agent"
-  | "bots";
+  | "bots"
+  | "social";
 
 interface NavItem {
   id: TabId;
@@ -71,6 +73,7 @@ const generalItems: NavItem[] = [
   { id: "backtest", label: "Backtest", icon: <FlaskConical size={17} />, group: "general" },
   { id: "ai-agent", label: "AI Agent", icon: <Bot size={17} />, group: "general" },
   { id: "bots", label: "Bots", icon: <Grid3x3 size={17} />, group: "general" },
+  { id: "social", label: "Social Trading", icon: <Users size={17} />, group: "general" },
 ];
 
 const sistemaItems: NavItem[] = [
@@ -94,6 +97,7 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   broker: { title: "Broker", subtitle: "Vista de broker" },
   "ai-agent": { title: "AI Trading Agent", subtitle: "Agente de IA autónomo — razonamiento y estadísticas" },
   bots: { title: "Trading Bots", subtitle: "Grid y DCA bots automatizados" },
+  social: { title: "Social Trading", subtitle: "Copia señales de traders top en tu broker" },
 };
 
 interface LayoutProps {
