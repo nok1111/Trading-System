@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
+import {
+  createChart,
+  ColorType,
+  CandlestickSeries,
+  HistogramSeries,
+  LineSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type IPriceLine,
+} from "lightweight-charts";
+import { EMA, RSI, MACD, BollingerBands } from "technicalindicators";
 import { api } from "../../lib/api";
+import { cn } from "../../lib/utils";
 
 interface PriceChartProps {
   symbol: string;
@@ -21,73 +32,126 @@ const INTERVALS = [
   { value: "1d", label: "1D" },
 ];
 
+interface IndicatorState {
+  ema: boolean;
+  emaPeriod: number;
+  ema2: boolean;
+  ema2Period: number;
+  bollinger: boolean;
+  bbPeriod: number;
+  bbStdDev: number;
+  volume: boolean;
+  rsi: boolean;
+  rsiPeriod: number;
+  macd: boolean;
+}
+
+const DEFAULT_INDICATORS: IndicatorState = {
+  ema: true,
+  emaPeriod: 20,
+  ema2: true,
+  ema2Period: 50,
+  bollinger: false,
+  bbPeriod: 20,
+  bbStdDev: 2,
+  volume: true,
+  rsi: false,
+  rsiPeriod: 14,
+  macd: false,
+};
+
 export function PriceChart({ symbol, interval: initialInterval = "1h", height = 400, stopLoss, takeProfit, entryPrice, brokerId }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const rsiContainerRef = useRef<HTMLDivElement>(null);
+  const macdContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const emaRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema2Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const bbUpperRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const bbMidRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const bbLowerRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsiChartRef = useRef<IChartApi | null>(null);
+  const rsiSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdChartRef = useRef<IChartApi | null>(null);
+  const macdSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+
   const [interval, setIntervalState] = useState(initialInterval);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const slLineRef = useRef<any>(null);
-  const tpLineRef = useRef<any>(null);
-  const entryLineRef = useRef<any>(null);
+  const [indicators, setIndicators] = useState<IndicatorState>(DEFAULT_INDICATORS);
+  const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
+  const slLineRef = useRef<IPriceLine | null>(null);
+  const tpLineRef = useRef<IPriceLine | null>(null);
+  const entryLineRef = useRef<IPriceLine | null>(null);
 
+  // Helper: get CSS vars
+  const getCssVars = useCallback(() => {
     const root = document.documentElement;
     const cs = getComputedStyle(root);
-    const cssVar = (name: string) => cs.getPropertyValue(name).trim() || "#333333";
-    const cBorder = cssVar("--color-border");
-    const cTextMuted = cssVar("--color-text-muted");
-    const cSuccess = cssVar("--color-success");
-    const cDanger = cssVar("--color-danger");
-    const cSurface = cssVar("--color-surface");
+    const get = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+    return {
+      border: get("--color-border", "#333333"),
+      textMuted: get("--color-text-muted", "#888888"),
+      success: get("--color-success", "#22d39a"),
+      danger: get("--color-danger", "#ff5f6d"),
+      surface: get("--color-surface", "#1a1a2e"),
+      primary: get("--color-primary", "#7c3aed"),
+      warning: get("--color-warning", "#f59e0b"),
+    };
+  }, []);
+
+  // ─── Main chart creation ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const c = getCssVars();
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: cSurface },
-        textColor: cTextMuted,
+        background: { type: ColorType.Solid, color: c.surface },
+        textColor: c.textMuted,
         fontSize: 11,
+        fontFamily: "system-ui, -apple-system, sans-serif",
       },
       grid: {
-        vertLines: { color: cBorder },
-        horzLines: { color: cBorder },
+        vertLines: { color: c.border, style: 1 },
+        horzLines: { color: c.border, style: 1 },
       },
       crosshair: {
         mode: 1,
-        vertLine: { color: cTextMuted, width: 1, style: 2 },
-        horzLine: { color: cTextMuted, width: 1, style: 2 },
+        vertLine: { color: c.textMuted, width: 1, style: 2, labelBackgroundColor: c.primary },
+        horzLine: { color: c.textMuted, width: 1, style: 2, labelBackgroundColor: c.primary },
       },
       rightPriceScale: {
-        borderColor: cBorder,
+        borderColor: c.border,
+        scaleMargins: { top: 0.05, bottom: indicators.volume ? 0.25 : 0.05 },
       },
       timeScale: {
-        borderColor: cBorder,
+        borderColor: c.border,
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 5,
       },
     });
 
     chartRef.current = chart;
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: cSuccess,
-      downColor: cDanger,
-      borderUpColor: cSuccess,
-      borderDownColor: cDanger,
-      wickUpColor: cSuccess,
-      wickDownColor: cDanger,
-      priceFormat: {
-        type: "price",
-        precision: 8,
-        minMove: 0.00000001,
-      },
-      priceLineVisible: false,
-      lastValueVisible: false,
+      upColor: c.success,
+      downColor: c.danger,
+      borderUpColor: c.success,
+      borderDownColor: c.danger,
+      wickUpColor: c.success,
+      wickDownColor: c.danger,
+      priceFormat: { type: "price", precision: 8, minMove: 0.00000001 },
+      priceLineVisible: true,
+      lastValueVisible: true,
     });
     seriesRef.current = candleSeries;
 
@@ -100,6 +164,51 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     });
     volumeRef.current = volumeSeries;
 
+    // EMA lines
+    const emaSeries = chart.addSeries(LineSeries, {
+      color: c.warning,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    emaRef.current = emaSeries;
+
+    const ema2Series = chart.addSeries(LineSeries, {
+      color: c.primary,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    ema2Ref.current = ema2Series;
+
+    // Bollinger Bands
+    const bbUpper = chart.addSeries(LineSeries, {
+      color: "rgba(124, 58, 237, 0.5)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      lineStyle: 2,
+    });
+    bbUpperRef.current = bbUpper;
+
+    const bbMid = chart.addSeries(LineSeries, {
+      color: "rgba(124, 58, 237, 0.3)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      lineStyle: 1,
+    });
+    bbMidRef.current = bbMid;
+
+    const bbLower = chart.addSeries(LineSeries, {
+      color: "rgba(124, 58, 237, 0.5)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      lineStyle: 2,
+    });
+    bbLowerRef.current = bbLower;
+
     const handleResize = () => {
       if (containerRef.current && chartRef.current) {
         chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
@@ -111,9 +220,157 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
       window.removeEventListener("resize", handleResize);
       chart.remove();
       chartRef.current = null;
+      seriesRef.current = null;
+      volumeRef.current = null;
+      emaRef.current = null;
+      ema2Ref.current = null;
+      bbUpperRef.current = null;
+      bbMidRef.current = null;
+      bbLowerRef.current = null;
     };
   }, [height]);
 
+  // ─── RSI sub-chart ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!indicators.rsi || !rsiContainerRef.current) {
+      if (rsiChartRef.current) {
+        rsiChartRef.current.remove();
+        rsiChartRef.current = null;
+        rsiSeriesRef.current = null;
+      }
+      return;
+    }
+    const c = getCssVars();
+    const rsiChart = createChart(rsiContainerRef.current, {
+      width: rsiContainerRef.current.clientWidth,
+      height: 120,
+      layout: {
+        background: { type: ColorType.Solid, color: c.surface },
+        textColor: c.textMuted,
+        fontSize: 10,
+      },
+      grid: {
+        vertLines: { color: c.border, style: 1 },
+        horzLines: { color: c.border, style: 1 },
+      },
+      rightPriceScale: { borderColor: c.border },
+      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false },
+    });
+    rsiChartRef.current = rsiChart;
+
+    const rsiSeries = rsiChart.addSeries(LineSeries, {
+      color: c.warning,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+    });
+    rsiSeriesRef.current = rsiSeries;
+
+    // Overbought/oversold lines
+    rsiSeries.createPriceLine({ price: 70, color: c.danger, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "OB" });
+    rsiSeries.createPriceLine({ price: 30, color: c.success, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "OS" });
+    rsiSeries.createPriceLine({ price: 50, color: c.textMuted, lineWidth: 1, lineStyle: 1, axisLabelVisible: false });
+
+    // Sync time scale with main chart
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && rsiChartRef.current) {
+          rsiChartRef.current.timeScale().setVisibleLogicalRange(range);
+        }
+      });
+    }
+
+    const handleResize = () => {
+      if (rsiContainerRef.current && rsiChartRef.current) {
+        rsiChartRef.current.applyOptions({ width: rsiContainerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      rsiChart.remove();
+      rsiChartRef.current = null;
+      rsiSeriesRef.current = null;
+    };
+  }, [indicators.rsi]);
+
+  // ─── MACD sub-chart ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!indicators.macd || !macdContainerRef.current) {
+      if (macdChartRef.current) {
+        macdChartRef.current.remove();
+        macdChartRef.current = null;
+        macdSeriesRef.current = null;
+        macdSignalRef.current = null;
+        macdHistRef.current = null;
+      }
+      return;
+    }
+    const c = getCssVars();
+    const macdChart = createChart(macdContainerRef.current, {
+      width: macdContainerRef.current.clientWidth,
+      height: 120,
+      layout: {
+        background: { type: ColorType.Solid, color: c.surface },
+        textColor: c.textMuted,
+        fontSize: 10,
+      },
+      grid: {
+        vertLines: { color: c.border, style: 1 },
+        horzLines: { color: c.border, style: 1 },
+      },
+      rightPriceScale: { borderColor: c.border },
+      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false },
+    });
+    macdChartRef.current = macdChart;
+
+    const macdSeries = macdChart.addSeries(LineSeries, {
+      color: c.primary,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+    });
+    macdSeriesRef.current = macdSeries;
+
+    const macdSignal = macdChart.addSeries(LineSeries, {
+      color: c.warning,
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    macdSignalRef.current = macdSignal;
+
+    const macdHist = macdChart.addSeries(HistogramSeries, {
+      priceFormat: { type: "price", precision: 6, minMove: 0.000001 },
+    });
+    macdHistRef.current = macdHist;
+
+    // Sync with main chart
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && macdChartRef.current) {
+          macdChartRef.current.timeScale().setVisibleLogicalRange(range);
+        }
+      });
+    }
+
+    const handleResize = () => {
+      if (macdContainerRef.current && macdChartRef.current) {
+        macdChartRef.current.applyOptions({ width: macdContainerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      macdChart.remove();
+      macdChartRef.current = null;
+      macdSeriesRef.current = null;
+      macdSignalRef.current = null;
+      macdHistRef.current = null;
+    };
+  }, [indicators.macd]);
+
+  // ─── Load data & compute indicators ────────────────────────────────────────
   useEffect(() => {
     if (!seriesRef.current || !volumeRef.current) return;
     let alive = true;
@@ -123,21 +380,24 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     const load = async () => {
       try {
         const data = brokerId
-          ? await api<any[]>(`/api/broker/${brokerId}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=300`)
-          : await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=300`);
-        if (!alive) return;
+          ? await api<any[]>(`/api/broker/${brokerId}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=500`)
+          : await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=500`);
+        if (!alive || !data || data.length === 0) {
+          if (alive) { setError("Sin datos para " + symbol); setLoading(false); }
+          return;
+        }
 
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         const hexToRgba = (hex: string, alpha: number) => {
-          const h = hex.replace("#", "");
+          const h = hex.replace("#", "").padStart(6, "0");
           const r = parseInt(h.substring(0, 2), 16);
           const g = parseInt(h.substring(2, 4), 16);
           const b = parseInt(h.substring(4, 6), 16);
           return `rgba(${r}, ${g}, ${b}, ${alpha})`;
         };
-        const volUp = hexToRgba(cs.getPropertyValue("--color-success").trim() || "#22d39a", 0.3);
-        const volDown = hexToRgba(cs.getPropertyValue("--color-danger").trim() || "#ff5f6d", 0.3);
+        const volUp = hexToRgba(cs.getPropertyValue("--color-success").trim() || "#22d39a", 0.4);
+        const volDown = hexToRgba(cs.getPropertyValue("--color-danger").trim() || "#ff5f6d", 0.4);
 
         const candles = data.map((k) => ({
           time: Math.floor(k.time / 1000) as any,
@@ -146,7 +406,6 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
           low: Number(k.low),
           close: Number(k.close),
         }));
-
         const volumes = data.map((k) => ({
           time: Math.floor(k.time / 1000) as any,
           value: Number(k.volume),
@@ -156,7 +415,81 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         seriesRef.current!.setData(candles);
         volumeRef.current!.setData(volumes);
 
-        // Set price scale range to include SL/TP/entry lines
+        // ─── Compute & set EMA ──────────────────────────────────────────────
+        const closes = candles.map((c) => c.close);
+
+        if (indicators.ema && emaRef.current && candles.length >= indicators.emaPeriod) {
+          const emaVals = EMA.calculate({ period: indicators.emaPeriod, values: closes });
+          const offset = candles.length - emaVals.length;
+          const emaData = emaVals.map((v, i) => ({ time: candles[i + offset].time, value: v }));
+          emaRef.current.setData(emaData);
+        } else if (emaRef.current) {
+          emaRef.current.setData([]);
+        }
+
+        if (indicators.ema2 && ema2Ref.current && candles.length >= indicators.ema2Period) {
+          const ema2Vals = EMA.calculate({ period: indicators.ema2Period, values: closes });
+          const offset = candles.length - ema2Vals.length;
+          const ema2Data = ema2Vals.map((v, i) => ({ time: candles[i + offset].time, value: v }));
+          ema2Ref.current.setData(ema2Data);
+        } else if (ema2Ref.current) {
+          ema2Ref.current.setData([]);
+        }
+
+        // ─── Bollinger Bands ────────────────────────────────────────────────
+        if (indicators.bollinger && bbUpperRef.current && bbMidRef.current && bbLowerRef.current && candles.length >= indicators.bbPeriod) {
+          const bb = BollingerBands.calculate({
+            period: indicators.bbPeriod,
+            stdDev: indicators.bbStdDev,
+            values: closes,
+          });
+          const offset = candles.length - bb.length;
+          const bbUpperData = bb.map((b, i) => ({ time: candles[i + offset].time, value: b.upper }));
+          const bbMidData = bb.map((b, i) => ({ time: candles[i + offset].time, value: b.middle }));
+          const bbLowerData = bb.map((b, i) => ({ time: candles[i + offset].time, value: b.lower }));
+          bbUpperRef.current.setData(bbUpperData);
+          bbMidRef.current.setData(bbMidData);
+          bbLowerRef.current.setData(bbLowerData);
+        } else {
+          if (bbUpperRef.current) bbUpperRef.current.setData([]);
+          if (bbMidRef.current) bbMidRef.current.setData([]);
+          if (bbLowerRef.current) bbLowerRef.current.setData([]);
+        }
+
+        // ─── RSI ────────────────────────────────────────────────────────────
+        if (indicators.rsi && rsiSeriesRef.current && candles.length >= indicators.rsiPeriod) {
+          const rsiVals = RSI.calculate({ period: indicators.rsiPeriod, values: closes });
+          const offset = candles.length - rsiVals.length;
+          const rsiData = rsiVals.map((v, i) => ({ time: candles[i + offset].time, value: v }));
+          rsiSeriesRef.current.setData(rsiData);
+          rsiChartRef.current?.timeScale().fitContent();
+        }
+
+        // ─── MACD ───────────────────────────────────────────────────────────
+        if (indicators.macd && macdSeriesRef.current && macdSignalRef.current && macdHistRef.current) {
+          const macdVals = MACD.calculate({
+            fastPeriod: 12,
+            slowPeriod: 26,
+            signalPeriod: 9,
+            values: closes,
+            SimpleMAOscillator: false,
+            SimpleMASignal: false,
+          } as any);
+          const offset = candles.length - macdVals.length;
+          const macdData = macdVals.map((m, i) => ({ time: candles[i + offset].time, value: m.MACD }));
+          const signalData = macdVals.map((m, i) => ({ time: candles[i + offset].time, value: m.signal }));
+          const histData = macdVals.map((m, i) => ({
+            time: candles[i + offset].time,
+            value: m.histogram,
+            color: (m.histogram ?? 0) >= 0 ? volUp : volDown,
+          }));
+          macdSeriesRef.current.setData(macdData);
+          macdSignalRef.current.setData(signalData);
+          macdHistRef.current.setData(histData);
+          macdChartRef.current?.timeScale().fitContent();
+        }
+
+        // Set price scale range
         if (chartRef.current && seriesRef.current) {
           const dataMin = Math.min(...candles.map((c) => c.low));
           const dataMax = Math.max(...candles.map((c) => c.high));
@@ -167,7 +500,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
           const minPrice = Math.min(...allPrices);
           const maxPrice = Math.max(...allPrices);
           const range = maxPrice - minPrice;
-          const padding = range * 0.15;
+          const padding = range * 0.1;
           const ps = seriesRef.current.priceScale();
           ps.setAutoScale(false);
           ps.setVisibleRange({ from: minPrice - padding, to: maxPrice + padding });
@@ -184,14 +517,13 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     };
     load();
     return () => { alive = false; };
-  }, [symbol, interval, brokerId]);
+  }, [symbol, interval, brokerId, indicators]);
 
-  // Function to draw SL/TP/entry price lines (used by multiple effects)
+  // ─── Draw SL/TP/entry price lines ──────────────────────────────────────────
   const drawPriceLines = useCallback(() => {
     const series = seriesRef.current;
     if (!series) return;
 
-    // Remove existing lines
     if (slLineRef.current) { try { series.removePriceLine(slLineRef.current); } catch {} slLineRef.current = null; }
     if (tpLineRef.current) { try { series.removePriceLine(tpLineRef.current); } catch {} tpLineRef.current = null; }
     if (entryLineRef.current) { try { series.removePriceLine(entryLineRef.current); } catch {} entryLineRef.current = null; }
@@ -203,7 +535,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         lineWidth: 2,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: `SL ${stopLoss}`,
+        title: `SL`,
       });
     }
     if (takeProfit != null && takeProfit > 0) {
@@ -213,7 +545,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         lineWidth: 3,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: `TP ${takeProfit}`,
+        title: `TP`,
         axisLabelColor: "#22d39a",
       });
     }
@@ -224,46 +556,130 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         lineWidth: 1,
         lineStyle: 1,
         axisLabelVisible: true,
-        title: `Entry ${entryPrice}`,
+        title: `Entry`,
       });
     }
   }, [stopLoss, takeProfit, entryPrice]);
 
-  // Redraw lines when SL/TP/entry values change
-  useEffect(() => {
-    drawPriceLines();
-  }, [drawPriceLines]);
-
-  // Also redraw lines after data loads (chart needs data for correct price scale)
+  useEffect(() => { drawPriceLines(); }, [drawPriceLines]);
   useEffect(() => {
     if (!loading) {
-      // Small delay to ensure chart has rendered the data
       const timer = setTimeout(drawPriceLines, 50);
       return () => clearTimeout(timer);
     }
   }, [loading, drawPriceLines]);
 
+  // ─── Toggle indicator visibility ───────────────────────────────────────────
+  useEffect(() => {
+    if (emaRef.current) emaRef.current.applyOptions({ visible: indicators.ema });
+    if (ema2Ref.current) ema2Ref.current.applyOptions({ visible: indicators.ema2 });
+    if (volumeRef.current) volumeRef.current.applyOptions({ visible: indicators.volume });
+    if (bbUpperRef.current) bbUpperRef.current.applyOptions({ visible: indicators.bollinger });
+    if (bbMidRef.current) bbMidRef.current.applyOptions({ visible: indicators.bollinger });
+    if (bbLowerRef.current) bbLowerRef.current.applyOptions({ visible: indicators.bollinger });
+  }, [indicators.ema, indicators.ema2, indicators.volume, indicators.bollinger]);
+
+  const toggleIndicator = (key: keyof IndicatorState) => {
+    setIndicators((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   return (
     <div className="panel p-4 relative">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[13px] font-bold text-[var(--color-text)]">{symbol} · Chart</h3>
-        <div className="flex gap-1">
-          {INTERVALS.map((iv) => (
-            <button
-              key={iv.value}
-              onClick={() => setIntervalState(iv.value)}
-              className={`px-2 h-6 rounded-[6px] text-[11px] font-bold transition-colors ${
-                interval === iv.value
-                  ? "bg-[var(--color-primary)] text-white"
-                  : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-              }`}
-            >
-              {iv.label}
-            </button>
-          ))}
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <h3 className="text-[13px] font-bold text-[var(--color-text)]">{symbol}</h3>
+          {entryPrice != null && (
+            <span className="text-[10px] text-[var(--color-text-muted)]">Entry: ${entryPrice}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Interval selector */}
+          <div className="flex gap-0.5 rounded-[8px] bg-[var(--color-surface-2)] p-0.5">
+            {INTERVALS.map((iv) => (
+              <button
+                key={iv.value}
+                onClick={() => setIntervalState(iv.value)}
+                className={cn(
+                  "px-2 h-6 rounded-[6px] text-[10px] font-bold transition-colors",
+                  interval === iv.value
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+                )}
+              >
+                {iv.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Indicator toggles */}
+          <div className="flex gap-0.5 rounded-[8px] bg-[var(--color-surface-2)] p-0.5">
+            <IndButton active={indicators.ema} onClick={() => toggleIndicator("ema")} color="var(--color-warning)" label="EMA20" />
+            <IndButton active={indicators.ema2} onClick={() => toggleIndicator("ema2")} color="var(--color-primary)" label="EMA50" />
+            <IndButton active={indicators.bollinger} onClick={() => toggleIndicator("bollinger")} color="#7c3aed" label="BB" />
+            <IndButton active={indicators.volume} onClick={() => toggleIndicator("volume")} color="var(--color-text-muted)" label="VOL" />
+            <IndButton active={indicators.rsi} onClick={() => toggleIndicator("rsi")} color="var(--color-warning)" label="RSI" />
+            <IndButton active={indicators.macd} onClick={() => toggleIndicator("macd")} color="var(--color-primary)" label="MACD" />
+          </div>
+
+          {/* Settings */}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="px-2 h-6 rounded-[6px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            ⚙
+          </button>
         </div>
       </div>
 
+      {/* Settings panel */}
+      {showSettings && (
+        <div className="mb-3 p-3 rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-[9px] font-bold text-[var(--color-warning)] uppercase">EMA 1 Period</label>
+            <input
+              type="number" min={2} max={200} value={indicators.emaPeriod}
+              onChange={(e) => setIndicators({ ...indicators, emaPeriod: parseInt(e.target.value) || 20 })}
+              className="w-full h-7 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] text-[var(--color-text)]"
+            />
+          </div>
+          <div>
+            <label className="text-[9px] font-bold text-[var(--color-primary)] uppercase">EMA 2 Period</label>
+            <input
+              type="number" min={2} max={200} value={indicators.ema2Period}
+              onChange={(e) => setIndicators({ ...indicators, ema2Period: parseInt(e.target.value) || 50 })}
+              className="w-full h-7 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] text-[var(--color-text)]"
+            />
+          </div>
+          <div>
+            <label className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase">RSI Period</label>
+            <input
+              type="number" min={2} max={50} value={indicators.rsiPeriod}
+              onChange={(e) => setIndicators({ ...indicators, rsiPeriod: parseInt(e.target.value) || 14 })}
+              className="w-full h-7 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] text-[var(--color-text)]"
+            />
+          </div>
+          <div>
+            <label className="text-[9px] font-bold text-[#7c3aed] uppercase">BB Period</label>
+            <input
+              type="number" min={5} max={100} value={indicators.bbPeriod}
+              onChange={(e) => setIndicators({ ...indicators, bbPeriod: parseInt(e.target.value) || 20 })}
+              className="w-full h-7 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] text-[var(--color-text)]"
+            />
+          </div>
+          <div>
+            <label className="text-[9px] font-bold text-[#7c3aed] uppercase">BB Std Dev</label>
+            <input
+              type="number" min={1} max={4} step={0.5} value={indicators.bbStdDev}
+              onChange={(e) => setIndicators({ ...indicators, bbStdDev: parseFloat(e.target.value) || 2 })}
+              className="w-full h-7 px-2 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] text-[var(--color-text)]"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Chart area */}
       {error && (
         <div className="text-[12px] text-[var(--color-danger)] py-4 text-center">{error}</div>
       )}
@@ -274,7 +690,41 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         </div>
       )}
 
+      {/* Main candlestick chart */}
       <div ref={containerRef} style={{ height, visibility: error ? "hidden" : "visible" }} />
+
+      {/* RSI sub-chart */}
+      {indicators.rsi && !error && (
+        <div className="mt-1">
+          <div className="text-[9px] font-bold text-[var(--color-warning)] uppercase mb-0.5 px-1">RSI ({indicators.rsiPeriod})</div>
+          <div ref={rsiContainerRef} style={{ height: 120 }} />
+        </div>
+      )}
+
+      {/* MACD sub-chart */}
+      {indicators.macd && !error && (
+        <div className="mt-1">
+          <div className="text-[9px] font-bold text-[var(--color-primary)] uppercase mb-0.5 px-1">MACD (12, 26, 9)</div>
+          <div ref={macdContainerRef} style={{ height: 120 }} />
+        </div>
+      )}
     </div>
+  );
+}
+
+// ─── Indicator toggle button ─────────────────────────────────────────────────
+function IndButton({ active, onClick, color, label }: { active: boolean; onClick: () => void; color: string; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "px-1.5 h-6 rounded-[6px] text-[10px] font-bold transition-all flex items-center gap-1",
+        active ? "text-white" : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+      )}
+      style={active ? { backgroundColor: color } : {}}
+    >
+      {active && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+      {label}
+    </button>
   );
 }

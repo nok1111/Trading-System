@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\_test_import2.py", line 9, in <module>
+    from app.api.app import app
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\app\api\__init__.py", line 3, in <module>
+    from app.api.app import app
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\app\api\app.py", line 96, in <module>
+    from app.api.routes import (
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\app\api\routes\broker_accounts.py", line 11, in <module>
+    from app.services.broker_account_service import (
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\app\services\broker_account_service.py", line 15, in <module>
+    from app.brokers.registry import get_adapter, get_capabilities, is_implemented, list_brokers
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\app\brokers\registry.py", line 12, in <module>
+    from app.brokers.adapters.ccxt_adapter import (
+  File "C:\Users\nokturno\Desktop\TRADING PROJECT\trading-client\app\brokers\adapters\ccxt_adapter.py", line 26, in <module>
+    import ccxt
+ModuleNotFoundError: No module named 'ccxt'

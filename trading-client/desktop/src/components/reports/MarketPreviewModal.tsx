@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip, ReferenceLine } from "recharts";
 import { X, Check, TrendingUp, TrendingDown, Clock, BarChart3 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { api, cacheInvalidate } from "../../lib/api";
@@ -8,6 +7,7 @@ import { toast } from "../ui/Toast";
 import { useBrokerContext } from "../../context/BrokerContext";
 import { isBrokerConnected } from "../../lib/brokerTypes";
 import * as brokerApi from "../../lib/brokerApi";
+import { PriceChart } from "../charts/PriceChart";
 
 interface LiveData {
   usdt_balance: number | null;
@@ -56,17 +56,9 @@ interface MarketPreviewModalProps {
   onAction: () => void;
 }
 
-interface KlinePoint {
-  time: number;
-  price: number;
-  label: string;
-}
-
 export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewModalProps) {
   const { connectedAccounts } = useBrokerContext();
   const [ticker, setTicker] = useState<any>(null);
-  const [klines, setKlines] = useState<KlinePoint[]>([]);
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [buyLiveLoading, setBuyLiveLoading] = useState(false);
 
@@ -85,38 +77,18 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
   const firstConnected = connectedAccounts.find((a) => isBrokerConnected(a.status));
   const brokerId = firstConnected?.brokerId || "binance";
 
-  const loadMarketData = useCallback(async () => {
-    setLoading(true);
+  const loadTicker = useCallback(async () => {
     try {
-      // Use backend proxy via brokerApi instead of direct Binance fetch
-      const [t, k] = await Promise.all([
-        brokerApi.getTicker(brokerId, symbol).catch(() => null),
-        brokerApi.getKlines(brokerId, symbol, "1h", 24).catch(() => null),
-      ]);
+      const t = await brokerApi.getTicker(brokerId, symbol).catch(() => null);
       if (t) setTicker(t);
-      if (k && Array.isArray(k)) {
-        const parsed: KlinePoint[] = k.map((candle: any) => {
-          const ts = candle.timestamp || candle.time || 0;
-          const d = new Date(ts);
-          const hh = d.getHours().toString().padStart(2, "0");
-          const mm = d.getMinutes().toString().padStart(2, "0");
-          return {
-            time: ts,
-            price: parseFloat(candle.close || candle.price || 0),
-            label: `${hh}:${mm}`,
-          };
-        });
-        setKlines(parsed);
-      }
     } catch {
       // ignore
     }
-    setLoading(false);
   }, [symbol, brokerId]);
 
   useEffect(() => {
-    loadMarketData();
-  }, [loadMarketData]);
+    loadTicker();
+  }, [loadTicker]);
 
   // Initialize editable inputs from report defaults
   useEffect(() => {
@@ -238,29 +210,6 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
     return `$${v.toFixed(6)}`;
   };
 
-  const chartTooltip = ({ active, payload }: any) => {
-    if (!active || !payload || !payload.length) return null;
-    const point = payload[0].payload as KlinePoint;
-    return (
-      <div className="rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border-strong)] px-2.5 py-1.5 shadow-lg">
-        <div className="text-[10px] font-bold text-[var(--color-text-muted)]">{point.label}</div>
-        <div className="text-[12px] font-bold text-[var(--color-text)] mt-0.5">{fmtPrice(point.price)}</div>
-      </div>
-    );
-  };
-
-  const yDomain = (() => {
-    if (!klines.length) return ["dataMin", "dataMax"] as [string, string];
-    const prices = klines.map((k) => k.price);
-    let lo = Math.min(...prices);
-    let hi = Math.max(...prices);
-    if (slPrice != null) lo = Math.min(lo, slPrice);
-    if (tpPrice != null) hi = Math.max(hi, tpPrice);
-    if (currentPrice != null) { lo = Math.min(lo, currentPrice); hi = Math.max(hi, currentPrice); }
-    const pad = (hi - lo) * 0.08 || hi * 0.01;
-    return [lo - pad, hi + pad] as [number, number];
-  })();
-
   // Estimated quantity from editable amount
   const estQuantity = currentPrice != null && amountNum > 0 ? amountNum / currentPrice : null;
 
@@ -305,49 +254,16 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
           </button>
         </div>
 
-        {/* Sparkline */}
-        <div className="h-[160px] w-full rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] p-2">
-          {loading ? (
-            <div className="h-full flex items-center justify-center text-[11px] text-[var(--color-text-muted)]">
-              Cargando gráfico...
-            </div>
-          ) : klines.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={klines} margin={{ top: 8, right: 8, bottom: 2, left: 8 }}>
-                <defs>
-                  <linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={isPositive ? "var(--color-success)" : "var(--color-danger)"} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={isPositive ? "var(--color-success)" : "var(--color-danger)"} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="label" hide />
-                <YAxis domain={yDomain} hide />
-                <Tooltip content={chartTooltip} cursor={{ stroke: "var(--color-border-strong)", strokeWidth: 1 }} />
-                {slPrice != null && (
-                  <ReferenceLine y={slPrice} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1} label={{ value: "SL", fill: "#ef4444", fontSize: 9, fontWeight: 700 }} />
-                )}
-                {currentPrice != null && (
-                  <ReferenceLine y={currentPrice} stroke="var(--color-text-muted)" strokeDasharray="2 2" strokeWidth={1} label={{ value: "NOW", fill: "var(--color-text-muted)", fontSize: 9, fontWeight: 700 }} />
-                )}
-                {tpPrice != null && (
-                  <ReferenceLine y={tpPrice} stroke="#22c55e" strokeDasharray="4 3" strokeWidth={1} label={{ value: "TP", fill: "#22c55e", fontSize: 9, fontWeight: 700 }} />
-                )}
-                <Area
-                  type="monotone"
-                  dataKey="price"
-                  stroke={isPositive ? "var(--color-success)" : "var(--color-danger)"}
-                  strokeWidth={1.5}
-                  fill="url(#sparkGradient)"
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center text-[11px] text-[var(--color-text-muted)]">
-              Sin datos de gráfico
-            </div>
-          )}
-        </div>
+        {/* Professional candlestick chart with indicators */}
+        <PriceChart
+          symbol={symbol}
+          interval="1h"
+          height={300}
+          brokerId={brokerId}
+          stopLoss={slPrice}
+          takeProfit={tpPrice}
+          entryPrice={isPositionAnalysis ? meta.entry_price : undefined}
+        />
 
         {/* Price cards */}
         <div className="grid grid-cols-3 gap-2">

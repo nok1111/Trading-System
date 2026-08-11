@@ -22,7 +22,8 @@
     "react-router-dom": "^7.18.1",
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "technicalindicators": "^3.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

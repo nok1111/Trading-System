@@ -1,0 +1,13 @@
+Token: eyJhbGciOiJIUzI1NiIsInR5cCI6Ik...
+
+POST create (invalid creds): 400
+Response: {"detail":"Credenciales inválidas: Error HTTP 401 en /api/v3/account: {\"code\":-2014,\"msg\":\"API-key format invalid.\"}"}
+
+GET accounts: 200
+Response: []
+
+Proxy GET: 200
+Response: []
+
+Proxy validate: 200
+Response: {"valid":false,"status":"DISCONNECTED","permissions":{"read":false,"trade":false,"withdraw":false},"errorMessage":"Error HTTP 401 en /api/v3/account: {\"code\":-2014,\"msg\":\"API-key format invalid.\"}"}
