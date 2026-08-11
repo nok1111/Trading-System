@@ -159,9 +159,9 @@ export function SocialPage() {
       ) : tab === "myCopies" ? (
         <MyCopies trades={myCopyTrades} />
       ) : tab === "beLeader" ? (
-        <BecomeLeader onRegistered={() => { loadMyLeaderProfile(); }} />
+        <BecomeLeader onRegistered={() => { loadMyLeaderProfile(); loadLeaders(); loadLeaderboardBrokers(); }} />
       ) : tab === "publish" ? (
-        <PublishSignal onPublished={() => { loadSignals(); }} />
+        <PublishSignal onPublished={() => { loadSignals(); loadLeaders(); }} />
       ) : (
         <MyCopies trades={myCopyTrades} />
       )}

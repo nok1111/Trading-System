@@ -464,7 +464,7 @@ def copy_signal(
     from app.brokers.models import BrokerCredentials
     from app.brokers.registry import get_adapter
     from app.services.broker_account_service import list_accounts
-    from app.crypto.utils import decrypt
+    from app.services.crypto import decrypt
 
     signal = db.execute(
         select(SocialSignal).where(SocialSignal.id == signal_id)

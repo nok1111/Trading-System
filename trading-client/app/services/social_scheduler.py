@@ -185,7 +185,7 @@ class SocialScheduler:
         """Execute an auto-copy trade for a follower."""
         from app.brokers.models import BrokerCredentials, OrderRequest, OrderSide, OrderType
         from app.brokers.registry import get_adapter
-        from app.crypto.utils import decrypt
+        from app.services.crypto import decrypt
         from app.database.models.social_copy_trade import SocialCopyTrade as _CT
         from app.services.broker_account_service import list_accounts
         from app.services.signal_normalizer import calculate_quantity, check_slippage, normalize_symbol

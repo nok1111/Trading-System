@@ -17,14 +17,7 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
-      : undefined,
+    host: "localhost",
     proxy: {
       "/api": {
         target: "http://76.13.180.80:8080",
@@ -35,6 +28,9 @@ export default defineConfig(async () => ({
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
+      // Windows: use polling for reliable file watching
+      usePolling: true,
+      interval: 500,
     },
   },
 }));
