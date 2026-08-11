@@ -12,7 +12,7 @@ class SocialLeader(Base):
     __tablename__ = "social_leaders"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, default=0)
     display_name: Mapped[str] = mapped_column(String(80), nullable=False)
     bio: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)

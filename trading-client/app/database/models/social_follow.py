@@ -13,8 +13,8 @@ class SocialFollow(Base):
     __tablename__ = "social_follows"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    follower_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
-    leader_id: Mapped[int] = mapped_column(nullable=False, index=True)  # FK a social_leaders.id
+    follower_id: Mapped[int] = mapped_column(nullable=False, default=0)
+    leader_id: Mapped[int] = mapped_column(nullable=False)  # FK a social_leaders.id
 
     # Configuración de copy
     auto_copy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -48,10 +48,10 @@ class SocialCopyTrade(Base):
     __tablename__ = "social_copy_trades"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    follow_id: Mapped[int] = mapped_column(nullable=False, index=True)
-    signal_id: Mapped[int] = mapped_column(nullable=False, index=True)  # FK a social_signals.id
-    follower_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
-    leader_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    follow_id: Mapped[int] = mapped_column(nullable=False)
+    signal_id: Mapped[int] = mapped_column(nullable=False)  # FK a social_signals.id
+    follower_id: Mapped[int] = mapped_column(nullable=False, default=0)
+    leader_id: Mapped[int] = mapped_column(nullable=False)
 
     # Datos del trade copiado
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -74,7 +74,9 @@ class SocialCopyTrade(Base):
     closed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     __table_args__ = (
-        Index("ix_social_copy_trades_follower_id", "follower_id"),
+        Index("ix_social_copy_trades_follow_id", "follow_id"),
         Index("ix_social_copy_trades_signal_id", "signal_id"),
+        Index("ix_social_copy_trades_follower_id", "follower_id"),
+        Index("ix_social_copy_trades_leader_id", "leader_id"),
         Index("ix_social_copy_trades_status", "status"),
     )

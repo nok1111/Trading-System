@@ -13,8 +13,8 @@ class SocialSignal(Base):
     __tablename__ = "social_signals"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    leader_id: Mapped[int] = mapped_column(nullable=False, index=True)  # FK a social_leaders.id
-    user_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
+    leader_id: Mapped[int] = mapped_column(nullable=False)  # FK a social_leaders.id
+    user_id: Mapped[int] = mapped_column(nullable=False, default=0)
 
     # Datos de la señal (normalizados, cross-broker)
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)  # ej: BTCUSDT
@@ -47,6 +47,7 @@ class SocialSignal(Base):
 
     __table_args__ = (
         Index("ix_social_signals_leader_id", "leader_id"),
+        Index("ix_social_signals_user_id", "user_id"),
         Index("ix_social_signals_status", "status"),
         Index("ix_social_signals_symbol", "symbol"),
         Index("ix_social_signals_created_at", "created_at"),

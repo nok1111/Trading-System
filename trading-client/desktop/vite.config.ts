@@ -29,6 +29,7 @@ export default defineConfig(async () => ({
       "/api": {
         target: "http://76.13.180.80:8080",
         changeOrigin: true,
+        ws: true,
       },
     },
     watch: {
