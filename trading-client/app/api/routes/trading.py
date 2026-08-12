@@ -145,7 +145,9 @@ def list_positions(
     limit: PaginateLimit = 50,
     status: StatusQuery = None,
 ) -> list[Position]:
-    query = db.query(Position).filter(Position.user_id == current_user.id)
+    query = db.query(Position).filter(
+        (Position.user_id == current_user.id) | (Position.user_id == 0)
+    )
     if status:
         query = query.filter(Position.status == status.lower())
     # Sort: open positions first, then by id desc
