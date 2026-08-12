@@ -201,9 +201,10 @@ def get_or_create_agent():
             # Defaults from .env
             provider = getattr(settings, "AI_PROVIDER", "groq")
             groq_api_key = getattr(settings, "GROQ_API_KEY", None)
-            groq_model = getattr(settings, "AI_MODEL", "llama-3.1-8b-instant")
+            # Don't use AI_MODEL for groq_model — it might be a Gemini model name
+            groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
             gemini_api_key = getattr(settings, "GEMINI_API_KEY", None)
-            gemini_model = getattr(settings, "AI_MODEL", "gemini-2.0-flash")
+            gemini_model = getattr(settings, "AI_MODEL", "gemini-2.5-flash")
             ollama_url = getattr(settings, "OLLAMA_URL", "http://localhost:11434")
             ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:14b")
 

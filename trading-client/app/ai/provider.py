@@ -17,9 +17,9 @@ class AIProviderConfig:
 
     provider: str = "groq"
     groq_api_key: str | None = None
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "llama-3.3-70b-versatile"
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-2.5-flash"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:14b"
     openai_api_key: str | None = None
