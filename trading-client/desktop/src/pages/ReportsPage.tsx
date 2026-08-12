@@ -415,7 +415,13 @@ export function ReportsPage() {
                             e.stopPropagation();
                             const sym = (r.metadata?.symbol as string) || `${r.asset}USDT`;
                             window.dispatchEvent(new CustomEvent("navigate", {
-                              detail: { page: "trade", asset: sym, broker: activeBrokerId },
+                              detail: {
+                                page: "trade",
+                                asset: sym,
+                                broker: activeBrokerId,
+                                stop_loss: r.live_data?.stop_loss_price ?? null,
+                                take_profit: r.live_data?.take_profit_price ?? null,
+                              },
                             }));
                           }}
                         >
@@ -448,7 +454,13 @@ export function ReportsPage() {
                             e.stopPropagation();
                             const sym = (r.metadata?.symbol as string) || `${r.asset}USDT`;
                             window.dispatchEvent(new CustomEvent("navigate", {
-                              detail: { page: "trade", asset: sym, broker: activeBrokerId },
+                              detail: {
+                                page: "trade",
+                                asset: sym,
+                                broker: activeBrokerId,
+                                stop_loss: r.live_data?.stop_loss_price ?? null,
+                                take_profit: r.live_data?.take_profit_price ?? null,
+                              },
                             }));
                           }}
                         >

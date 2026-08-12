@@ -17,6 +17,8 @@ interface BrokerPageProps {
   brokerId: string | null;
   moduleId: string | null;
   presetSymbol?: string;
+  presetStopLoss?: number;
+  presetTakeProfit?: number;
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -45,7 +47,7 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   config: <SettingsIcon size={16} />,
 };
 
-export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps) {
+export function BrokerPage({ brokerId, moduleId, presetSymbol, presetStopLoss, presetTakeProfit }: BrokerPageProps) {
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
   const [balanceData, setBalanceData] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
@@ -210,7 +212,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol }: BrokerPageProps
       ) : module === "portfolio" ? (
         <PortfolioModule balanceData={balanceData} />
       ) : module === "trade" ? (
-        <TradeModule brokerId={brokerId} presetSymbol={presetSymbol} />
+        <TradeModule brokerId={brokerId} presetSymbol={presetSymbol} presetStopLoss={presetStopLoss} presetTakeProfit={presetTakeProfit} />
       ) : module === "markets" ? (
         <MarketsModule brokerId={brokerId} />
       ) : module === "positions" ? (
@@ -366,7 +368,7 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
   );
 }
 
-function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbol?: string }) {
+function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit }: { brokerId: string; presetSymbol?: string; presetStopLoss?: number; presetTakeProfit?: number }) {
   const { connectedAccounts } = useBrokerContext();
   const account = connectedAccounts.find((a) => a.brokerId === brokerId);
   const [symbol, setSymbol] = useState(presetSymbol || "BTC/USDT");
@@ -428,6 +430,16 @@ function TradeModule({ brokerId, presetSymbol }: { brokerId: string; presetSymbo
   useEffect(() => {
     if (presetSymbol) setSymbol(presetSymbol);
   }, [presetSymbol]);
+
+  // Apply preset SL/TP from AI recommendation
+  useEffect(() => {
+    if (presetStopLoss != null && presetStopLoss > 0) {
+      setStopLossPrice(String(presetStopLoss));
+    }
+    if (presetTakeProfit != null && presetTakeProfit > 0) {
+      setTakeProfitPrice(String(presetTakeProfit));
+    }
+  }, [presetStopLoss, presetTakeProfit]);
 
   const fetchPrice = useCallback(async () => {
     setPriceLoading(true);

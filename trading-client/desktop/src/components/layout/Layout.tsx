@@ -121,6 +121,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [connectModalBroker, setConnectModalBroker] = useState<SupportedBroker | null>(null);
   const [selectedBrokerModule, setSelectedBrokerModule] = useState<{ brokerId: string; moduleId: string } | null>(null);
   const [presetTradeSymbol, setPresetTradeSymbol] = useState<string | undefined>(undefined);
+  const [presetStopLoss, setPresetStopLoss] = useState<number | undefined>(undefined);
+  const [presetTakeProfit, setPresetTakeProfit] = useState<number | undefined>(undefined);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +139,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
           : rawAsset + "USDT";
         setSelectedBrokerModule({ brokerId, moduleId: "trade" });
         setPresetTradeSymbol(symbol);
+        setPresetStopLoss(detail.stop_loss ?? undefined);
+        setPresetTakeProfit(detail.take_profit ?? undefined);
         onTabChange("broker");
       } else if (detail?.page) {
         onTabChange(detail.page as TabId);
@@ -606,6 +610,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
               brokerId={selectedBrokerModule?.brokerId || null}
               moduleId={selectedBrokerModule?.moduleId || null}
               presetSymbol={presetTradeSymbol}
+              presetStopLoss={presetStopLoss}
+              presetTakeProfit={presetTakeProfit}
             />
           ) : (
             children
