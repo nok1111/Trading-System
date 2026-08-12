@@ -1270,7 +1270,7 @@ function OrdersModule({ activeOrders, filledOrders, brokerDisplayName }: { activ
             <tbody>
               {filledOrders.map((o, i) => (
                 <tr key={i} className="border-b border-[var(--color-border)]/50">
-                  <td className="py-2 text-[var(--color-text-muted)]">{o.time ? new Date(o.time).toLocaleString() : "—"}</td>
+                  <td className="py-2 text-[var(--color-text-muted)]">{o.time ? fmtDate(o.time) : "—"}</td>
                   <td className="font-bold text-[var(--color-text)]">
                     <div className="flex items-center gap-1.5">
                       <CryptoIcon symbol={o.symbol} size={18} />

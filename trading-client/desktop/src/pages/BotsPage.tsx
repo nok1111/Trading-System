@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
-import { cn } from "../lib/utils";
+import { cn, fmtDate, fmtTime } from "../lib/utils";
 import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 import { Play, Square, Trash2, Plus, Grid3x3, DollarSign, Activity, TrendingUp, Clock, Target, Info } from "lucide-react";
 
@@ -652,7 +652,7 @@ export function BotsPage() {
                 <div className="flex gap-3 mt-2 text-[9px] text-[var(--color-text-muted)]">
                   <span>Órdenes: {bot.orders_placed}</span>
                   <span>Ejecutadas: {bot.orders_filled}</span>
-                  {bot.last_run_at && <span>Última ejecución: {new Date(bot.last_run_at).toLocaleTimeString()}</span>}
+                  {bot.last_run_at && <span>Última ejecución: {fmtTime(bot.last_run_at)}</span>}
                 </div>
               </div>
             ))
@@ -730,7 +730,7 @@ export function BotsPage() {
                 <div className="flex gap-3 mt-2 text-[9px] text-[var(--color-text-muted)]">
                   <span>Compras: {bot.buys_executed}{bot.max_buys > 0 ? `/${bot.max_buys}` : ""}</span>
                   {bot.take_profit_pct !== "0" && <span>TP: {bot.take_profit_pct}%</span>}
-                  {bot.last_buy_at && <span>Última compra: {new Date(bot.last_buy_at).toLocaleString()}</span>}
+                  {bot.last_buy_at && <span>Última compra: {fmtDate(bot.last_buy_at)}</span>}
                 </div>
               </div>
             ))

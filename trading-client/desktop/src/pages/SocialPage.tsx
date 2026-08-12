@@ -11,7 +11,7 @@ import {
   Radio,
   Star,
 } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn, fmt, fmtDateTime } from "../lib/utils";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Input";
@@ -26,7 +26,6 @@ import { isBrokerConnected } from "../lib/brokerTypes";
 import { useWebSocket } from "../hooks/useWebSocket";
 import * as socialApi from "../lib/socialApi";
 import type { SocialLeader, SocialSignal } from "../lib/socialApi";
-import { fmt } from "../lib/utils";
 
 type Tab = "feed" | "leaders" | "myFollows" | "myCopies" | "beLeader" | "publish";
 
@@ -231,7 +230,7 @@ function SignalCard({ signal, onCopy }: { signal: SocialSignal; onCopy: () => vo
             <div>
               <div className="text-[12px] font-bold text-[var(--color-text)]">{signal.symbol}</div>
               <div className="text-[9px] text-[var(--color-text-muted)]">
-                {new Date(signal.created_at).toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
+                {fmtDateTime(signal.created_at)}
               </div>
             </div>
           </div>
@@ -591,7 +590,7 @@ function MyCopies({ trades }: { trades: any[] }) {
         <tbody>
           {trades.map((t) => (
             <Tr key={t.id}>
-              <Td className="text-[10px]">{new Date(t.created_at).toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</Td>
+              <Td className="text-[10px]">{fmtDateTime(t.created_at)}</Td>
               <Td className="font-bold">{t.symbol}</Td>
               <Td><Badge variant={t.side === "BUY" ? "success" : "danger"}>{t.side}</Badge></Td>
               <Td className="text-[10px] uppercase">{t.broker_id}</Td>

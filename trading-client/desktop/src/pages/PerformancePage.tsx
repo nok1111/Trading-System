@@ -4,7 +4,7 @@ import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { toast } from "../components/ui/Toast";
-import { fmt } from "../lib/utils";
+import { fmt, fmtDateShort } from "../lib/utils";
 import {
   LineChart,
   Line,
@@ -76,10 +76,7 @@ export function PerformancePage() {
   };
 
   const equityData = snapshots.map((s) => ({
-    name: new Date(s.timestamp).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-    }),
+    name: fmtDateShort(s.timestamp),
     equity: s.total_equity,
   }));
 

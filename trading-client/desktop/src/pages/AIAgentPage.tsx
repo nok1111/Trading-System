@@ -4,7 +4,7 @@ import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Input";
 import { toast } from "../components/ui/Toast";
-import { cn } from "../lib/utils";
+import { cn, fmtTime, fmtDateTime } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { Tooltip } from "../components/common/Tooltip";
 
@@ -1514,7 +1514,7 @@ export function AIAgentPage() {
             </p>
           ) : (
             activityLog.map((entry, i) => {
-              const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString("en-US", { hour12: false }) : "";
+              const time = entry.timestamp ? fmtTime(entry.timestamp) : "";
               const level = entry.level || "info";
               const color = level === "error" ? "text-[var(--color-danger)]"
                 : level === "warn" ? "text-[var(--color-warning)]"
@@ -1566,7 +1566,7 @@ function PnlSparkline({ data }: { data: number[] }) {
 function ReasoningCard({ entry, defaultExpanded = false }: { entry: any; defaultExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const actions: any[] = entry.actions || [];
-  const time = entry.timestamp ? new Date(entry.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  const time = entry.timestamp ? fmtDateTime(entry.timestamp) : "";
   const hasActions = actions.length > 0;
 
   return (

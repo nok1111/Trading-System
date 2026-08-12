@@ -1,6 +1,6 @@
 import { Activity, Bot } from "lucide-react";
 import type { AIActivityData, AIActivityEntry } from "../../lib/intelligenceTypes";
-import { cn } from "../../lib/utils";
+import { cn, fmtTimeAgo } from "../../lib/utils";
 
 const AGENT_COLORS: Record<string, string> = {
   "Technical": "text-[var(--color-primary)]",
@@ -20,15 +20,6 @@ const AGENT_ICONS: Record<string, string> = {
   "Macro": "🏛️",
 };
 
-function timeAgo(timestamp: string): string {
-  const diff = Date.now() - new Date(timestamp).getTime();
-  const hours = Math.floor(diff / 3600000);
-  const mins = Math.floor(diff / 60000);
-  if (hours > 0) return `hace ${hours}h ${mins % 60}m`;
-  if (mins > 0) return `hace ${mins}m`;
-  return "ahora";
-}
-
 function ActivityRow({ entry }: { entry: AIActivityEntry }) {
   return (
     <div className="flex items-start gap-3 py-2.5 relative">
@@ -44,7 +35,7 @@ function ActivityRow({ entry }: { entry: AIActivityEntry }) {
           <span className={cn("text-[11px] font-bold", AGENT_COLORS[entry.agent] || "text-[var(--color-text)]")}>
             {entry.agent}
           </span>
-          <span className="text-[10px] text-[var(--color-text-muted)]">{timeAgo(entry.timestamp)}</span>
+          <span className="text-[10px] text-[var(--color-text-muted)]">{fmtTimeAgo(entry.timestamp)}</span>
           {entry.decision && (
             <span className={cn(
               "px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold",

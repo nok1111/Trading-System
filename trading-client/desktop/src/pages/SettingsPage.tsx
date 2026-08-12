@@ -7,6 +7,7 @@ import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { toast } from "../components/ui/Toast";
 import { getProxyConfig, setProxyConfig, testProxyConnection } from "../lib/binanceProxy";
+import { fmtDateOnly } from "../lib/utils";
 
 export function SettingsPage() {
   const { user } = useAuthContext();
@@ -199,7 +200,7 @@ export function SettingsPage() {
             <CardLabel>Miembro desde</CardLabel>
             <CardValue className="text-sm">
               {user?.created_at
-                ? new Date(user.created_at).toLocaleDateString("es-ES")
+                ? fmtDateOnly(user.created_at)
                 : "--"}
             </CardValue>
           </div>

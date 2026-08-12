@@ -1,5 +1,5 @@
 import { Play, Square, Clock } from "lucide-react";
-import { cn } from "../../lib/utils";
+import { cn, fmtTime } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import { DataUnavailable } from "../common/DataUnavailable";
 import type { SchedulerStatus } from "../../lib/intelligenceTypes";
@@ -31,7 +31,7 @@ export function SchedulerControls({ status, onStart, onStop, loading }: Schedule
       {status.lastRun && (
         <span className="text-[10px] text-[var(--color-text-muted)] flex items-center gap-1">
           <Clock size={11} />
-          {new Date(status.lastRun).toLocaleTimeString("es-ES")}
+          {fmtTime(status.lastRun)}
         </span>
       )}
       {status.running ? (

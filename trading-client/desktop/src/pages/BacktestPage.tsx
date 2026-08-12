@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../lib/api";
-import { cn } from "../lib/utils";
+import { cn, fmtDate } from "../lib/utils";
 import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 
 interface BacktestResult {
@@ -504,8 +504,8 @@ export function BacktestPage() {
                 <tbody>
                   {result.trades.map((t, i) => (
                     <tr key={i} className="border-b border-[var(--color-border)]/30">
-                      <td className="py-1.5 text-[var(--color-text-muted)]">{t.entry_time ? new Date(t.entry_time).toLocaleString() : "—"}</td>
-                      <td className="py-1.5 text-[var(--color-text-muted)]">{t.exit_time ? new Date(t.exit_time).toLocaleString() : "—"}</td>
+                      <td className="py-1.5 text-[var(--color-text-muted)]">{t.entry_time ? fmtDate(t.entry_time) : "—"}</td>
+                      <td className="py-1.5 text-[var(--color-text-muted)]">{t.exit_time ? fmtDate(t.exit_time) : "—"}</td>
                       <td className="text-right py-1.5">
                         <span className={t.side === "BUY" ? "text-[var(--color-success)] font-bold" : "text-[var(--color-danger)] font-bold"}>
                           {t.side}

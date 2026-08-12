@@ -6,7 +6,7 @@ import { Button } from "../components/ui/Button";
 import { Select } from "../components/ui/Input";
 import { Table, Th, Td, Tr } from "../components/ui/Table";
 import { toast } from "../components/ui/Toast";
-import { fmt, fmtVol } from "../lib/utils";
+import { fmt, fmtVol, fmtTime } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 
 export function MarketPage() {
@@ -211,7 +211,7 @@ export function MarketPage() {
                   <Td>${fmt(p.price)}</Td>
                   <Td className="text-[var(--color-text-muted)]">
                     {lastUpdate > 0
-                      ? new Date(lastUpdate).toLocaleTimeString("es-ES")
+                      ? fmtTime(new Date(lastUpdate).toISOString())
                       : "--"}
                   </Td>
                 </Tr>

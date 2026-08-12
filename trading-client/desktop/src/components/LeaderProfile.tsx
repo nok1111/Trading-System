@@ -20,7 +20,7 @@ import {
   DollarSign,
   UserPlus,
 } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn, fmtDateShort } from "../lib/utils";
 import { Card } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Table, Th, Td, Tr } from "./ui/Table";
@@ -97,7 +97,7 @@ export function LeaderProfile({
   });
 
   const equityData = profile.equity_curve.map((p) => ({
-    t: new Date(p.timestamp).toLocaleDateString("es", { day: "2-digit", month: "short" }),
+    t: fmtDateShort(p.timestamp),
     v: p.equity,
   }));
 
@@ -320,7 +320,7 @@ export function LeaderProfile({
                       </Badge>
                     </Td>
                     <Td className="text-[9px] text-[var(--color-text-muted)]">
-                      {new Date(s.created_at).toLocaleDateString("es", { day: "2-digit", month: "short" })}
+                      {fmtDateShort(s.created_at)}
                     </Td>
                   </Tr>
                 ))}

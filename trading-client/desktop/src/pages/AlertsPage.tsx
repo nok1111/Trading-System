@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
-import { cn } from "../lib/utils";
+import { cn, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { Tooltip, InfoPanel } from "../components/common/Tooltip";
 
@@ -237,7 +237,7 @@ export function PriceAlertsContent() {
                   <p className="text-[12px] text-[var(--color-text)] mt-0.5">{a.message}</p>
                   {a.timestamp && (
                     <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-                      {new Date(a.timestamp).toLocaleString()}
+                      {fmtDate(a.timestamp)}
                     </p>
                   )}
                 </div>
