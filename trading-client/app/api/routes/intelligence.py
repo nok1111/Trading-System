@@ -2164,6 +2164,18 @@ def buy_live_recommendation(
             remaining_slots = max(1, dynamic_max - open_count)
             position_budget = available / remaining_slots
 
+        # Enforce minimum order size (Binance NOTIONAL filter requires ~$5-10)
+        MIN_ORDER_USD = Dec("10")
+        if position_budget < MIN_ORDER_USD:
+            position_budget = MIN_ORDER_USD
+        # If even the minimum exceeds available capital, reject with clear message
+        if position_budget > Dec(str(available)) and available > 0:
+            return {
+                "status": "rejected",
+                "symbol": symbol,
+                "reason": f"Capital disponible (${available:.2f}) insuficiente para orden mínima (${float(MIN_ORDER_USD):.0f}). Usa una cantidad menor o agrega fondos.",
+            }
+
         from app.database.models.account_snapshot import AccountSnapshot as AcctModel
         acct_override = AcctModel(
             timestamp=datetime.now(tz=UTC),

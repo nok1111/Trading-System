@@ -411,9 +411,15 @@ export function ReportsPage() {
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
                           disabled={actionLoading === r.id}
-                          onClick={(e) => { e.stopPropagation(); setPreviewReport(r); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const sym = (r.metadata?.symbol as string) || `${r.asset}USDT`;
+                            window.dispatchEvent(new CustomEvent("navigate", {
+                              detail: { page: "trade", asset: sym, broker: activeBrokerId },
+                            }));
+                          }}
                         >
-                          📊 Ver en Market
+                          � Ir a Trade
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
@@ -438,9 +444,15 @@ export function ReportsPage() {
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
                           disabled={actionLoading === r.id}
-                          onClick={(e) => { e.stopPropagation(); setPreviewReport(r); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const sym = (r.metadata?.symbol as string) || `${r.asset}USDT`;
+                            window.dispatchEvent(new CustomEvent("navigate", {
+                              detail: { page: "trade", asset: sym, broker: activeBrokerId },
+                            }));
+                          }}
                         >
-                          📊 Ver en Market
+                          � Ir a Trade
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-cyan-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50"

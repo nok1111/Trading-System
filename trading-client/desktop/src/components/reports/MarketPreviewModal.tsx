@@ -411,33 +411,47 @@ export function MarketPreviewModal({ report, onClose, onAction }: MarketPreviewM
 
         {/* Action buttons */}
         {report.id?.startsWith("rec-") && report.status === "pending" && (
-          <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
-            {!isPositionAnalysis && (
+          <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+            <div className="flex gap-2">
+              {!isPositionAnalysis && (
+                <button
+                  className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  disabled={buyLiveLoading || actionLoading}
+                  onClick={handleBuyLive}
+                >
+                  {buyLiveLoading ? "Ejecutando..." : "Comprar LIVE"}
+                </button>
+              )}
+              {isPositionAnalysis && (
+                <button
+                  className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  disabled={actionLoading || buyLiveLoading}
+                  onClick={handleAccept}
+                >
+                  <Check size={14} />
+                  {actionLoading ? "Procesando..." : "Aceptar ajustes"}
+                </button>
+              )}
               <button
-                className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-                disabled={buyLiveLoading || actionLoading}
-                onClick={handleBuyLive}
-              >
-                {buyLiveLoading ? "Ejecutando..." : "Comprar LIVE"}
-              </button>
-            )}
-            {isPositionAnalysis && (
-              <button
-                className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-success)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
                 disabled={actionLoading || buyLiveLoading}
-                onClick={handleAccept}
+                onClick={handleDecline}
               >
-                <Check size={14} />
-                {actionLoading ? "Procesando..." : "Aceptar ajustes"}
+                <X size={14} className="inline mr-1" />
+                Declinar
               </button>
-            )}
+            </div>
+            {/* Navigate to full Trade page */}
             <button
-              className="flex-1 h-9 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
-              disabled={actionLoading || buyLiveLoading}
-              onClick={handleDecline}
+              className="w-full h-8 rounded-[8px] text-[11px] font-bold bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-colors flex items-center justify-center gap-1.5"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("navigate", {
+                  detail: { page: "trade", asset: symbol, broker: brokerId },
+                }));
+                onClose();
+              }}
             >
-              <X size={14} className="inline mr-1" />
-              Declinar
+              📈 Ir a Trade con {symbol}
             </button>
           </div>
         )}
