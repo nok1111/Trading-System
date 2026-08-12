@@ -234,12 +234,26 @@ class SocialScheduler:
             follower_portfolio * (follow.copy_pct / 100.0) * (signal.size_pct / 100.0)
         ))
 
+        # Enforce minimum order size (Binance NOTIONAL filter requires ~$5-10)
+        MIN_ORDER_USD = Decimal("10")
+        if size_usd < MIN_ORDER_USD:
+            size_usd = MIN_ORDER_USD
+
         if size_usd <= 0:
             raise ValueError("Calculated size is 0")
 
         quantity = calculate_quantity(size_usd, current_price)
         if quantity <= 0:
             raise ValueError("Calculated quantity is 0")
+
+        # Round quantity to broker's step size to avoid LOT_SIZE filter errors
+        try:
+            market_info = adapter.get_market_info(target_symbol)
+            if market_info.quantity_precision and market_info.quantity_precision > 0:
+                step_str = "0." + "0" * (market_info.quantity_precision - 1) + "1"
+                quantity = quantity.quantize(Decimal(step_str))
+        except Exception:
+            pass
 
         # Execute order
         side = OrderSide.BUY if signal.side in ("BUY", "CLOSE") else OrderSide.SELL
