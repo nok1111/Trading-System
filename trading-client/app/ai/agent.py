@@ -51,7 +51,7 @@ LIGHTWEIGHT_MODELS: frozenset[str] = frozenset({
 # ─── Pydantic schemas for LLM output validation ───────────────────────────────
 
 class TradeAction(BaseModel):
-    type: Literal["buy"]
+    type: Literal["buy", "short", "sell"]
     symbol: str
     confidence: float = Field(ge=0, le=1)
     stop_loss_pct: float
@@ -960,15 +960,19 @@ class AITradingAgent:
             self._add_log("info", f"Auto-trade deshabilitado. {len(actions)} acciones propuestas pero no ejecutadas", {"cycle": self._cycle, "phase": "proposed"})
             return
 
-        # Execute sells first (close positions), then buys (up to MAX_OPEN_POSITIONS)
+        # Execute sells first (close positions), then buys/shorts (up to MAX_OPEN_POSITIONS)
         buy_actions = [a for a in actions if a.get("type", "").lower() == "buy"]
         sell_actions = [a for a in actions if a.get("type", "").lower() == "sell"]
+        short_actions = [a for a in actions if a.get("type", "").lower() == "short"]
 
         # Execute sells first (close positions)
         for action in sell_actions:
             self._execute_action(action)
         # Execute buys (allow multiple up to max positions)
         for action in buy_actions:
+            self._execute_action(action)
+        # Execute shorts (treated as buys with side=short in execution)
+        for action in short_actions:
             self._execute_action(action)
 
         self._add_log("info", f"--- Ciclo {self._cycle} completado ---", {"cycle": self._cycle, "phase": "end"})
