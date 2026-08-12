@@ -530,28 +530,38 @@ def place_order(
     # Calculate quantity
     quantity = req.quantity
     if not quantity and req.quote_order_qty:
-        if order_type_str == "market" and side_str == "buy":
-            # For market buys with quote_order_qty, let the adapter handle it
-            quantity = None
-        else:
-            try:
-                ticker = adapter.get_ticker(symbol)
-                current_price = float(ticker.price)
-                quantity = float(req.quote_order_qty) / current_price
-            except Exception as exc:
-                return {"error": f"No se pudo calcular cantidad: {exc}"}
+        # Always calculate quantity locally — the adapter doesn't support quote_order_qty
+        try:
+            ticker = adapter.get_ticker(symbol)
+            current_price = float(ticker.price)
+            quantity = float(req.quote_order_qty) / current_price
+        except Exception as exc:
+            return {"error": f"No se pudo calcular cantidad: {exc}"}
 
     if quantity and step_size:
         quantity = _round_to_step(quantity, step_size)
         if min_qty and quantity < min_qty:
             return {"error": f"Cantidad {quantity} es menor al mínimo ({min_qty}) para {symbol}"}
+        # Check min notional (minimum order value in USD)
+        if min_notional and min_notional > 0:
+            try:
+                ticker = adapter.get_ticker(symbol)
+                current_price = float(ticker.price)
+                order_value = quantity * current_price
+                if order_value < min_notional:
+                    return {"error": f"Valor de orden (${order_value:.2f}) es menor al mínimo (${min_notional:.2f}) para {symbol}"}
+            except Exception:
+                pass
+
+    if not quantity or quantity <= 0:
+        return {"error": "Cantidad inválida o insuficiente"}
 
     try:
         order_req = OrderRequest(
             symbol=symbol,
             side=OrderSide(side_str),
             order_type=OrderType(order_type_str),
-            quantity=Decimal(str(quantity)) if quantity else Decimal("0"),
+            quantity=Decimal(str(quantity)),
             price=Decimal(str(req.price)) if req.price else None,
         )
         result = adapter.place_order(order_req)
