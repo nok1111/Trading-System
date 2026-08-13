@@ -153,12 +153,37 @@ export interface BrokerPosition {
   status: string;
   strategy_name: string;
   opened_at: string | null;
+  source?: string;
+  leverage?: number | null;
+  liquidation_price?: number | null;
+  margin_mode?: string | null;
 }
 
 export interface BrokerPositionsResponse {
   positions: BrokerPosition[];
   count: number;
   error?: string;
+  source?: string;
+}
+
+export interface BrokerTrade {
+  broker_trade_id: string;
+  broker_order_id: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  price: number;
+  commission: number;
+  commission_asset: string;
+  time: number;
+  is_maker: boolean;
+}
+
+export interface BrokerTradesResponse {
+  trades: BrokerTrade[];
+  count: number;
+  error?: string;
+  source?: string;
 }
 
 export interface BrokerTicker {
@@ -260,6 +285,17 @@ export async function getOrders(
 
 export async function getPositions(brokerId: string): Promise<BrokerPositionsResponse> {
   return api<BrokerPositionsResponse>(`/api/broker/${brokerId}/positions`);
+}
+
+export async function getTrades(
+  brokerId: string,
+  opts?: { symbol?: string; limit?: number }
+): Promise<BrokerTradesResponse> {
+  const params = new URLSearchParams();
+  if (opts?.symbol) params.set("symbol", opts.symbol);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return api<BrokerTradesResponse>(`/api/broker/${brokerId}/trades${qs ? `?${qs}` : ""}`);
 }
 
 export async function getTicker(brokerId: string, symbol: string): Promise<BrokerTicker> {

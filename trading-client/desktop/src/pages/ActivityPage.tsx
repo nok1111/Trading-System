@@ -259,6 +259,7 @@ export function ActivityPage() {
               <Th>Cantidad</Th>
               <Th>Precio</Th>
               <Th>PnL</Th>
+              <Th>Comisión</Th>
             </Tr>
           </thead>
           <tbody>
@@ -285,6 +286,9 @@ export function ActivityPage() {
                     }
                   >
                     ${fmt(t.pnl)}
+                  </Td>
+                  <Td className="text-[var(--color-text-muted)]">
+                    {Number(t.commission) > 0 ? `${fmt(t.commission)} ${t.commission_asset || ""}` : "—"}
                   </Td>
                 </Tr>
               ))

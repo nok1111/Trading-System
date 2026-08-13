@@ -295,6 +295,8 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
                 <th className="text-right pb-2">Entry</th>
                 <th className="text-right pb-2">Current</th>
                 <th className="text-right pb-2">PnL</th>
+                <th className="text-right pb-2">Lev</th>
+                <th className="text-right pb-2">Liq</th>
               </tr>
             </thead>
             <tbody>
@@ -313,6 +315,8 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
                   <td className={cn("text-right font-bold", Number(p.unrealized_pnl) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
                     {Number(p.unrealized_pnl) !== 0 ? fmtVol(p.unrealized_pnl) : "—"}
                   </td>
+                  <td className="text-right text-[var(--color-text-muted)]">{p.leverage ? `${p.leverage}x` : "—"}</td>
+                  <td className="text-right text-[var(--color-text-muted)]">{p.liquidation_price ? fmt(p.liquidation_price) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -1308,6 +1312,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
               <th className="text-right pb-2">Qty</th>
               <th className="text-right pb-2">Price</th>
               <th className="text-right pb-2">Total</th>
+              <th className="text-right pb-2">Fee</th>
             </tr>
           </thead>
           <tbody>
@@ -1324,6 +1329,9 @@ function HistoryModule({ trades }: { trades: any[] }) {
                 <td className="text-right text-[var(--color-text)]">{fmt(t.quantity)}</td>
                 <td className="text-right text-[var(--color-text)]">{fmt(t.price)}</td>
                 <td className="text-right font-bold text-[var(--color-text)]">${fmtVol(Number(t.quantity) * Number(t.price))}</td>
+                <td className="text-right text-[var(--color-text-muted)]">
+                  {Number(t.commission) > 0 ? `${fmt(t.commission)} ${t.commission_asset || ""}` : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
