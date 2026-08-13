@@ -308,15 +308,33 @@ def list_positions(
                             break
                         except Exception:
                             continue
+                    # Fetch entry price from trade history
+                    entry_price = Decimal("0")
+                    try:
+                        sym = normalize_symbol(f"{bal.asset}/USDT")
+                        trades = adapter.get_trades(symbol=sym, limit=500)
+                        buy_trades = [t for t in trades if t.side.value == "buy"]
+                        if buy_trades:
+                            total_cost = sum(float(t.price) * float(t.quantity) for t in buy_trades)
+                            total_qty = sum(float(t.quantity) for t in buy_trades)
+                            if total_qty > 0:
+                                entry_price = Decimal(str(round(total_cost / total_qty, 8)))
+                    except Exception:
+                        pass
+                    unrealized = Decimal("0")
+                    if entry_price > 0 and current_price:
+                        unrealized = Decimal(str(round(
+                            (float(current_price) - float(entry_price)) * float(bal.total), 8
+                        )))
                     from app.brokers.models import Position as BrokerPosition
                     broker_positions = broker_positions + (
                         BrokerPosition(
                             symbol=f"{bal.asset}/USDT",
                             side="long",
                             quantity=bal.total,
-                            entry_price=Decimal("0"),
+                            entry_price=entry_price,
                             current_price=current_price,
-                            unrealized_pnl=Decimal("0"),
+                            unrealized_pnl=unrealized,
                             status="open",
                             strategy_name="spot_holding",
                             metadata={"source": "broker_balance"},
