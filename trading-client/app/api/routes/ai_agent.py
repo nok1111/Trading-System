@@ -1976,7 +1976,7 @@ def ai_agent_execute(
                 suggested_stop_loss=stop_loss,
                 suggested_take_profit=take_profit,
             )
-            engine = ExecutionEngine(broker, risk_manager, session, settings, user_id=current_user.id)
+            engine = ExecutionEngine(broker, risk_manager, session, settings, user_id=current_user.id if current_user else 0)
             order = engine.process_signal(signal, account=acct)
             session.commit()
 
@@ -2109,9 +2109,12 @@ def ai_agent_execute(
                 return {"status": "error", "action": "short", "symbol": symbol, "reason": f"Error ejecutando short: {exc}"}
 
         elif action == "sell":
-            # Buscar posición abierta
+            # Buscar posición abierta (include user_id=0 for AI Agent positions)
             from app.database.models.position import Position as PosModel
-            pos = session.query(PosModel).filter_by(symbol=symbol, status="open", user_id=current_user.id).first()
+            uid = current_user.id if current_user else 0
+            pos = session.query(PosModel).filter_by(symbol=symbol, status="open").filter(
+                (PosModel.user_id == uid) | (PosModel.user_id == 0)
+            ).first()
             if not pos:
                 return {"status": "no_position", "action": "sell", "symbol": symbol, "reason": f"No hay posición abierta en {symbol}"}
 
@@ -2171,7 +2174,7 @@ def ai_agent_execute(
                 explanation=f"[AI Agent] {req.reason}",
                 metadata_json={"source": "ai_agent"},
             )
-            engine = ExecutionEngine(broker, risk_manager, session, settings, user_id=current_user.id)
+            engine = ExecutionEngine(broker, risk_manager, session, settings, user_id=current_user.id if current_user else 0)
             order = engine.process_signal(signal)
             session.commit()
 

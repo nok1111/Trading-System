@@ -138,9 +138,10 @@ class ExecutionEngine:
         return signal
 
     def _get_open_positions(self) -> list[Position]:
+        # Include user_id=0 (AI Agent / manual positions) alongside the current user's
         return self.session.query(Position).where(
             Position.status == "open",
-            Position.user_id == self.user_id,
+            (Position.user_id == self.user_id) | (Position.user_id == 0),
         ).with_for_update().all()
 
     def _get_live_price(self, symbol: str) -> Decimal | None:
