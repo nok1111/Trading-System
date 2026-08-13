@@ -16,7 +16,9 @@ from typing import Annotated, Any
 import httpx
 from fastapi import APIRouter, Depends
 
+from app.config import get_settings
 from app.services.auth import LocalUser, get_current_user
+from app.services.market_data_service import get_market_data_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
@@ -50,9 +52,7 @@ def get_fear_greed() -> dict:
     if cached:
         return cached
     try:
-        resp = httpx.get("https://api.alternative.me/fng/?limit=30", timeout=10)
-        resp.raise_for_status()
-        raw = resp.json().get("data", [])
+        raw = get_market_data_service().get_fear_greed(limit=30)
         if not raw:
             return {"value": 50, "classification": "Neutral", "previousValue": 50, "previousClassification": "Neutral", "history": [], "timestamp": datetime.now(UTC).isoformat()}
 
@@ -84,9 +84,7 @@ def get_dominance() -> dict:
     if cached:
         return cached
     try:
-        resp = httpx.get("https://api.coingecko.com/api/v3/global", timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("data", {})
+        data = get_market_data_service().get_global_crypto_stats()
         market_cap_pct = data.get("market_cap_percentage", {})
         btc_dom = market_cap_pct.get("btc", 0)
         eth_dom = market_cap_pct.get("eth", 0)
@@ -120,19 +118,12 @@ def get_market_overview() -> dict:
         return cached
     try:
         # Get global data
-        resp = httpx.get("https://api.coingecko.com/api/v3/global", timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("data", {})
+        data = get_market_data_service().get_global_crypto_stats()
         mcap_change = data.get("market_cap_change_percentage_24h_usd", 0)
         total_mcap = data.get("total_market_cap", {}).get("usd", 0)
 
-        # Get BTC 24h ticker from Binance
-        btc_resp = httpx.get(
-            "https://api.binance.com/api/v3/ticker/24hr",
-            params={"symbol": "BTCUSDT"},
-            timeout=10,
-        )
-        btc_data = btc_resp.json() if btc_resp.status_code == 200 else {}
+        # Get BTC 24h ticker from market data service
+        btc_data = get_market_data_service().get_24hr_ticker("BTC/USDT") or {}
         btc_price = float(btc_data.get("lastPrice", 0))
         btc_change = float(btc_data.get("priceChangePercent", 0))
 
@@ -182,22 +173,25 @@ def get_whale_activity(limit: int = 20) -> list[dict]:
     if cached:
         return cached
     try:
-        # Fetch large BTC trades from Binance aggTrades
-        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+        # Fetch large trades from public market data API
+        symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
         activities: list[dict] = []
+        mds = get_market_data_service()
+        base_url = mds._get_public_base_url()
 
         for sym in symbols:
             try:
+                native_sym = mds._to_native_symbol(sym)
                 resp = httpx.get(
-                    f"https://api.binance.com/api/v3/aggTrades",
-                    params={"symbol": sym, "limit": 100},
+                    f"{base_url}/api/v3/aggTrades",
+                    params={"symbol": native_sym, "limit": 100},
                     timeout=10,
                 )
                 if resp.status_code != 200:
                     continue
                 trades = resp.json()
                 # Filter for large trades (whale threshold per symbol)
-                thresholds = {"BTCUSDT": 100000, "ETHUSDT": 50000, "SOLUSDT": 20000}
+                thresholds = {"BTC/USDT": 100000, "ETH/USDT": 50000, "SOL/USDT": 20000}
                 threshold = thresholds.get(sym, 50000)
 
                 for t in trades:
@@ -209,16 +203,16 @@ def get_whale_activity(limit: int = 20) -> list[dict]:
                     is_buyer_maker = t.get("m", False)
                     activities.append({
                         "id": f"{sym}_{t.get('a', '')}",
-                        "asset": sym.replace("USDT", ""),
+                        "asset": sym.split("/")[0],
                         "amount": qty,
                         "amountUsd": round(value_usd, 2),
                         "direction": "inflow" if not is_buyer_maker else "outflow",
-                        "fromAddress": "Binance",
-                        "toAddress": "Binance",
+                        "fromAddress": "Market",
+                        "toAddress": "Market",
                         "timestamp": datetime.fromtimestamp(
                             t.get("T", 0) / 1000, tz=UTC
                         ).isoformat(),
-                        "exchange": "Binance",
+                        "exchange": get_settings().DEFAULT_BROKER_ID,
                     })
             except Exception:
                 continue
@@ -240,10 +234,8 @@ def get_macro_events() -> list[dict]:
     if cached:
         return cached
     try:
-        # Try Forex Factory calendar RSS (free XML feed)
-        resp = httpx.get("https://nfs.faireconomy.media/ff_calendar_thisweek.json", timeout=10)
-        resp.raise_for_status()
-        events = resp.json()
+        # Try Forex Factory calendar (free JSON feed)
+        events = get_market_data_service().get_macro_events()
 
         result = []
         for ev in events[:30]:
@@ -281,13 +273,8 @@ def get_daily_report() -> dict:
         fg_value = fg.get("value", 50)
         fg_class = fg.get("classification", "Neutral")
 
-        # Get BTC price from Binance
-        btc_resp = httpx.get(
-            "https://api.binance.com/api/v3/ticker/24hr",
-            params={"symbol": "BTCUSDT"},
-            timeout=10,
-        )
-        btc_data = btc_resp.json() if btc_resp.status_code == 200 else {}
+        # Get BTC price from market data service
+        btc_data = get_market_data_service().get_24hr_ticker("BTC/USDT") or {}
         btc_price = float(btc_data.get("lastPrice", 0))
         btc_change = float(btc_data.get("priceChangePercent", 0))
 
@@ -487,7 +474,7 @@ def optimize_endpoint(req: OptimizeRequest) -> dict:
 
 
 class AutoAssignRequest(_BaseModel):
-    symbols: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "PEPEUSDT"]
+    symbols: list[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "DOGE/USDT", "PEPE/USDT"]
     interval: str = "1h"
     limit: int = 500
     initial_cash: float = 10000.0
@@ -553,7 +540,7 @@ def detect_regime_endpoint(req: RegimeRequest) -> dict:
 
 
 class RegimeBatchRequest(_BaseModel):
-    symbols: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+    symbols: list[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
     interval: str = "1h"
     limit: int = 200
 
@@ -664,7 +651,7 @@ def mtf_trend_endpoint(symbol: str, interval: str = "4h") -> dict:
 
 
 class MTFBatchRequest(_BaseModel):
-    symbols: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    symbols: list[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
     primary_interval: str = "1h"
 
 
@@ -945,9 +932,19 @@ def check_price_alerts() -> dict:
 
     # Fetch current prices
     try:
-        resp = httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10)
-        resp.raise_for_status()
-        prices = {d["symbol"]: float(d["price"]) for d in resp.json()}
+        tickers = get_market_data_service()._get_all_tickers_public()
+        # Public API returns 24hr format; extract just price symbols
+        all_prices = {}
+        for t in tickers:
+            if "symbol" in t and "lastPrice" in t:
+                all_prices[t["symbol"]] = float(t["lastPrice"])
+        # Also try the simpler ticker/price endpoint
+        base_url = get_market_data_service()._get_public_base_url()
+        resp = httpx.get(f"{base_url}/api/v3/ticker/price", timeout=10)
+        if resp.status_code == 200:
+            prices = {d["symbol"]: float(d["price"]) for d in resp.json()}
+        else:
+            prices = all_prices
     except Exception as exc:
         logger.warning("Failed to fetch prices for alert check: %s", exc)
         return {"status": "error", "error": str(exc)}
@@ -1352,15 +1349,14 @@ def _build_live_data(
         settings = get_settings()
         symbol = asset.upper() + "USDT"
 
-        # Fetch live price from Binance
+        # Fetch live price from market data service
         current_price: float | None = None
         try:
-            resp = _httpx.get(
-                f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
-                timeout=10.0,
-            )
-            if resp.status_code == 200:
-                current_price = float(resp.json()["price"])
+            from app.brokers.models import normalize_symbol
+            canonical = normalize_symbol(symbol)
+            ticker = get_market_data_service().get_ticker(canonical)
+            if ticker:
+                current_price = float(ticker.price)
         except Exception:
             pass
 
@@ -1875,15 +1871,14 @@ def accept_recommendation(
         # ─── Default: paper trade buy (existing logic) ─────────────────────────
         symbol = rec.asset.upper() + "USDT"
 
-        # Fetch live price from Binance
+        # Fetch live price from market data service
         try:
-            resp = _httpx.get(
-                f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
-                timeout=10.0,
-            )
-            if resp.status_code != 200:
+            from app.brokers.models import normalize_symbol
+            canonical = normalize_symbol(symbol)
+            ticker = get_market_data_service().get_ticker(canonical)
+            if not ticker:
                 return {"status": "error", "reason": f"No se pudo obtener precio de {symbol}"}
-            live_price = Dec(str(resp.json()["price"]))
+            live_price = Dec(str(ticker.price))
         except Exception as exc:
             return {"status": "error", "reason": f"Error obteniendo precio: {exc}"}
 
@@ -2086,15 +2081,13 @@ def buy_live_recommendation(
 
         if not live_price or live_price <= 0:
             try:
-                resp = _httpx.get(f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}", timeout=10.0)
-                if resp.status_code == 200:
-                    live_price = Dec(str(resp.json()["price"]))
+                from app.brokers.models import normalize_symbol
+                canonical = normalize_symbol(symbol)
+                ticker = get_market_data_service().get_ticker(canonical)
+                if ticker and ticker.price > 0:
+                    live_price = Dec(str(ticker.price))
                 else:
-                    resp = _httpx.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}", timeout=10.0)
-                    if resp.status_code == 200:
-                        live_price = Dec(str(resp.json()["price"]))
-                    else:
-                        return {"status": "error", "symbol": symbol, "reason": f"Símbolo {symbol} no existe en Binance"}
+                    return {"status": "error", "symbol": symbol, "reason": f"Símbolo {symbol} no existe o sin precio"}
             except Exception as exc:
                 return {"status": "error", "symbol": symbol, "reason": f"No se pudo validar {symbol}: {exc}"}
 
@@ -2245,7 +2238,8 @@ def get_paper_positions() -> list[dict]:
     # Fetch live prices
     price_map: dict[str, float] = {}
     try:
-        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+        base_url = get_market_data_service()._get_public_base_url()
+        tickers = httpx.get(f"{base_url}/api/v3/ticker/price", timeout=10).json()
         for t in tickers:
             price_map[t["symbol"]] = float(t["price"])
     except Exception:
@@ -2318,13 +2312,12 @@ def sell_paper_position(position_id: int) -> dict:
 
         # Fetch live price
         try:
-            resp = _httpx.get(
-                f"https://api.binance.com/api/v3/ticker/price?symbol={pos.symbol}",
-                timeout=10.0,
-            )
-            if resp.status_code != 200:
+            from app.brokers.models import normalize_symbol
+            canonical = normalize_symbol(pos.symbol)
+            ticker = get_market_data_service().get_ticker(canonical)
+            if not ticker:
                 return {"status": "error", "reason": "No se pudo obtener precio"}
-            sell_price = Dec(str(resp.json()["price"]))
+            sell_price = Dec(str(ticker.price))
         except Exception as exc:
             return {"status": "error", "reason": f"Error obteniendo precio: {exc}"}
 

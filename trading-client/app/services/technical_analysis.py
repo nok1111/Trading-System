@@ -15,7 +15,10 @@ from typing import Any
 import httpx
 import pandas as pd
 
+from app.brokers.models import denormalize_symbol, normalize_symbol
+from app.config import get_settings
 from app.indicators import indicators as ind
+from app.services.market_data_service import get_market_data_service
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +60,12 @@ class TechnicalAnalysis:
 
 def fetch_klines(symbol: str, interval: str = "1h", limit: int = 200) -> pd.DataFrame:
     """Fetch klines from Binance public API and return as DataFrame."""
-    broker_symbol = symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+    base_url = get_market_data_service()._get_public_base_url()
+    canonical = normalize_symbol(symbol)
+    native = denormalize_symbol(canonical, get_settings().DEFAULT_BROKER_ID)
     resp = httpx.get(
-        "https://api.binance.com/api/v3/klines",
-        params={"symbol": broker_symbol, "interval": interval, "limit": limit},
+        f"{base_url}/api/v3/klines",
+        params={"symbol": native, "interval": interval, "limit": limit},
         timeout=10,
     )
     resp.raise_for_status()

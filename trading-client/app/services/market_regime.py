@@ -22,6 +22,8 @@ import httpx
 import numpy as np
 import pandas as pd
 
+from app.brokers.models import normalize_symbol
+from app.config import get_settings
 from app.indicators import indicators as ind
 
 logger = logging.getLogger(__name__)
@@ -85,10 +87,15 @@ REGIME_DESCRIPTIONS: dict[str, str] = {
 
 
 def _fetch_klines(symbol: str, interval: str = "1h", limit: int = 200) -> pd.DataFrame:
-    """Fetch klines from Binance."""
+    """Fetch klines from public market data API (configurable)."""
+    settings = get_settings()
+    canonical = normalize_symbol(symbol)
+    from app.brokers.models import denormalize_symbol
+    native = denormalize_symbol(canonical, settings.DEFAULT_BROKER_ID)
+    base_url = settings.PUBLIC_MARKET_DATA_URL
     resp = httpx.get(
-        "https://api.binance.com/api/v3/klines",
-        params={"symbol": symbol.upper(), "interval": interval, "limit": limit},
+        f"{base_url}/api/v3/klines",
+        params={"symbol": native, "interval": interval, "limit": limit},
         timeout=10,
     )
     resp.raise_for_status()
@@ -260,10 +267,10 @@ PROFILE_STRATEGY_MAP: dict[str, list[str]] = {
 }
 
 PROFILE_SYMBOL_FILTER: dict[str, list[str]] = {
-    "conservative": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"],  # majors only
+    "conservative": ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"],  # majors only
     "moderate": [
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT",
-        "LINKUSDT", "DOTUSDT", "ATOMUSDT", "NEARUSDT", "INJUSDT",
+        "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "AVAX/USDT",
+        "LINK/USDT", "DOT/USDT", "ATOM/USDT", "NEAR/USDT", "INJ/USDT",
     ],
     "aggressive": [],  # empty = all symbols allowed
 }

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.routes.trading import DbSession
+from app.brokers.models import normalize_symbol
 from app.config import get_settings
 from app.database.models import (
     AccountSnapshot,
@@ -13,6 +14,7 @@ from app.database.models import (
     StrategyRun,
     Trade,
 )
+from app.services.market_data_service import get_market_data_service
 
 router = APIRouter(prefix="/api", tags=["stats"])
 
@@ -299,20 +301,9 @@ def position_chart_data(symbol: str, db: DbSession) -> dict:
     # Fetch live price from Binance (spot first, then futures)
     live_price = None
     try:
-        import httpx as _httpx
-        resp = _httpx.get(
-            f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}",
-            timeout=5.0,
-        )
-        if resp.status_code == 200:
-            live_price = float(resp.json()["price"])
-        else:
-            resp = _httpx.get(
-                f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol.upper()}",
-                timeout=5.0,
-            )
-            if resp.status_code == 200:
-                live_price = float(resp.json()["price"])
+        ticker = get_market_data_service().get_ticker(normalize_symbol(symbol))
+        if ticker and ticker.price:
+            live_price = float(ticker.price)
     except Exception:
         pass
 
@@ -369,18 +360,13 @@ def portfolio_risk(db: DbSession) -> dict:
         }
 
     # Fetch live prices for all positions
-    import httpx as _httpx
-
     positions_data: list[dict] = []
     for pos in positions_db:
         live_price = float(pos.current_price or pos.entry_price)
         try:
-            resp = _httpx.get(
-                f"https://api.binance.com/api/v3/ticker/price?symbol={pos.symbol.upper()}",
-                timeout=5.0,
-            )
-            if resp.status_code == 200:
-                live_price = float(resp.json()["price"])
+            ticker = get_market_data_service().get_ticker(normalize_symbol(pos.symbol))
+            if ticker and ticker.price:
+                live_price = float(ticker.price)
         except Exception:
             pass
 

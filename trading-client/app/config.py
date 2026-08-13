@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     USE_INTELLIGENCE_API: bool = False
     # Risk Engine feature flag
     ENABLE_AUTOMATIC_EXECUTION: bool = True
+    # Default broker for public market data endpoints (when no user/broker context)
+    DEFAULT_BROKER_ID: str = "binance"
+    # External market data API URLs (global intelligence, not broker-specific)
+    FEAR_GREED_API_URL: str = "https://api.alternative.me/fng/"
+    COINGECKO_API_URL: str = "https://api.coingecko.com/api/v3"
+    MACRO_CALENDAR_URL: str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+    # Public market data fallback (used when no broker is connected)
+    PUBLIC_MARKET_DATA_URL: str = "https://api.binance.com"
 
     @field_validator("DEFAULT_SYMBOLS")
     @classmethod

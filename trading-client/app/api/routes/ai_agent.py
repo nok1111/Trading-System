@@ -24,6 +24,7 @@ from app.database.session import SessionLocal
 from app.database.models.user_settings import UserSettings
 from app.services.auth import LocalUser, get_current_user
 from app.services.crypto import decrypt, encrypt
+from app.services.market_data_service import get_market_data_service
 from app.services.rate_limit import get_plan_limits, has_feature
 
 PREMIUM_PROVIDERS = {"openai", "deepseek", "mistral", "together", "perplexity", "grok"}
@@ -778,7 +779,7 @@ def get_binance_balance(
     # Batch-fetch all ticker prices in one call
     price_map: dict[str, float] = {}
     try:
-        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+        tickers = _httpx.get(f"{get_market_data_service()._get_public_base_url()}/api/v3/ticker/price", timeout=10).json()
         for t in tickers:
             price_map[t["symbol"]] = float(t["price"])
     except Exception:
@@ -919,7 +920,7 @@ def get_binance_all_orders(
         pass
 
     # Always include common symbols
-    symbols_to_query.update({"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"})
+    symbols_to_query.update({"BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"})
 
     # 3. Query all orders per symbol in parallel
     import concurrent.futures
@@ -1076,7 +1077,7 @@ def place_binance_manual_order(
     min_qty = None
     min_notional = None
     # Use the broker's own base URL (testnet or mainnet)
-    _base = getattr(adapter._broker, "_base_url", "https://api.binance.com")
+    _base = getattr(adapter._broker, "_base_url", get_settings().PUBLIC_MARKET_DATA_URL)
     try:
         ei = _httpx.get(f"{_base}/api/v3/exchangeInfo", params={"symbol": symbol}, timeout=10).json()
         filters = ei.get("symbols", [{}])[0].get("filters", [])
@@ -1188,16 +1189,14 @@ def place_binance_manual_order(
 
 @router.get("/binance/price")
 def get_binance_price(symbol: str = Query(...)) -> dict:
-    """Get current price for a symbol from Binance."""
-    import httpx as _httpx
+    """Get current price for a symbol from market data service."""
     try:
-        resp = _httpx.get(
-            f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}",
-            timeout=10.0,
-        )
-        if resp.status_code == 200:
-            return {"symbol": symbol.upper(), "price": float(resp.json()["price"])}
-        return {"error": f"Binance respondió {resp.status_code}"}
+        from app.brokers.models import normalize_symbol
+        canonical = normalize_symbol(symbol)
+        ticker = get_market_data_service().get_ticker(canonical)
+        if ticker:
+            return {"symbol": symbol.upper(), "price": float(ticker.price)}
+        return {"error": f"No se pudo obtener precio de {symbol}"}
     except Exception as exc:
         return {"error": "Error interno del servidor"}
 
@@ -1230,7 +1229,7 @@ def get_binance_positions(
         import httpx as _httpx
         price_map: dict[str, float] = {}
         try:
-            tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+            tickers = _httpx.get(f"{get_market_data_service()._get_public_base_url()}/api/v3/ticker/price", timeout=10).json()
             for t in tickers:
                 price_map[t["symbol"]] = float(t["price"])
         except Exception:
@@ -1289,7 +1288,7 @@ def get_binance_resumen(
     # Batch fetch prices
     price_map: dict[str, float] = {}
     try:
-        tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+        tickers = _httpx.get(f"{get_market_data_service()._get_public_base_url()}/api/v3/ticker/price", timeout=10).json()
         for t in tickers:
             price_map[t["symbol"]] = float(t["price"])
     except Exception:
@@ -1414,7 +1413,7 @@ def import_binance_positions(
         import httpx as _httpx
         price_map: dict[str, float] = {}
         try:
-            tickers = _httpx.get("https://api.binance.com/api/v3/ticker/price", timeout=10).json()
+            tickers = _httpx.get(f"{get_market_data_service()._get_public_base_url()}/api/v3/ticker/price", timeout=10).json()
             for t in tickers:
                 price_map[t["symbol"]] = float(t["price"])
         except Exception:
@@ -1847,29 +1846,18 @@ def ai_agent_execute(
         except Exception:
             pass
 
-        # If price stream didn't work, fetch directly from Binance API
+        # If price stream didn't work, fetch from market data service
         if not live_price or live_price <= 0:
             try:
-                import httpx as _httpx
-                # Try spot first
-                resp = _httpx.get(
-                    f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
-                    timeout=10.0,
-                )
-                if resp.status_code == 200:
-                    live_price = Dec(str(resp.json()["price"]))
+                from app.brokers.models import normalize_symbol
+                canonical = normalize_symbol(symbol)
+                ticker = get_market_data_service().get_ticker(canonical)
+                if ticker and ticker.price > 0:
+                    live_price = Dec(str(ticker.price))
                 else:
-                    # Try futures as fallback
-                    resp = _httpx.get(
-                        f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}",
-                        timeout=10.0,
-                    )
-                    if resp.status_code == 200:
-                        live_price = Dec(str(resp.json()["price"]))
-                    else:
-                        return {"status": "error", "action": action, "symbol": symbol, "reason": f"Símbolo {symbol} no existe en Binance (spot ni futuros)"}
+                    return {"status": "error", "action": action, "symbol": symbol, "reason": f"Símbolo {symbol} no existe o sin precio"}
             except Exception as exc:
-                return {"status": "error", "action": action, "symbol": symbol, "reason": f"No se pudo validar {symbol} en Binance: {exc}"}
+                return {"status": "error", "action": action, "symbol": symbol, "reason": f"No se pudo validar {symbol}: {exc}"}
 
         if not live_price or live_price <= 0:
             return {"status": "error", "action": action, "symbol": symbol, "reason": f"Precio inválido para {symbol}"}
@@ -2310,10 +2298,13 @@ def ai_agent_backtest_comparison(
             btc_now = 0
             try:
                 import httpx as _hx
-                # Get BTC price N days ago
+                # Get BTC price N days ago from market data service
+                base_url = get_market_data_service()._get_public_base_url()
+                from app.brokers.models import denormalize_symbol
+                native = denormalize_symbol("BTC/USDT", get_settings().DEFAULT_BROKER_ID)
                 resp = _hx.get(
-                    "https://api.binance.com/api/v3/klines",
-                    params={"symbol": "BTCUSDT", "interval": "1d", "limit": days + 1},
+                    f"{base_url}/api/v3/klines",
+                    params={"symbol": native, "interval": "1d", "limit": days + 1},
                     timeout=10,
                 )
                 if resp.status_code == 200:

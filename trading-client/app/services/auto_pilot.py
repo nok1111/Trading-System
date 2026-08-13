@@ -90,8 +90,8 @@ def generate_auto_pilot_plan(
     if not allowed_symbols:
         # Aggressive — use top symbols by volume
         allowed_symbols = [
-            "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-            "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "PEPEUSDT", "INJUSDT",
+            "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+            "DOGE/USDT", "AVAX/USDT", "LINK/USDT", "PEPE/USDT", "INJ/USDT",
         ]
 
     # Limit symbols based on profile

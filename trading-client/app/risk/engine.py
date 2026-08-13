@@ -543,9 +543,15 @@ class RiskEngine:
 
         # Fetch klines for technical indicators
         try:
+            from app.brokers.models import normalize_symbol, denormalize_symbol
+            from app.config import get_settings
+            settings = get_settings()
+            canonical = normalize_symbol(symbol)
+            native = denormalize_symbol(canonical, settings.DEFAULT_BROKER_ID)
+            base_url = settings.PUBLIC_MARKET_DATA_URL
             resp = httpx.get(
-                f"https://api.binance.com/api/v3/klines",
-                params={"symbol": symbol, "interval": "1h", "limit": 50},
+                f"{base_url}/api/v3/klines",
+                params={"symbol": native, "interval": "1h", "limit": 50},
                 timeout=10.0,
             )
             if resp.status_code != 200:

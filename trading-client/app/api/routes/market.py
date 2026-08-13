@@ -6,7 +6,10 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
+from app.brokers.models import denormalize_symbol, normalize_symbol
+from app.config import get_settings
 from app.data.price_stream import get_price_stream
+from app.services.market_data_service import get_market_data_service
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +142,13 @@ def get_klines(
     """Klines (OHLCV) desde Binance public API — no credentials needed."""
     import httpx
 
-    broker_symbol = symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+    base_url = get_market_data_service()._get_public_base_url()
+    canonical = normalize_symbol(symbol)
+    native = denormalize_symbol(canonical, get_settings().DEFAULT_BROKER_ID)
     try:
         resp = httpx.get(
-            "https://api.binance.com/api/v3/klines",
-            params={"symbol": broker_symbol, "interval": interval, "limit": limit},
+            f"{base_url}/api/v3/klines",
+            params={"symbol": native, "interval": interval, "limit": limit},
             timeout=10,
         )
         resp.raise_for_status()

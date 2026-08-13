@@ -80,7 +80,7 @@ def build_strategy(name: str, settings):
         from pathlib import Path
 
         from app.ml import MLPredictor
-        model_path = "models/BTCUSDT_ml_model.json"
+        model_path = "models/BTC_USDT_ml_model.json"
         if not Path(model_path).exists():
             raise HTTPException(status_code=400, detail="No hay modelo ML entrenado. Entrena uno primero.")
         predictor = MLPredictor.load(model_path)

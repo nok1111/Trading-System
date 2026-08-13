@@ -15,6 +15,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from app.brokers.models import denormalize_symbol, normalize_symbol
+from app.config import get_settings
+from app.services.market_data_service import get_market_data_service
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,11 +117,12 @@ class PerformanceLearner:
         # Fallback: try Binance API directly
         try:
             import httpx
-            # Convert CCXT format (BTC/USDT) to Binance format (BTCUSDT)
-            binance_symbol = symbol.replace("/", "").upper()
+            base_url = get_market_data_service()._get_public_base_url()
+            canonical = normalize_symbol(symbol)
+            native = denormalize_symbol(canonical, get_settings().DEFAULT_BROKER_ID)
             resp = httpx.get(
-                f"https://api.binance.com/api/v3/ticker/price",
-                params={"symbol": binance_symbol},
+                f"{base_url}/api/v3/ticker/price",
+                params={"symbol": native},
                 timeout=10,
             )
             resp.raise_for_status()
