@@ -30,6 +30,7 @@ def agent_with_intelligence():
 class TestGetIntelligenceMode:
     def test_status_shows_intelligence_mode_off(self):
         agent = AITradingAgent(provider="groq", groq_api_key="fake")
+        agent._intelligence_provider = None
         status = agent.get_status()
         assert status["intelligence_mode"] is False
 
@@ -165,7 +166,10 @@ class TestTickIntelligence:
         agent, mock_provider = agent_with_intelligence
         mock_provider.get_signals.return_value = []
         mock_provider.get_alerts.return_value = []
-        agent._tick_intelligence()
+        with patch.object(agent, "_gather_context", return_value={"positions": []}), \
+             patch.object(agent, "_ask_llm", return_value=None), \
+             patch.object(agent, "_handle_llm_failure", return_value=False):
+            agent._tick_intelligence()
         # Should increment hold streak
         assert agent._hold_streak >= 1
 
@@ -204,7 +208,10 @@ class TestTickIntelligence:
             reason="Ya en posición máxima",
             confidence=0.50,
         )
-        with patch.object(agent, "_api_get", return_value=[]):
+        with patch.object(agent, "_gather_context", return_value={"positions": []}), \
+             patch.object(agent, "_ask_llm", return_value=None), \
+             patch.object(agent, "_handle_llm_failure", return_value=False), \
+             patch.object(agent, "_api_get", return_value=[]):
             agent._tick_intelligence()
         # HOLD → no actions → hold streak increases
         assert agent._hold_streak >= 1

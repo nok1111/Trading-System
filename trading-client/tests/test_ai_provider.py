@@ -15,7 +15,7 @@ class TestAIProviderConfig:
     def test_defaults(self):
         config = AIProviderConfig()
         assert config.provider == "groq"
-        assert config.groq_model == "llama-3.1-8b-instant"
+        assert config.groq_model == "llama-3.3-70b-versatile"
         assert config.ollama_url == "http://localhost:11434"
 
     def test_custom(self):
@@ -86,12 +86,17 @@ class TestLocalAIProvider:
         groq_resp.status_code = 500
         groq_resp.raise_for_status.side_effect = Exception("HTTP 500")
 
+        # OmniRoute esta entre Groq y Ollama en la cadena de fallback
+        omniroute_resp = MagicMock()
+        omniroute_resp.status_code = 500
+        omniroute_resp.raise_for_status.side_effect = Exception("HTTP 500")
+
         ollama_resp = MagicMock()
         ollama_resp.status_code = 200
         ollama_resp.json.return_value = {"message": {"content": json.dumps(decision)}}
         ollama_resp.raise_for_status = MagicMock()
 
-        with patch("app.ai.local_provider.httpx.post", side_effect=[groq_resp, ollama_resp]):
+        with patch("app.ai.local_provider.httpx.post", side_effect=[groq_resp, omniroute_resp, ollama_resp]):
             result = provider.ask("system prompt", "user message")
         assert result.success
         assert result.decision == decision

@@ -1,6 +1,11 @@
-"""Tests para brokers/registry.py — resolucion de adaptadores, stubs, withdrawals siempre False."""
+"""Tests para brokers/registry.py — resolucion de adaptadores, withdrawals siempre False.
+
+Estado actual: Binance usa adapter nativo, el resto usa CCXTAdapter (20+ exchanges).
+No hay stubs NotImplementedError — CCXTAdapter cubre todos los exchanges no-Binance.
+"""
 
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 
@@ -11,20 +16,28 @@ from app.brokers.registry import (
     get_adapter,
     get_available_broker_ids,
     get_capabilities,
+    is_implemented,
     list_brokers,
 )
 
+# Brokers que el usuario decidio soportar explicitamente
+_REQUIRED_BROKERS = ("binance", "bybit", "coinbase", "kraken", "okx")
+
+
+def _creds(broker_id: str) -> BrokerCredentials:
+    return BrokerCredentials(broker_id=broker_id, api_key="k", api_secret="s")
+
 
 class TestListBrokers:
-    def test_returns_all_brokers(self):
+    def test_returns_all_required_brokers(self):
         brokers = list_brokers()
         ids = [b.broker_id for b in brokers]
-        assert "binance" in ids
-        assert "bybit" in ids
-        assert "coinbase" in ids
-        assert "kraken" in ids
-        assert "okx" in ids
-        assert len(brokers) == 5
+        for required in _REQUIRED_BROKERS:
+            assert required in ids, f"{required} should be registered"
+
+    def test_returns_at_least_5_brokers(self):
+        brokers = list_brokers()
+        assert len(brokers) >= 5
 
     def test_broker_info_has_display_name(self):
         brokers = list_brokers()
@@ -68,110 +81,58 @@ class TestGetCapabilities:
 
 class TestGetAdapter:
     def test_binance_adapter(self):
-        creds = BrokerCredentials(
-            broker_id="binance",
-            api_key="k",
-            api_secret="s",
-        )
-        adapter = get_adapter("binance", creds)
+        adapter = get_adapter("binance", _creds("binance"))
         assert isinstance(adapter, BrokerAdapter)
         assert adapter.get_broker_info().broker_id == "binance"
 
     def test_non_binance_blocked_without_flag(self):
-        creds = BrokerCredentials(
-            broker_id="bybit",
-            api_key="k",
-            api_secret="s",
-        )
-        with pytest.raises(BrokerError, match="Multi-broker deshabilitado"):
-            get_adapter("bybit", creds)
+        with patch("app.brokers.registry.get_settings") as mock_settings:
+            mock_settings.return_value.ENABLE_MULTI_BROKER = False
+            with pytest.raises(BrokerError, match="Multi-broker deshabilitado"):
+                get_adapter("bybit", _creds("bybit"))
 
-    def test_unknown_broker(self):
-        creds = BrokerCredentials(
-            broker_id="nonexistent",
-            api_key="k",
-            api_secret="s",
-        )
-        with pytest.raises(BrokerError, match="Multi-broker deshabilitado"):
-            get_adapter("nonexistent", creds)
+    def test_non_binance_allowed_with_flag(self):
+        with patch("app.brokers.registry.get_settings") as mock_settings:
+            mock_settings.return_value.ENABLE_MULTI_BROKER = True
+            adapter = get_adapter("bybit", _creds("bybit"))
+            assert isinstance(adapter, BrokerAdapter)
 
-
-class TestStubsNotImplemented:
-    """Los stubs deben lanzar NotImplementedError en todos los metodos excepto get_broker_info y get_capabilities."""
-
-    def _make_stub(self, broker_id: str) -> BrokerAdapter:
-        creds = BrokerCredentials(broker_id=broker_id, api_key="k", api_secret="s")
-        from app.brokers.registry import _register_adapters
-        _register_adapters()
-        from app.brokers.registry import _ADAPTER_CLASSES
-        cls = _ADAPTER_CLASSES[broker_id]
-        return cls(creds)
-
-    def test_bybit_validate_credentials(self):
-        adapter = self._make_stub("bybit")
-        with pytest.raises(NotImplementedError):
-            adapter.validate_credentials()
-
-    def test_bybit_get_account_balances(self):
-        adapter = self._make_stub("bybit")
-        with pytest.raises(NotImplementedError):
-            adapter.get_account_balances()
-
-    def test_bybit_get_ticker(self):
-        adapter = self._make_stub("bybit")
-        with pytest.raises(NotImplementedError):
-            adapter.get_ticker("BTC/USDT")
-
-    def test_bybit_place_order(self):
-        adapter = self._make_stub("bybit")
-        from app.brokers.models import OrderRequest, OrderSide, OrderType
-
-        with pytest.raises(NotImplementedError):
-            adapter.place_order(
-                OrderRequest(
-                    symbol="BTC/USDT",
-                    side=OrderSide.BUY,
-                    order_type=OrderType.MARKET,
-                    quantity=Decimal("0.1"),
-                )
-            )
-
-    def test_coinbase_validate_credentials(self):
-        adapter = self._make_stub("coinbase")
-        with pytest.raises(NotImplementedError):
-            adapter.validate_credentials()
-
-    def test_kraken_validate_credentials(self):
-        adapter = self._make_stub("kraken")
-        with pytest.raises(NotImplementedError):
-            adapter.validate_credentials()
-
-    def test_okx_validate_credentials(self):
-        adapter = self._make_stub("okx")
-        with pytest.raises(NotImplementedError):
-            adapter.validate_credentials()
-
-    def test_bybit_get_broker_info_works(self):
-        adapter = self._make_stub("bybit")
-        info = adapter.get_broker_info()
-        assert info.broker_id == "bybit"
-
-    def test_bybit_get_capabilities_works(self):
-        adapter = self._make_stub("bybit")
-        caps = adapter.get_capabilities()
-        assert caps.withdrawals is False
+    def test_unknown_broker_raises(self):
+        with patch("app.brokers.registry.get_settings") as mock_settings:
+            mock_settings.return_value.ENABLE_MULTI_BROKER = True
+            with pytest.raises(BrokerError, match="Broker desconocido"):
+                get_adapter("nonexistent", _creds("nonexistent"))
 
 
 class TestWithdrawalsAlwaysFalse:
     """withdrawals debe ser False en todos los brokers, sin excepcion."""
 
-    def test_all_brokers_withdrawals_false(self):
-        for broker_id in ("binance", "bybit", "coinbase", "kraken", "okx"):
+    def test_all_required_brokers_withdrawals_false(self):
+        for broker_id in _REQUIRED_BROKERS:
             caps = get_capabilities(broker_id)
             assert caps.withdrawals is False, f"{broker_id} should have withdrawals=False"
 
 
 class TestGetAvailableBrokerIds:
     def test_only_binance_by_default(self):
-        ids = get_available_broker_ids()
-        assert ids == ("binance",)
+        with patch("app.brokers.registry.get_settings") as mock_settings:
+            mock_settings.return_value.ENABLE_MULTI_BROKER = False
+            ids = get_available_broker_ids()
+            assert ids == ("binance",)
+
+    def test_all_brokers_when_flag_enabled(self):
+        with patch("app.brokers.registry.get_settings") as mock_settings:
+            mock_settings.return_value.ENABLE_MULTI_BROKER = True
+            ids = get_available_broker_ids()
+            assert "binance" in ids
+            assert "bybit" in ids
+            assert len(ids) >= 5
+
+
+class TestIsImplemented:
+    def test_required_brokers_are_implemented(self):
+        for broker_id in _REQUIRED_BROKERS:
+            assert is_implemented(broker_id), f"{broker_id} should be implemented"
+
+    def test_unknown_broker_not_implemented(self):
+        assert not is_implemented("nonexistent")

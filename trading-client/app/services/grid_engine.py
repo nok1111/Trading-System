@@ -40,8 +40,7 @@ class GridEngine:
         """Detect if broker uses CCXT interface (OrderRequest -> OrderExecutionResult)."""
         # CCXTAdapter and other adapters have 'adapter_type' or use OrderRequest
         broker_class = type(self._broker).__name__
-        if broker_class in ("CCXTAdapter", "BybitAdapter", "OKXAdapter", "KrakenAdapter",
-                            "CoinbaseAdapter", "BinanceAdapter"):
+        if broker_class in ("CCXTAdapter", "BinanceAdapter"):
             return True
         # Check if place_order signature matches CCXT (takes OrderRequest, not Order)
         import inspect

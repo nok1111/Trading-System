@@ -30,8 +30,7 @@ class DCAEngine:
     def _detect_ccxt(self) -> bool:
         """Detect if broker uses CCXT interface (OrderRequest -> OrderExecutionResult)."""
         broker_class = type(self._broker).__name__
-        if broker_class in ("CCXTAdapter", "BybitAdapter", "OKXAdapter", "KrakenAdapter",
-                            "CoinbaseAdapter", "BinanceAdapter"):
+        if broker_class in ("CCXTAdapter", "BinanceAdapter"):
             return True
         import inspect
         try:

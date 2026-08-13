@@ -1472,7 +1472,7 @@ class AITradingAgent:
 
         # Map asset to trading symbol (add USDT suffix if needed)
         symbol = asset.upper().replace("/", "")
-        if not any(symbol.endswith(q) for q in self._QUOTE_CURRENCIES):
+        if not any(symbol.endswith(q) and len(symbol) > len(q) for q in self._QUOTE_CURRENCIES):
             symbol = symbol + "USDT"
 
         # Get risk parameters from PROFILE_RISK_LIMITS (single source of truth)

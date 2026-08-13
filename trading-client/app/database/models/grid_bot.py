@@ -21,7 +21,7 @@ class GridBot(Base):
     __tablename__ = "grid_bots"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, default=0)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     broker_id: Mapped[str] = mapped_column(String(50), nullable=False, default="binance")
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)  # BTC/USDT (CCXT format)
@@ -74,7 +74,7 @@ class DCABot(Base):
     __tablename__ = "dca_bots"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, default=0)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     broker_id: Mapped[str] = mapped_column(String(50), nullable=False, default="binance")
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)  # BTC/USDT
