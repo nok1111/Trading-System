@@ -90,9 +90,9 @@ class PositionReconciler:
 
         session = SessionLocal()
         try:
-            # Get all connected broker accounts (status active or validated)
+            # Get all connected broker accounts (any active status)
             accounts = session.query(BrokerAccount).filter(
-                BrokerAccount.status.in_(["active", "validated", "ok", "connected"]),
+                BrokerAccount.status.notin_(["pending_validation", "revoked", "error", "disconnected", ""]),
             ).all()
 
             if not accounts:

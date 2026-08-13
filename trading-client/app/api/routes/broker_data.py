@@ -33,6 +33,7 @@ from app.brokers.models import (
     OrderRequest,
     OrderSide,
     OrderType,
+    Position as BrokerPosition,
     normalize_symbol,
 )
 from app.brokers.registry import get_adapter
@@ -190,12 +191,36 @@ def get_orders(
     """
     adapter = _get_adapter(broker_id, current_user)
 
-    try:
-        orders = adapter.get_order_history(symbol=symbol, limit=limit)
-    except BrokerError as exc:
-        return {"error": str(exc), "orders": [], "active": [], "filled": []}
-    except Exception as exc:
-        return {"error": f"Error: {exc}", "orders": [], "active": [], "filled": []}
+    # If symbol provided, fetch directly
+    if symbol:
+        try:
+            orders = adapter.get_order_history(symbol=normalize_symbol(symbol), limit=limit)
+        except BrokerError as exc:
+            return {"error": str(exc), "orders": [], "active": [], "filled": []}
+        except Exception as exc:
+            return {"error": f"Error: {exc}", "orders": [], "active": [], "filled": []}
+    else:
+        # No symbol: try fetching all orders (works for futures/CCXT)
+        # For spot brokers that require symbol, iterate over balances
+        try:
+            orders = adapter.get_order_history(symbol=None, limit=limit)
+        except (BrokerError, Exception):
+            # Fallback: iterate over non-stablecoin balances
+            orders = ()
+            STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP", "GUSD", "PAX", "EUR"}
+            try:
+                balances = adapter.get_account_balances()
+                for bal in balances:
+                    if bal.asset in STABLECOINS or bal.total <= 0:
+                        continue
+                    try:
+                        sym = normalize_symbol(f"{bal.asset}/USDT")
+                        o = adapter.get_order_history(symbol=sym, limit=limit)
+                        orders = orders + o
+                    except Exception:
+                        continue
+            except Exception as exc:
+                return {"error": f"Error: {exc}", "orders": [], "active": [], "filled": []}
 
     result = []
     for o in orders:
@@ -244,15 +269,43 @@ def get_trades(
     limit: int = Query(50, ge=1, le=200),
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
-    """Trades ejecutados directo del broker (fills individuales con comision real)."""
+    """Trades ejecutados directo del broker (fills individuales con comision real).
+
+    Para spot (Binance): myTrades requiere symbol obligatorio, así que si no
+    se pasa symbol, se itera sobre los balances no-stablecoin.
+    """
     adapter = _get_adapter(broker_id, current_user)
 
-    try:
-        trades = adapter.get_trades(symbol=symbol, limit=limit)
-    except BrokerError as exc:
-        return {"error": str(exc), "trades": [], "count": 0}
-    except Exception as exc:
-        return {"error": f"Error: {exc}", "trades": [], "count": 0}
+    # If symbol provided, fetch directly
+    if symbol:
+        try:
+            trades = adapter.get_trades(symbol=normalize_symbol(symbol), limit=limit)
+        except BrokerError as exc:
+            return {"error": str(exc), "trades": [], "count": 0}
+        except Exception as exc:
+            return {"error": f"Error: {exc}", "trades": [], "count": 0}
+    else:
+        # No symbol: try fetching all trades (works for futures/CCXT)
+        # For spot brokers that require symbol, iterate over balances
+        try:
+            trades = adapter.get_trades(symbol=None, limit=limit)
+        except (BrokerError, Exception):
+            # Fallback: iterate over non-stablecoin balances
+            trades = ()
+            STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP", "GUSD", "PAX", "EUR"}
+            try:
+                balances = adapter.get_account_balances()
+                for bal in balances:
+                    if bal.asset in STABLECOINS or bal.total <= 0:
+                        continue
+                    try:
+                        sym = normalize_symbol(f"{bal.asset}/USDT")
+                        t = adapter.get_trades(symbol=sym, limit=limit)
+                        trades = trades + t
+                    except Exception:
+                        continue
+            except Exception as exc:
+                return {"error": f"Error: {exc}", "trades": [], "count": 0}
 
     result = []
     for t in trades:
@@ -270,7 +323,7 @@ def get_trades(
         })
 
     result.sort(key=lambda x: x.get("time", 0), reverse=True)
-    return {"trades": result, "count": len(result), "source": "broker"}
+    return {"trades": result[:limit], "count": len(result), "source": "broker"}
 
 
 # ─── Positions ────────────────────────────────────────────────────────────────
@@ -315,7 +368,7 @@ def get_positions(
                     continue
 
             broker_positions = broker_positions + (
-                Position(
+                BrokerPosition(
                     symbol=f"{bal.asset}/USDT",
                     side="long",
                     quantity=bal.total,
