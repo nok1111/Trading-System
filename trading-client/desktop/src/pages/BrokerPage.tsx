@@ -418,18 +418,34 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
     }).catch(() => {});
   }, [brokerId]);
 
-  // Fetch tradable symbols from broker
+  // Fetch tradable symbols from broker + merge user's held assets
   useEffect(() => {
     setSymbolsLoading(true);
     brokerApi.getTopSymbols(brokerId, { quote: quoteCurrency, limit: 100 }).then((syms) => {
-      setBrokerSymbols(syms);
+      // Merge user's held assets that aren't in the top symbols list
+      // (e.g. low-volume tokens like QNTB that the user holds)
+      const STABLECOINS = ["USDT", "BUSD", "USDC", "FDUSD", "TUSD", "EUR", "TRY", "BRL", "MXN", "USD"];
+      const existingBases = new Set(syms.map((s) => s.base));
+      const heldAssets = (userBalance?.assets || []).filter(
+        (a: any) => a.total > 0 && !STABLECOINS.includes(a.asset) && !existingBases.has(a.asset)
+      );
+      const heldSyms: brokerApi.BrokerSymbol[] = heldAssets.map((a: any) => ({
+        symbol: `${a.asset}/${quoteCurrency}`,
+        base: a.asset,
+        quote: quoteCurrency,
+        price: 0,
+        change_24h_pct: 0,
+        volume: 0,
+      }));
+      const allSyms = [...syms, ...heldSyms];
+      setBrokerSymbols(allSyms);
       // If no preset symbol, default to BTC/{quote}
-      if (!presetSymbol && syms.length > 0) {
-        const btc = syms.find((s) => s.base === "BTC");
+      if (!presetSymbol && allSyms.length > 0) {
+        const btc = allSyms.find((s) => s.base === "BTC");
         if (btc) setSymbol(btc.symbol);
       }
     }).finally(() => setSymbolsLoading(false));
-  }, [brokerId, quoteCurrency]);
+  }, [brokerId, quoteCurrency, userBalance]);
 
   useEffect(() => {
     if (presetSymbol) setSymbol(presetSymbol);
@@ -481,7 +497,9 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
   // Available balance for the current operation
   const baseAsset = symbol.includes("/") ? symbol.split("/")[0] : symbol.replace(quoteCurrency, "");
   const availableUsdt = userBalance?.assets?.find((a: any) => a.asset === quoteCurrency)?.free || 0;
-  const availableAsset = userBalance?.assets?.find((a: any) => a.asset === baseAsset)?.free || 0;
+  const assetBalance = userBalance?.assets?.find((a: any) => a.asset === baseAsset);
+  const availableAsset = assetBalance?.free || 0;
+  const lockedAsset = assetBalance?.locked || 0;
 
   // Find open position for P&L calculation (sell)
   const openPos = openPositions.find((p: any) => p.symbol === symbol && p.status === "open");
@@ -692,7 +710,11 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
             {side === "buy" ? (
               <span className="font-bold text-green-400">{availableUsdt.toFixed(2)} {quoteCurrency}</span>
             ) : (
-              <span className="font-bold text-red-400">{availableAsset.toFixed(6)} {baseAsset}{heldQty > 0 && heldQty < availableAsset ? ` (pos: ${heldQty.toFixed(6)})` : ""}</span>
+              <span className="font-bold text-red-400">
+                {availableAsset.toFixed(6)} {baseAsset}
+                {lockedAsset > 0 && availableAsset === 0 && ` (${lockedAsset.toFixed(6)} locked)`}
+                {heldQty > 0 && heldQty < availableAsset ? ` (pos: ${heldQty.toFixed(6)})` : ""}
+              </span>
             )}
           </div>
 
