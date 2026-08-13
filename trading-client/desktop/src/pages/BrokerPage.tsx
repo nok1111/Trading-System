@@ -1518,18 +1518,29 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
     if (!brokerId) return;
     // Check available balance before attempting to sell
     const baseAsset = symbol.includes("/") ? symbol.split("/")[0] : symbol.replace("USDT", "");
-    const assetBal = balanceData?.assets?.find((a: any) => a.asset === baseAsset);
-    const freeBal = assetBal?.free || 0;
-    const lockedBal = assetBal?.locked || 0;
 
+    // Fetch fresh balance from broker (don't rely on cached balanceData)
+    let freeBal = 0;
+    let lockedBal = 0;
+    try {
+      const freshBal = await brokerApi.getBalance(brokerId);
+      const assetInfo = freshBal?.assets?.find((a: any) => a.asset === baseAsset);
+      freeBal = assetInfo?.free || 0;
+      lockedBal = assetInfo?.locked || 0;
+    } catch {
+      // If we can't fetch balance, try with cached data
+      const assetBal = balanceData?.assets?.find((a: any) => a.asset === baseAsset);
+      freeBal = assetBal?.free || 0;
+      lockedBal = assetBal?.locked || 0;
+    }
+
+    // If balance is locked, cancel pending orders first
     if (freeBal <= 0 && lockedBal > 0) {
-      // All balance is locked in pending orders — offer to cancel them first
       if (!confirm(
         `No puedes cerrar esta posición porque tienes ${lockedBal} ${baseAsset} bloqueado(s) en órdenes pendientes.\n\n` +
-        `¿Quieres cancelar las órdenes pendientes de ${symbol} primero para liberar el saldo?`
+        `¿Cancelar las órdenes pendientes y cerrar la posición?`
       )) return;
       try {
-        // Fetch open orders for this symbol and cancel them
         const ordersResp = await brokerApi.getOrders(brokerId, { symbol, status: "open" });
         const activeOrders = ordersResp.active || [];
         if (activeOrders.length === 0) {
@@ -1547,17 +1558,27 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
             // Continue cancelling others even if one fails
           }
         }
-        toast(`Órdenes canceladas: ${activeOrders.length}. Espera unos segundos para que se libere el saldo.`, true);
-        // Wait a moment for the broker to release the balance
-        await new Promise(r => setTimeout(r, 2000));
+        toast(`Cancelando ${activeOrders.length} orden(es)...`, true);
+        // Wait for broker to release the balance
+        await new Promise(r => setTimeout(r, 3000));
+        // Re-fetch balance after cancellation
+        try {
+          const refetched = await brokerApi.getBalance(brokerId);
+          const refetchedAsset = refetched?.assets?.find((a: any) => a.asset === baseAsset);
+          freeBal = refetchedAsset?.free || 0;
+        } catch {
+          // If re-fetch fails, assume the full locked amount is now free
+          freeBal = lockedBal;
+        }
+        if (freeBal <= 0) {
+          toast(`El saldo no se liberó aún. Intenta de nuevo en unos segundos.`, false);
+          await loadLivePositions();
+          return;
+        }
       } catch (e: any) {
         toast(`Error al cancelar órdenes: ${e?.message || e}`, false);
         return;
       }
-      // Re-check balance after cancelling
-      // The user will need to click "Cerrar" again after balance updates
-      toast(`Saldo liberado. Haz clic en "Cerrar posición" de nuevo.`, true);
-      return;
     }
 
     if (freeBal <= 0) {
@@ -1581,7 +1602,8 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
       // Mark position as closed in DB
       await api(`/api/intelligence/positions/${positionId}/stop-monitoring`, { method: "POST" }).catch(() => {});
       toast(`Posición cerrada: ${resp.executedQty || sellQty} ${baseAsset}`, true);
-      await loadLivePositions();
+      // Refresh both positions and balances
+      await Promise.all([loadLivePositions(), loadBrokerBalances()]);
     } catch (e: any) {
       toast(e?.message || "Error al cerrar posición", false);
     }
