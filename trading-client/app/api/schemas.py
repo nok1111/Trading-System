@@ -27,7 +27,7 @@ class OrderOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    client_order_id: str
+    client_order_id: str | None = None
     broker_order_id: str | None = None
     timestamp: datetime
     symbol: str
@@ -58,8 +58,8 @@ class PositionOut(BaseModel):
     realized_pnl: Decimal
     status: str
     strategy_name: str
-    metadata_json: dict = {}
-    auto_sell_enabled: bool = True
+    metadata_json: dict | None = None
+    auto_sell_enabled: bool | None = None
     created_at: datetime
 
 
