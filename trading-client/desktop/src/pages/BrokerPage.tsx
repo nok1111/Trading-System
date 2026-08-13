@@ -216,7 +216,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol, presetStopLoss, p
       ) : module === "markets" ? (
         <MarketsModule brokerId={brokerId} />
       ) : module === "positions" ? (
-        <PositionsModule positions={positions} brokerId={brokerId} />
+        <PositionsModule positions={positions} brokerId={brokerId} balanceData={balanceData} />
       ) : module === "orders" ? (
         <OrdersModule activeOrders={brokerActiveOrders} filledOrders={brokerFilledOrders} brokerDisplayName={broker?.displayName || brokerId} />
       ) : module === "history" ? (
@@ -1363,7 +1363,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
   );
 }
 
-function PositionsModule({ positions: propPositions, brokerId }: { positions: any[]; brokerId: string | null }) {
+function PositionsModule({ positions: propPositions, brokerId, balanceData }: { positions: any[]; brokerId: string | null; balanceData: any }) {
   const { connectedAccounts } = useBrokerContext();
   const [expandedCharts, setExpandedCharts] = useState<Set<string>>(new Set());
   const [paperStatus, setPaperStatus] = useState<any>(null);
@@ -1516,13 +1516,63 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
 
   const handleClosePosition = async (positionId: number, symbol: string, quantity: number) => {
     if (!brokerId) return;
-    if (!confirm(`¿Cerrar posición de ${quantity} ${symbol} a precio de mercado?`)) return;
+    // Check available balance before attempting to sell
+    const baseAsset = symbol.includes("/") ? symbol.split("/")[0] : symbol.replace("USDT", "");
+    const assetBal = balanceData?.assets?.find((a: any) => a.asset === baseAsset);
+    const freeBal = assetBal?.free || 0;
+    const lockedBal = assetBal?.locked || 0;
+
+    if (freeBal <= 0 && lockedBal > 0) {
+      // All balance is locked in pending orders — offer to cancel them first
+      if (!confirm(
+        `No puedes cerrar esta posición porque tienes ${lockedBal} ${baseAsset} bloqueado(s) en órdenes pendientes.\n\n` +
+        `¿Quieres cancelar las órdenes pendientes de ${symbol} primero para liberar el saldo?`
+      )) return;
+      try {
+        // Fetch open orders for this symbol and cancel them
+        const ordersResp = await brokerApi.getOrders(brokerId, { symbol, status: "open" });
+        const activeOrders = ordersResp.active || [];
+        if (activeOrders.length === 0) {
+          toast(`No se encontraron órdenes pendientes para ${symbol}. El saldo puede estar bloqueado por otra razón.`, false);
+          return;
+        }
+        for (const o of activeOrders) {
+          try {
+            await brokerApi.cancelOrder(brokerId, {
+              broker_order_id: o.orderId,
+              client_order_id: o.clientOrderId,
+              symbol,
+            });
+          } catch (e) {
+            // Continue cancelling others even if one fails
+          }
+        }
+        toast(`Órdenes canceladas: ${activeOrders.length}. Espera unos segundos para que se libere el saldo.`, true);
+        // Wait a moment for the broker to release the balance
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (e: any) {
+        toast(`Error al cancelar órdenes: ${e?.message || e}`, false);
+        return;
+      }
+      // Re-check balance after cancelling
+      // The user will need to click "Cerrar" again after balance updates
+      toast(`Saldo liberado. Haz clic en "Cerrar posición" de nuevo.`, true);
+      return;
+    }
+
+    if (freeBal <= 0) {
+      toast(`Sin saldo libre de ${baseAsset} para vender`, false);
+      return;
+    }
+
+    const sellQty = Math.min(quantity, freeBal);
+    if (!confirm(`¿Cerrar posición de ${sellQty} ${baseAsset} a precio de mercado?`)) return;
     try {
       const resp = await brokerApi.placeOrder(brokerId, {
         symbol,
         side: "sell",
         order_type: "market",
-        quantity,
+        quantity: sellQty,
       });
       if (resp.error) {
         toast(`Error: ${resp.error}`, false);
@@ -1530,7 +1580,7 @@ function PositionsModule({ positions: propPositions, brokerId }: { positions: an
       }
       // Mark position as closed in DB
       await api(`/api/intelligence/positions/${positionId}/stop-monitoring`, { method: "POST" }).catch(() => {});
-      toast(`Posición cerrada: ${resp.executedQty || quantity} ${symbol}`, true);
+      toast(`Posición cerrada: ${resp.executedQty || sellQty} ${baseAsset}`, true);
       await loadLivePositions();
     } catch (e: any) {
       toast(e?.message || "Error al cerrar posición", false);
