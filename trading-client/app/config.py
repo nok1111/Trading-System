@@ -96,6 +96,37 @@ class Settings(BaseSettings):
     MACRO_CALENDAR_URL: str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
     # Public market data fallback (used when no broker is connected)
     PUBLIC_MARKET_DATA_URL: str = "https://api.binance.com"
+    # Risk engine parameters
+    TRAILING_STOP_PCT: float = Field(default=2.0, gt=0.0, le=50.0)
+    BREAKEVEN_THRESHOLD_PCT: float = Field(default=2.0, gt=0.0, le=50.0)
+    # Profile risk limits (SL/TP ranges, min confidence, max positions per risk profile)
+    CONSERVATIVE_SL_RANGE: str = "2.0,3.0"
+    CONSERVATIVE_TP_RANGE: str = "4.0,8.0"
+    CONSERVATIVE_MIN_CONFIDENCE: float = Field(default=0.7, ge=0.0, le=1.0)
+    MODERATE_SL_RANGE: str = "3.0,4.0"
+    MODERATE_TP_RANGE: str = "6.0,10.0"
+    MODERATE_MIN_CONFIDENCE: float = Field(default=0.6, ge=0.0, le=1.0)
+    AGGRESSIVE_SL_RANGE: str = "4.0,5.0"
+    AGGRESSIVE_TP_RANGE: str = "8.0,15.0"
+    AGGRESSIVE_MIN_CONFIDENCE: float = Field(default=0.5, ge=0.0, le=1.0)
+    MAX_POSITIONS_PER_PROFILE: int = Field(default=999, ge=1)
+    # LLM models that benefit from few-shot examples
+    LIGHTWEIGHT_MODELS: str = "llama-3.1-8b-instant,llama3.2:3b,qwen2.5:7b,qwen2.5:14b,gemini-flash-lite-latest,gpt-4o-mini"
+    # Premium LLM provider defaults (model and base_url per provider)
+    OPENAI_DEFAULT_MODEL: str = "gpt-4o-mini"
+    OPENAI_DEFAULT_BASE_URL: str = "https://api.openai.com/v1"
+    DEEPSEEK_DEFAULT_MODEL: str = "deepseek-chat"
+    DEEPSEEK_DEFAULT_BASE_URL: str = "https://api.deepseek.com/v1"
+    MISTRAL_DEFAULT_MODEL: str = "mistral-small-latest"
+    MISTRAL_DEFAULT_BASE_URL: str = "https://api.mistral.ai/v1"
+    TOGETHER_DEFAULT_MODEL: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+    TOGETHER_DEFAULT_BASE_URL: str = "https://api.together.xyz/v1"
+    PERPLEXITY_DEFAULT_MODEL: str = "llama-3.1-sonar-small-128k-online"
+    PERPLEXITY_DEFAULT_BASE_URL: str = "https://api.perplexity.ai"
+    GROK_DEFAULT_MODEL: str = "grok-beta"
+    GROK_DEFAULT_BASE_URL: str = "https://api.x.ai/v1"
+    # AI prompts directory (externalized prompt files)
+    AI_PROMPTS_DIR: str = "app/ai/prompts"
 
     @field_validator("DEFAULT_SYMBOLS")
     @classmethod
@@ -142,6 +173,33 @@ class Settings(BaseSettings):
             if isinstance(value, _Decimal):
                 safe[key] = str(value)
         return safe
+
+    def get_profile_risk_limits(self) -> dict[str, dict[str, Any]]:
+        """Build PROFILE_RISK_LIMITS dict from configurable settings."""
+        def _parse_range(s: str) -> tuple[float, float]:
+            parts = [float(x.strip()) for x in s.split(",")]
+            return (parts[0], parts[1])
+        max_pos = self.MAX_POSITIONS_PER_PROFILE
+        return {
+            "conservative": {"sl_range": _parse_range(self.CONSERVATIVE_SL_RANGE), "tp_range": _parse_range(self.CONSERVATIVE_TP_RANGE), "min_confidence": self.CONSERVATIVE_MIN_CONFIDENCE, "max_positions": max_pos},
+            "moderate":     {"sl_range": _parse_range(self.MODERATE_SL_RANGE), "tp_range": _parse_range(self.MODERATE_TP_RANGE), "min_confidence": self.MODERATE_MIN_CONFIDENCE, "max_positions": max_pos},
+            "aggressive":   {"sl_range": _parse_range(self.AGGRESSIVE_SL_RANGE), "tp_range": _parse_range(self.AGGRESSIVE_TP_RANGE), "min_confidence": self.AGGRESSIVE_MIN_CONFIDENCE, "max_positions": max_pos},
+        }
+
+    def get_lightweight_models(self) -> frozenset[str]:
+        """Build LIGHTWEIGHT_MODELS frozenset from configurable setting."""
+        return frozenset(m.strip() for m in self.LIGHTWEIGHT_MODELS.split(",") if m.strip())
+
+    def get_provider_defaults(self) -> dict[str, dict]:
+        """Build PROVIDER_DEFAULTS dict from configurable settings."""
+        return {
+            "openai": {"model": self.OPENAI_DEFAULT_MODEL, "base_url": self.OPENAI_DEFAULT_BASE_URL},
+            "deepseek": {"model": self.DEEPSEEK_DEFAULT_MODEL, "base_url": self.DEEPSEEK_DEFAULT_BASE_URL},
+            "mistral": {"model": self.MISTRAL_DEFAULT_MODEL, "base_url": self.MISTRAL_DEFAULT_BASE_URL},
+            "together": {"model": self.TOGETHER_DEFAULT_MODEL, "base_url": self.TOGETHER_DEFAULT_BASE_URL},
+            "perplexity": {"model": self.PERPLEXITY_DEFAULT_MODEL, "base_url": self.PERPLEXITY_DEFAULT_BASE_URL},
+            "grok": {"model": self.GROK_DEFAULT_MODEL, "base_url": self.GROK_DEFAULT_BASE_URL},
+        }
 
 
 @lru_cache(maxsize=1)

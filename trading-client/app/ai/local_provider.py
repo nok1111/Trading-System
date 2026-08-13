@@ -25,15 +25,11 @@ logger = logging.getLogger(__name__)
 class LocalAIProvider(AIProvider):
     """Proveedor de IA local con cadena de fallback entre Groq, Gemini, OpenAI-compat y Ollama."""
 
-    # Default models per premium provider
-    PROVIDER_DEFAULTS: dict[str, dict] = {
-        "openai": {"model": "gpt-4o-mini", "base_url": "https://api.openai.com/v1"},
-        "deepseek": {"model": "deepseek-chat", "base_url": "https://api.deepseek.com/v1"},
-        "mistral": {"model": "mistral-small-latest", "base_url": "https://api.mistral.ai/v1"},
-        "together": {"model": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", "base_url": "https://api.together.xyz/v1"},
-        "perplexity": {"model": "llama-3.1-sonar-small-128k-online", "base_url": "https://api.perplexity.ai"},
-        "grok": {"model": "grok-beta", "base_url": "https://api.x.ai/v1"},
-    }
+    # Default models per premium provider (loaded from config)
+    @property
+    def PROVIDER_DEFAULTS(self) -> dict[str, dict]:
+        from app.config import get_settings
+        return get_settings().get_provider_defaults()
 
     def __init__(self, config: AIProviderConfig) -> None:
         self._config = config

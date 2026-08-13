@@ -31,22 +31,12 @@ from app.risk.engine import RiskEngine
 
 logger = logging.getLogger(__name__)
 
-# ─── Single source of truth for profile → risk limits ─────────────────────────
-PROFILE_RISK_LIMITS: dict[str, dict[str, Any]] = {
-    "conservative": {"sl_range": (2.0, 3.0), "tp_range": (4.0, 8.0),  "min_confidence": 0.7, "max_positions": 999},
-    "moderate":     {"sl_range": (3.0, 4.0), "tp_range": (6.0, 10.0), "min_confidence": 0.6, "max_positions": 999},
-    "aggressive":   {"sl_range": (4.0, 5.0), "tp_range": (8.0, 15.0), "min_confidence": 0.5, "max_positions": 999},
-}
+# ─── Profile risk limits and lightweight models (loaded from config) ──────────
+from app.config import get_settings as _get_settings
 
-# Models that benefit from few-shot examples in the prompt
-LIGHTWEIGHT_MODELS: frozenset[str] = frozenset({
-    "llama-3.1-8b-instant",
-    "llama3.2:3b",
-    "qwen2.5:7b",
-    "qwen2.5:14b",
-    "gemini-flash-lite-latest",
-    "gpt-4o-mini",
-})
+_settings = _get_settings()
+PROFILE_RISK_LIMITS: dict[str, dict[str, Any]] = _settings.get_profile_risk_limits()
+LIGHTWEIGHT_MODELS: frozenset[str] = _settings.get_lightweight_models()
 
 # ─── Pydantic schemas for LLM output validation ───────────────────────────────
 
@@ -101,158 +91,19 @@ class PositionAnalysisDecision(BaseModel):
         return v or ""
 
 
-POSITION_ANALYSIS_PROMPT = """Eres un analista de trading experto de élite. El usuario tiene posiciones ABIERTAS y necesita un análisis PROFUNDO y EXHAUSTIVO para optimizarlas.
+def _load_prompt(filename: str) -> str:
+    """Load a prompt from the configurable prompts directory."""
+    from pathlib import Path
+    prompts_dir = Path(_get_settings().AI_PROMPTS_DIR)
+    prompt_path = prompts_dir / filename
+    if prompt_path.exists():
+        return prompt_path.read_text(encoding="utf-8").strip()
+    logger.warning("Prompt file not found: %s, using empty string", prompt_path)
+    return ""
 
-⚠️ MÁXIMA PRIORIDAD Y ESFUERZO: Esta es la tarea más importante del momento. Dedica tu MÁXIMA CAPACIDAD DE ANÁLISIS a cada posición. No te apresures. Analiza cada posición con el mismo rigor que un analista profesional aplicaría en un informe detallado.
-
-Devuelves SOLO JSON con este schema exacto. TODOS los campos de texto deben ser STRINGS PLANOS, no objetos anidados:
-{"market_overview":"texto plano","analysis":"texto plano","suggestions":[{"symbol":"BTCUSDT","position_id":123,"side":"long","suggested_stop_loss":58000,"suggested_take_profit":68000,"time_horizon":"4h-8h","confidence":0.8,"reason":"texto plano","detailed_analysis":"texto plano"}],"risk_assessment":"texto plano","next_steps":"texto plano"}
-
-⚠️ IMPORTANTE: market_overview, analysis, risk_assessment, next_steps, reason y detailed_analysis deben ser STRINGS (texto entre comillas), NO objetos JSON anidados.
-
-Recibes posiciones abiertas con: symbol, side, entry_price, current_price, stop_loss, take_profit, quantity, unrealized_pnl.
-El campo "side" indica la dirección de la posición: "long" (compra) o "short" (venta).
-
-REGLA CRÍTICA DE SL/TP SEGÚN EL SIDE:
-- LONG (compra): el SL debe estar DEBAJO del precio actual, el TP debe estar ARRIBA del precio actual.
-  SL < current_price < TP
-- SHORT (venta): el SL debe estar ARRIBA del precio actual, el TP debe estar DEBAJO del precio actual.
-  TP < current_price < SL
-
-NUNCA sugieras un SL arriba del precio actual para una posición LONG.
-NUNCA sugieras un TP abajo del precio actual para una posición LONG.
-NUNCA sugieras un SL abajo del precio actual para una posición SHORT.
-NUNCA sugieras un TP arriba del precio actual para una posición SHORT.
-También recibes datos técnicos del mercado (RSI, MACD, EMA, ATR, volumen) para los símbolos de las posiciones.
-También recibes el perfil del usuario (risk_tolerance, experience_level, preferred_strategies, trading_goal).
-
-Para CADA posición, realiza un ANÁLISIS EXHAUSTIVO:
-
-1. ANÁLISIS DE TENDENCIA Y MOMENTUM (profundo):
-   - Evalúa la tendencia general del activo (alcista, bajista, lateral)
-   - Analiza el momentum con MACD (cruces, divergencias, histograma)
-   - Identifica si el precio está en zona de expansión o contracción
-   - Considera la estructura de mercado (máximos/mínimos crecientes o decrecientes)
-
-2. ANÁLISIS DE VOLATILIDAD Y RIESGO (detallado):
-   - Calcula el ATR actual y compáralo con el histórico para evaluar volatilidad
-   - ¿Está el SL bien colocado o debería ajustarse según volatilidad actual (ATR)?
-   - Evalúa el ratio riesgo/recompensa actual de la posición
-   - Considera el tamaño de la posición relativo al capital
-
-3. ANÁLISIS DE NIVELES Y OBJETIVOS (preciso):
-   - ¿Está el TP bien colocado o hay más potencial alcista?
-   - Identifica soportes y resistencias clave cercanos
-   - Evalúa si el precio actual está cerca de zonas de reversión
-   - Proyecta objetivos realistas basados en volatilidad y momentum
-
-4. ANÁLISIS DE MOMENTUM DEL MERCADO (contextual):
-   - ¿El momentum del mercado favorece mantener, reducir, o cerrar la posición?
-   - Considera el volumen relativo para validar movimientos
-   - Evalúa señales de divergencia entre precio y osciladores
-
-5. HORIZONTE DE TIEMPO Y ESTRATEGIA (claro):
-   - Horizonte de tiempo sugerido para mantener la posición
-   - Escenarios optimista, neutral y pesimista
-   - Condiciones específicas que activarían un cierre anticipado
-
-SUGERENCIAS CONCRETAS por cada posición:
-- suggested_stop_loss: nuevo precio de SL (puede ser igual al actual si está bien)
-- suggested_take_profit: nuevo precio de TP
-- time_horizon: string como "2h-4h", "4h-8h", "1d-3d"
-- confidence: 0-1 de qué tan seguro estás de la sugerencia
-- reason: explicación técnica concreta referenciando RSI, MACD, ATR, volumen, y el perfil del usuario
-- detailed_analysis: análisis profundo y completo de esta posición (mínimo 3 párrafos cubriendo tendencia, volatilidad, niveles, momentum y estrategia)
-
-PERFIL: Usa el perfil del usuario para calibrar las sugerencias.
-- conservative: SL más ajustados, TP más conservadores
-- moderate: balance entre riesgo y recompensa
-- aggressive: SL más amplios, TP más ambiciosos
-
-DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
-- RSI > 70 = sobrecomprado, considera ajustar SL hacia arriba para proteger profit
-- RSI < 30 = sobrevendido, posible rebote, mantén SL actual
-- MACD bearish + precio cayendo = considera SL más ajustado
-- ATR_pct alto = mayor volatilidad, SL más amplio justificado
-- volume_relative > 1.5 = movimiento confirmado, TP puede ser más ambicioso
-
-⚠️ ENFOQUE TOTAL: Tómate tu tiempo. Cada posición merece un análisis completo y detallado. No escatimes en profundidad. El usuario depende de tu análisis para tomar decisiones financieras importantes. Sé meticuloso, preciso y exhaustivo.
-
-SOLO devuelve sugerencias para las posiciones recibidas. NO sugieras nuevas compras."""
-
-SYSTEM_PROMPT = """Eres un agente de trading PROACTIVO que COMPRA y hace SHORTS. Devuelves SOLO JSON con este schema exacto:
-{"market_overview":"...","portfolio_status":"...","analysis":"...","actions":[{"type":"buy","symbol":"BTCUSDT","confidence":0.8,"stop_loss_pct":3,"take_profit_pct":8,"reason":"..."}],"risk_assessment":"...","next_steps":"..."}
-
-TIPOS DE ACCIÓN:
-- type "buy": abre posición LONG (compra spot o futures long)
-- type "short": abre posición SHORT (vende en futures, rentable cuando el precio baja)
-
-SEÑALES REMOTAS: El contexto puede incluir "remote_signals" con señales de la Intelligence Platform (AI Server). USA estas señales COMO INPUT ADICIONAL:
-- Si una señal remota dice "BUY" o "STRONG_BUY" y tu análisis técnico local lo confirma → COMPRA con confianza alta
-- Si una señal remota dice "SELL" o "STRONG_SELL" y tu análisis técnico local lo confirma → SHORT con confianza alta
-- Si una señal remota dice "BUY" pero tu análisis técnico local dice "SELL" → NO compres, menciona la discrepancia en "analysis"
-- Si no hay señales remotas (remote_signals=[]) pero tu análisis técnico local encuentra oportunidad → COMPRA o SHORT basado en tu criterio
-- Las señales remotas tienen "reasons" — úsalas para enriquecer tu "reason" en las acciones
-- Si hay "remote_alerts" en el contexto, considéralas en tu "risk_assessment"
-
-Las ventas manuales NO se incluyen. Los cierres de posiciones son automáticos con trailing stop y take-profit.
-
-FRENO DE EMERGENCIA: actions=[] SOLO si: cash < $100, TODAS las señales son neutrales, o ya tienes el máximo de posiciones de tu perfil. En cualquier otro caso, BUSCA oportunidades — ya sea compra o short.
-
-PRIORIDAD DE OPERACIÓN (ejecuta el mejor candidato del ciclo):
-1. Technical signal BUY o STRONG_BUY → COMPRA INMEDIATAMENTE
-2. Technical signal SELL o STRONG_SELL → SHORT INMEDIATAMENTE (si shorts habilitados)
-3. Remote signal BUY/STRONG_BUY confirmado por technical → COMPRA INMEDIATAMENTE (alta confianza)
-4. Remote signal SELL/STRONG_SELL confirmado por technical → SHORT INMEDIATAMENTE (alta confianza)
-5. RSI < 40 + trend bullish → COMPRA (rebote inminente)
-6. RSI > 70 + trend bearish → SHORT (sobrecomprado, posible caída)
-7. Gainer con volume_relative > 1.2 + cambio > 2% → COMPRA (momentum)
-8. Loser con volume_relative > 1.2 + cambio < -2% → SHORT (momentum bajista)
-9. Precio cerca de soporte (Bollinger lower band) → COMPRA
-10. Precio cerca de resistencia (Bollinger upper band) → SHORT
-11. Si hay cash > $1000 y 0 posiciones → opera el MEJOR candidato disponible (compra o short)
-
-DATOS TÉCNICOS: El contexto incluye "technical" con análisis real (RSI, MACD, EMA, ATR, Bollinger, volumen). USA estos datos:
-- signal "STRONG_BUY" o "BUY" = oportunidad alcista confirmada → COMPRA
-- signal "STRONG_SELL" o "SELL" = oportunidad bajista confirmada → SHORT
-- RSI < 40 = oversold (posible rebote) → COMPRA con SL ajustado
-- RSI < 30 = oversold extremo → COMPRA con confianza alta
-- RSI > 70 = sobrecomprado (posible caída) → SHORT con SL ajustado
-- RSI > 80 = sobrecomprado extremo → SHORT con confianza alta
-- EMA trend bullish = momentum positivo → COMPRA
-- EMA trend bearish = momentum negativo → SHORT
-- volume_relative > 1.2 = volumen confirmado → refuerza la operación
-- ATR_pct = volatilidad, úsalo para ajustar stop_loss_pct (mayor ATR = mayor SL)
-- NO compres símbolos con signal "SELL" o "STRONG_SELL"
-- NO hagas short de símbolos con signal "BUY" o "STRONG_BUY"
-- Si no hay technical data, usa gainers/losers con momentum del spot/futures
-
-CADA OPERACIÓN debe incluir:
-- stop_loss_pct: % de pérdida máxima (según ATR_pct y perfil del usuario)
-- take_profit_pct: % de ganancia objetivo (según potencial y perfil del usuario)
-- time_horizon: string como "2h-4h", "4h-8h", "1d-3d" indicando cuándo veríamos frutos
-- reason: explicación técnica concreta que referencia el perfil (ej: "RSI 32 + volume 2.1x + EMA bullish — adecuado para tu perfil moderate")
-
-DIVERSIFICACIÓN: Opera símbolos DIFERENTES cada ciclo. NO abras posición en un símbolo que ya está en positions. Si tienes 0 posiciones y cash > $500, OPERA algo — no quedes en HOLD con el capital parado.
-
-BUY_CANDIDATES: El contexto incluye "buy_candidates" con los mejores símbolos rankeados por score técnico. USA esta lista como prioridad de compra. El primer candidato con score más alto = mejor oportunidad.
-
-MARKET REGIME: El contexto incluye "market_regime" con el régimen actual de BTC (como proxy del mercado global). USA esta información:
-- trending_up: mercado alcista — COMPRA con confianza, TP más ambiciosos. NO hagas shorts.
-- trending_down: mercado bajista — SHORT con confianza, TP más ambiciosos. NO compres (a menos que RSI < 30 extremo).
-- ranging: mercado lateral — solo compra en oversold (RSI < 35) o short en overbought (RSI > 65) para mean reversion
-- volatile: alta volatilidad — SL más amplio, oportunidades de breakout en ambas direcciones
-- squeeze: compresión — prepararse para expansión, opera con SL ajustado en dirección del breakout
-- reversal: posible reversión — opera solo si confianza > 0.7, en dirección de la reversión
-
-SOLO usa símbolos de spot.up, spot.dn, futures.up, futures.dn, positions o technical. confidence entre 0 y 1."""
-
-FEW_SHOT_EXAMPLE = """
-EJEMPLO de respuesta válida (compra):
-{"market_overview":"BTC en rango 60k-65k, volumen estable. ETH con momentum alcista.","portfolio_status":"2 posiciones abiertas (SOL, ADA), cash $3200","analysis":"ETH muestra RSI 35 + volume_relative 1.8 + EMA bullish. Alineado con perfil moderate.","actions":[{"type":"buy","symbol":"ETHUSDT","confidence":0.75,"stop_loss_pct":3.5,"take_profit_pct":8,"time_horizon":"4h-8h","reason":"RSI 35 (oversold) + volume 1.8x + EMA bullish — adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 3.5% protege contra caída brusca. ATR_pct 2.1% justifica el SL elegido.","next_steps":"Monitorear ETH. Si sube 4%, trailing stop activará."}
-
-EJEMPLO de respuesta válida (short en mercado bajista):
-{"market_overview":"BTC cayendo 3%, market regime trending_down. Volumen alto en sellers.","portfolio_status":"1 posición abierta (SOL long), cash $5000","analysis":"DOGE muestra RSI 75 + volume_relative 1.5 + EMA bearish crossover. Sobrecomprado en mercado bajista — oportunidad de short.","actions":[{"type":"short","symbol":"DOGEUSDT","confidence":0.7,"stop_loss_pct":4,"take_profit_pct":10,"time_horizon":"4h-8h","reason":"RSI 75 (sobrecomprado) + EMA bearish crossover + market regime trending_down — short adecuado para perfil moderate"}],"risk_assessment":"Riesgo moderado. SL 4% protege contra subida brusca. Short en dirección del mercado.","next_steps":"Monitorear DOGE. Si baja 5%, trailing stop activará para proteger profit."}"""
+POSITION_ANALYSIS_PROMPT = _load_prompt("position_analysis.txt")
+SYSTEM_PROMPT = _load_prompt("system_prompt.txt")
+FEW_SHOT_EXAMPLE = _load_prompt("few_shot_example.txt")
 
 
 class AITradingAgent:

@@ -27,8 +27,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-TRAILING_STOP_PCT = Decimal("0.02")  # 2% below peak
-BREAKEVEN_THRESHOLD = Decimal("1.02")  # 2% above entry to switch to trailing
+from app.config import get_settings as _get_settings
+
+_settings = _get_settings()
+TRAILING_STOP_PCT = Decimal(str(_settings.TRAILING_STOP_PCT / 100))  # configurable, stored as percentage
+BREAKEVEN_THRESHOLD = Decimal(str(1 + _settings.BREAKEVEN_THRESHOLD_PCT / 100))  # configurable
 
 
 class CircuitBreakerState(StrEnum):
