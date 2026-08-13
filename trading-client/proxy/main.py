@@ -37,11 +37,18 @@ logger = logging.getLogger("binance-proxy")
 
 app = FastAPI(title="Binance VPS Proxy", version="1.0.0")
 
+# CORS: restrict to known client origins (Tauri desktop app + local dev)
+_ALLOWED_ORIGINS = os.environ.get(
+    "PROXY_CORS_ORIGINS",
+    "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

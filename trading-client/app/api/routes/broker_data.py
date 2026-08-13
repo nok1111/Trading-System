@@ -23,10 +23,11 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.api.helpers import resolve_broker_credentials
+from app.api.helpers import resolve_broker_credentials, safe_error
+from app.api.rate_limit import RATE_READ, RATE_TRADE, limiter
 from app.brokers.base import BrokerAdapter, BrokerError
 from app.brokers.models import (
     CancelOrderRequest,
@@ -53,7 +54,7 @@ def _get_adapter(broker_id: str, current_user: LocalUser) -> BrokerAdapter:
     try:
         return get_adapter(broker_id, creds)
     except BrokerError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=safe_error(exc)) from exc
 
 
 def _balance_to_dict(balances: tuple) -> list[dict[str, Any]]:
@@ -90,7 +91,7 @@ def get_balance(
     try:
         balances = adapter.get_account_balances()
     except BrokerError as exc:
-        return {"error": str(exc), "assets": [], "total_usd": 0, "total_mxn": 0}
+        return {"error": safe_error(exc), "assets": [], "total_usd": 0, "total_mxn": 0}
     except Exception as exc:
         return {"error": f"Error conectando a {broker_id}: {exc}", "assets": [], "total_usd": 0, "total_mxn": 0}
 
@@ -160,7 +161,7 @@ def get_portfolio(
     try:
         snapshot = adapter.get_portfolio()
     except BrokerError as exc:
-        return {"error": str(exc), "assets": [], "total_usd": 0}
+        return {"error": safe_error(exc), "assets": [], "total_usd": 0}
     except Exception as exc:
         return {"error": f"Error: {exc}", "assets": [], "total_usd": 0}
 
@@ -196,7 +197,7 @@ def get_orders(
         try:
             orders = adapter.get_order_history(symbol=normalize_symbol(symbol), limit=limit)
         except BrokerError as exc:
-            return {"error": str(exc), "orders": [], "active": [], "filled": []}
+            return {"error": safe_error(exc), "orders": [], "active": [], "filled": []}
         except Exception as exc:
             return {"error": f"Error: {exc}", "orders": [], "active": [], "filled": []}
     else:
@@ -281,7 +282,7 @@ def get_trades(
         try:
             trades = adapter.get_trades(symbol=normalize_symbol(symbol), limit=limit)
         except BrokerError as exc:
-            return {"error": str(exc), "trades": [], "count": 0}
+            return {"error": safe_error(exc), "trades": [], "count": 0}
         except Exception as exc:
             return {"error": f"Error: {exc}", "trades": [], "count": 0}
     else:
@@ -513,7 +514,7 @@ def get_ticker(
             "volume_24h": float(ticker.volume_24h) if ticker.volume_24h else None,
         }
     except BrokerError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=safe_error(exc)) from exc
 
 
 # ─── Market Info ──────────────────────────────────────────────────────────────
@@ -544,7 +545,7 @@ def get_market_info(
             "status": info.status,
         }
     except BrokerError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=safe_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
 
@@ -577,7 +578,7 @@ def get_klines(
             for c in candles
         ]
     except BrokerError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=safe_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
 
@@ -619,7 +620,7 @@ def get_movers(
             ],
         }
     except BrokerError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=safe_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
 
@@ -644,7 +645,7 @@ def get_top_symbols(
         symbols = adapter.get_top_symbols(quote=quote, limit=limit)
         return symbols
     except BrokerError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=safe_error(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
 
@@ -663,7 +664,9 @@ class PlaceOrderRequest(BaseModel):
 
 
 @router.post("/{broker_id}/order")
+@limiter.limit(RATE_TRADE)
 def place_order(
+    request: Request,
     broker_id: str,
     req: PlaceOrderRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
@@ -837,13 +840,13 @@ def place_order(
                     db.close()
             except Exception as exc:
                 # Don't fail the order response if DB save fails
-                resp["db_warning"] = str(exc)
+                resp["db_warning"] = safe_error(exc)
 
         return resp
     except BrokerError as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
 
 
 # ─── Cancel Order ─────────────────────────────────────────────────────────────
@@ -855,7 +858,9 @@ class CancelOrderBody(BaseModel):
 
 
 @router.delete("/{broker_id}/order")
+@limiter.limit(RATE_TRADE)
 def cancel_order(
+    request: Request,
     broker_id: str,
     body: CancelOrderBody,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
@@ -879,9 +884,9 @@ def cancel_order(
             "orderStatus": result.status.value if result.status else "cancelled",
         }
     except BrokerError as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
 
 
 # ─── Place OCO Order (SL/TP) ──────────────────────────────────────────────────
@@ -895,7 +900,9 @@ class PlaceOcoRequest(BaseModel):
 
 
 @router.post("/{broker_id}/oco")
+@limiter.limit(RATE_TRADE)
 def place_oco_order(
+    request: Request,
     broker_id: str,
     req: PlaceOcoRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
@@ -961,9 +968,9 @@ def place_oco_order(
                 "take_profit": req.take_profit_price,
             }
         except BrokerError as exc:
-            return {"status": "error", "error": str(exc)}
+            return {"status": "error", "error": safe_error(exc)}
         except Exception as exc:
-            return {"status": "error", "error": str(exc)}
+            return {"status": "error", "error": safe_error(exc)}
 
     # Fallback: place separate STOP and TAKE_PROFIT orders
     try:
@@ -1006,15 +1013,17 @@ def place_oco_order(
             "take_profit": req.take_profit_price,
         }
     except BrokerError as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
 
 
 # ─── Sync Positions (reconcile DB with broker balance) ────────────────────────
 
 @router.post("/{broker_id}/sync-positions")
+@limiter.limit(RATE_TRADE)
 def sync_positions(
+    request: Request,
     broker_id: str,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
@@ -1125,7 +1134,7 @@ def sync_positions(
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     finally:
         db.close()
 
@@ -1149,7 +1158,9 @@ def get_reconciliation_status(
 
 
 @router.post("/reconciliation/run")
+@limiter.limit(RATE_TRADE)
 def trigger_reconciliation(
+    request: Request,
     current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:
     """Ejecuta un ciclo de reconciliación inmediato (no espera al intervalo)."""
@@ -1160,7 +1171,7 @@ def trigger_reconciliation(
         reconciler._run_cycle()
         return {"status": "ok", "result": reconciler.last_result}
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
 
 
 # ─── Dust Transfer (convert dust to BNB) ──────────────────────────────────────
@@ -1170,7 +1181,9 @@ class DustTransferRequest(BaseModel):
 
 
 @router.post("/{broker_id}/dust-transfer")
+@limiter.limit(RATE_TRADE)
 def dust_transfer(
+    request: Request,
     broker_id: str,
     req: DustTransferRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,

@@ -9,7 +9,9 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from app.brokers.models import denormalize_symbol, normalize_symbol
 from app.config import get_settings
 from app.data.price_stream import get_price_stream
+from app.services.license import validate_license
 from app.services.market_data_service import get_market_data_service
+from app.api.helpers import safe_error
 
 logger = logging.getLogger(__name__)
 
@@ -179,14 +181,22 @@ def get_klines(
 # ---------------------------------------------------------------------------
 
 @router.websocket("/ws/prices")
-async def ws_prices(websocket: WebSocket):
+async def ws_prices(websocket: WebSocket, token: str = Query(...)):
     """WebSocket que envía precios en tiempo real a los clientes conectados.
+
+    Requiere autenticación via query parameter `token` (JWT).
 
     Mensajes enviados:
     - {"type": "snapshot", "prices": {"BTCUSDT": "43000.5", ...}}
     - {"type": "tick", "symbol": "BTCUSDT", "price": "43000.5", "timestamp": 1234567890.0}
     - {"type": "status", "connected": true}
     """
+    # Validate JWT token
+    license_info = validate_license(token)
+    if not license_info or not license_info.get("valid"):
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
     await websocket.accept()
     stream = get_price_stream()
 
@@ -246,8 +256,10 @@ async def ws_prices(websocket: WebSocket):
 
 
 @router.websocket("/ws/klines/{symbol}")
-async def ws_klines(websocket: WebSocket, symbol: str, interval: str = "1m"):
+async def ws_klines(websocket: WebSocket, symbol: str, interval: str = "1m", token: str = Query(...)):
     """WebSocket que proxya el stream de klines de Binance al cliente.
+
+    Requiere autenticación via query parameter `token` (JWT).
 
     Envía actualizaciones de velas en tiempo real:
     - {"type": "kline", "symbol": "BTCUSDT", "interval": "1m", "kline": {...}}
@@ -255,6 +267,12 @@ async def ws_klines(websocket: WebSocket, symbol: str, interval: str = "1m"):
     El cliente puede usar esto para actualizar la última vela del chart.
     """
     import websockets
+
+    # Validate JWT token
+    license_info = validate_license(token)
+    if not license_info or not license_info.get("valid"):
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
 
     await websocket.accept()
 
@@ -298,6 +316,6 @@ async def ws_klines(websocket: WebSocket, symbol: str, interval: str = "1m"):
     except Exception as exc:
         logger.debug("WS klines disconnected: %s", exc)
         try:
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.send_json({"type": "error", "message": safe_error(exc)})
         except Exception:
             pass

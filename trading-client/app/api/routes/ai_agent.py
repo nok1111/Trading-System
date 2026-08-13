@@ -18,6 +18,7 @@ from app.api.helpers import (
     get_shared_broker,
     resolve_binancekeys,
     resolve_broker_credentials,
+    safe_error,
 )
 from app.config import get_settings
 from app.database.session import SessionLocal
@@ -26,6 +27,7 @@ from app.services.auth import LocalUser, get_current_user
 from app.services.crypto import decrypt, encrypt
 from app.services.market_data_service import get_market_data_service
 from app.services.rate_limit import get_plan_limits, has_feature
+from app.api.rate_limit import RATE_AI, RATE_TRADE, limiter
 
 PREMIUM_PROVIDERS = {"openai", "deepseek", "mistral", "together", "perplexity", "grok"}
 
@@ -172,6 +174,7 @@ class AIExecuteRequest(BaseModel):
 
 
 @router.post("/ai-agent/start")
+@limiter.limit(RATE_AI)
 def ai_agent_start(
     request: Request,
     req: AIStartRequest = AIStartRequest(),
@@ -372,7 +375,9 @@ def ai_agent_start(
 
 
 @router.post("/ai-agent/stop")
+@limiter.limit(RATE_AI)
 def ai_agent_stop(
+    request: Request,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
     """Detiene el agente de IA."""
@@ -442,6 +447,7 @@ class AnalyzePositionsRequest(BaseModel):
 
 
 @router.post("/ai-agent/analyze-positions")
+@limiter.limit(RATE_AI)
 def ai_agent_analyze_positions(
     request: Request,
     req: AnalyzePositionsRequest = AnalyzePositionsRequest(),
@@ -771,7 +777,7 @@ def get_binance_balance(
     try:
         balances = adapter.get_account_balances()
     except Exception as exc:
-        err_msg = str(exc)
+        err_msg = safe_error(exc)
         if "401" in err_msg or "-2015" in err_msg:
             err_msg = "Binance rechazó las credenciales. Verifica que tu API key tenga permisos de lectura y que tu IP esté autorizada en Binance."
         return {"error": f"No se pudo conectar a Binance: {err_msg}", "assets": [], "total_usd": 0, "total_mxn": 0}
@@ -903,7 +909,7 @@ def get_binance_all_orders(
     try:
         open_resp = adapter._broker._signed_request("GET", "/api/v3/openOrders", {})
     except Exception as exc:
-        err_msg = str(exc)
+        err_msg = safe_error(exc)
         if "401" in err_msg or "-2015" in err_msg:
             err_msg = "Binance rechazó las credenciales. Verifica permisos de lectura e IP autorizada."
         return {"error": f"No se pudo consultar órdenes: {err_msg}", "orders": [], "active": [], "filled": []}
@@ -1044,7 +1050,9 @@ class ManualOrderRequest(BaseModel):
 
 
 @router.post("/binance/manual-order")
+@limiter.limit(RATE_TRADE)
 def place_binance_manual_order(
+    request: Request,
     req: ManualOrderRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:
@@ -1181,7 +1189,7 @@ def place_binance_manual_order(
 
         return result
     except Exception as exc:
-        err_msg = str(exc)
+        err_msg = safe_error(exc)
         if "401" in err_msg or "-2015" in err_msg:
             err_msg = "Binance rechazó las credenciales. Verifica que tu API key tenga permisos de trading y que tu IP esté autorizada en Binance."
         return {"status": "error", "error": err_msg}
@@ -1783,7 +1791,9 @@ def update_ai_symbol_settings(
 
 
 @router.post("/ai-agent/execute")
+@limiter.limit(RATE_TRADE)
 def ai_agent_execute(
+    request: Request,
     req: AIExecuteRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:

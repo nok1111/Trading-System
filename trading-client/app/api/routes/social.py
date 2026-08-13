@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.api.helpers import safe_error
 from app.database.models.account_snapshot import AccountSnapshot
 from app.database.models.social_follow import SocialCopyTrade, SocialFollow
 from app.database.models.social_leader import SocialLeader
@@ -88,13 +89,18 @@ def register_leader(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Convertirse en líder — crea o actualiza el perfil de líder."""
+    import html
+    # Sanitize user input to prevent stored XSS
+    safe_name = html.escape(req.display_name.strip())[:100]
+    safe_bio = html.escape(req.bio.strip())[:500]
+
     existing = db.execute(
         select(SocialLeader).where(SocialLeader.user_id == user.id)
     ).scalar_one_or_none()
 
     if existing:
-        existing.display_name = req.display_name
-        existing.bio = req.bio
+        existing.display_name = safe_name
+        existing.bio = safe_bio
         existing.broker_id = req.broker_id
         existing.is_public = req.is_public
         db.commit()
@@ -103,8 +109,8 @@ def register_leader(
 
     leader = SocialLeader(
         user_id=user.id,
-        display_name=req.display_name,
-        bio=req.bio,
+        display_name=safe_name,
+        bio=safe_bio,
         broker_id=req.broker_id,
         is_public=req.is_public,
     )
@@ -796,11 +802,11 @@ def copy_signal(
             entry_price=current_price,
             broker_id=req.broker_id,
             status="failed",
-            error=str(exc),
+            error=safe_error(exc),
         )
         db.add(copy_trade)
         db.commit()
-        raise HTTPException(status_code=502, detail=f"Error al ejecutar orden: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Error al ejecutar orden: {safe_error(exc)}") from exc
 
     if not result.success:
         copy_trade = SocialCopyTrade(

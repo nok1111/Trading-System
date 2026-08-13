@@ -6,7 +6,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from app.api.rate_limit import limiter
 from app.api.schemas import HealthOut
 from app.config import get_settings
 from app.data.price_stream import get_price_stream, init_price_stream, stop_price_stream
@@ -20,13 +23,36 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Rate limiting (slowapi)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+_ALLOWED_ORIGINS = ["http://localhost:1420", "http://127.0.0.1:1420", "http://tauri.localhost"]
+_ALLOWED_ORIGINS_STR = ",".join(_ALLOWED_ORIGINS)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:1420", "http://127.0.0.1:1420", "http://tauri.localhost"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Security headers middleware
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Add security headers to all responses."""
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-XSS-Protection"] = "1; mode=block"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return resp
+
 
 # Serve static files (images, etc.) from project root /images
 _static_path = Path(__file__).resolve().parent.parent.parent / "images"
@@ -37,8 +63,8 @@ if _static_path.exists():
 # License validation middleware
 # ---------------------------------------------------------------------------
 
-# Paths that don't require license validation
-_PUBLIC_PATHS = {"/", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/paper-trading/status", "/api/brokers"}
+# Paths that don't require license validation (public market data only)
+_PUBLIC_PATHS = {"/", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/brokers"}
 
 
 @app.middleware("http")
@@ -47,6 +73,7 @@ async def license_check(request: Request, call_next):
 
     Skips public paths (health, dashboard HTML, docs, public market data).
     Attaches license info to request.state for downstream use.
+    WebSocket endpoints authenticate via query token internally.
     """
     path = request.url.path
     is_public = (
@@ -54,11 +81,10 @@ async def license_check(request: Request, call_next):
         or path.startswith("/images")
         or path.startswith("/api/binance/price")
         or path.startswith("/api/klines/")
-        or path.startswith("/api/signals")
-        or path.startswith("/api/ws/")
         or path.startswith("/api/social/leaders")
         or path.startswith("/api/social/leaderboard")
         or path.startswith("/api/social/signals/feed")
+        or path.startswith("/api/social/ws/")
         or (
             path.startswith("/api/broker/")
             and ("/ticker" in path or "/klines" in path or "/movers" in path or "/market-info" in path or "/symbols" in path)
@@ -74,9 +100,9 @@ async def license_check(request: Request, call_next):
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if not token:
         resp = JSONResponse(status_code=401, content={"detail": "No autenticado"})
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "*"
+        resp.headers["Access-Control-Allow-Origin"] = _ALLOWED_ORIGINS_STR
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
         return resp
 
     license_info = validate_license(token)
@@ -85,9 +111,9 @@ async def license_check(request: Request, call_next):
             status_code=403,
             content={"detail": "Suscripción inactiva o sin conexión al Auth Server"},
         )
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "*"
+        resp.headers["Access-Control-Allow-Origin"] = _ALLOWED_ORIGINS_STR
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
         return resp
 
     request.state.user = license_info
@@ -347,6 +373,8 @@ async def global_exception_handler(request: Request, exc: Exception):
             f.write(f"[{datetime.now().isoformat()}] [ERROR] Unhandled: {exc} | Path: {request.url.path}\n")
     except Exception:
         pass
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    settings = get_settings()
+    detail = str(exc) if settings.APP_ENV == "development" else "Error interno del servidor"
+    return JSONResponse(status_code=500, content={"detail": detail})
 
 

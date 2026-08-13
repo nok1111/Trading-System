@@ -12,6 +12,14 @@ from app.services.crypto import decrypt
 logger = logging.getLogger(__name__)
 
 
+def safe_error(exc: Exception, default: str = "Error en la operación") -> str:
+    """Return a safe error message — full detail in development, generic in production."""
+    settings = get_settings()
+    if settings.APP_ENV == "development":
+        return str(exc)
+    return default
+
+
 def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
     """Resolve Binance API keys from broker_accounts table for the current user.
 

@@ -16,6 +16,7 @@ from typing import Annotated, Any
 import httpx
 from fastapi import APIRouter, Depends
 
+from app.api.helpers import safe_error
 from app.config import get_settings
 from app.services.auth import LocalUser, get_current_user
 from app.services.market_data_service import get_market_data_service
@@ -378,7 +379,7 @@ def get_technical_signals(
             results.append({
                 "symbol": sym,
                 "interval": interval,
-                "error": str(exc),
+                "error": safe_error(exc),
                 "signal": "HOLD",
                 "signal_reasons": [f"Analysis failed: {exc}"],
             })
@@ -404,7 +405,7 @@ def get_technical_signal(
         return {
             "symbol": symbol.upper(),
             "interval": interval,
-            "error": str(exc),
+            "error": safe_error(exc),
             "signal": "HOLD",
             "signal_reasons": [f"Analysis failed: {exc}"],
         }
@@ -441,7 +442,7 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict:
         return result.to_dict()
     except Exception as exc:
         logger.warning("Backtest failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 class OptimizeRequest(_BaseModel):
@@ -470,7 +471,7 @@ def optimize_endpoint(req: OptimizeRequest) -> dict:
         return result.to_dict()
     except Exception as exc:
         logger.warning("Optimization failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 class AutoAssignRequest(_BaseModel):
@@ -499,7 +500,7 @@ def auto_assign_endpoint(req: AutoAssignRequest) -> dict:
         return result.to_dict()
     except Exception as exc:
         logger.warning("Auto-assign failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 @router.get("/backtest/assignments")
@@ -536,7 +537,7 @@ def detect_regime_endpoint(req: RegimeRequest) -> dict:
         return regime.to_dict()
     except Exception as exc:
         logger.warning("Regime detection failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 class RegimeBatchRequest(_BaseModel):
@@ -559,7 +560,7 @@ def detect_regime_batch_endpoint(req: RegimeBatchRequest) -> dict:
         }
     except Exception as exc:
         logger.warning("Regime batch failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 def _regime_distribution(regimes) -> dict[str, int]:
@@ -595,7 +596,7 @@ def auto_pilot_plan_endpoint(req: AutoPilotRequest) -> dict:
         return plan.to_dict()
     except Exception as exc:
         logger.warning("Auto-pilot plan failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 @router.get("/profile/recommendations")
@@ -610,7 +611,7 @@ def profile_recommendations_endpoint(
         return get_profile_recommendations(risk_tolerance, experience_level)
     except Exception as exc:
         logger.warning("Profile recommendations failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 # ---------------------------------------------------------------------------
@@ -635,7 +636,7 @@ def mtf_confirm_endpoint(req: MTFRequest) -> dict:
         return result
     except Exception as exc:
         logger.warning("MTF confirm failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 @router.get("/mtf/trend")
@@ -647,7 +648,7 @@ def mtf_trend_endpoint(symbol: str, interval: str = "4h") -> dict:
         return get_mtf_trend(symbol, interval)
     except Exception as exc:
         logger.warning("MTF trend failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 class MTFBatchRequest(_BaseModel):
@@ -667,7 +668,7 @@ def mtf_confirm_batch_endpoint(req: MTFBatchRequest) -> dict:
             r["symbol"] = sym
             results.append(r)
         except Exception as exc:
-            results.append({"symbol": sym, "error": str(exc)})
+            results.append({"symbol": sym, "error": safe_error(exc)})
     return {"results": results, "total": len(results)}
 
 
@@ -701,7 +702,7 @@ def walk_forward_endpoint(req: WalkForwardRequest) -> dict:
         return result.to_dict()
     except Exception as exc:
         logger.warning("Walk-forward failed: %s", exc)
-        return {"error": str(exc)}
+        return {"error": safe_error(exc)}
 
 
 class PriceAlertRequest(_BaseModel):
@@ -868,7 +869,7 @@ def create_price_alert(
         finally:
             db.close()
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
 
 
 @router.get("/price-alerts")
@@ -947,7 +948,7 @@ def check_price_alerts() -> dict:
             prices = all_prices
     except Exception as exc:
         logger.warning("Failed to fetch prices for alert check: %s", exc)
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
 
     triggered_count = 0
     try:
@@ -1161,7 +1162,7 @@ def get_risk_status(
             "circuit_breaker_enabled": _risk_config.get("circuit_breaker_enabled", True),
             "circuit_breaker_triggered": False,
             "positions": [],
-            "error": str(exc),
+            "error": safe_error(exc),
         }
 
 
@@ -1969,7 +1970,7 @@ def accept_recommendation(
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         db.close()
 
@@ -1996,7 +1997,7 @@ def decline_recommendation(rec_id: int) -> dict:
         return {"status": "dismissed", "id": rec_id}
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         db.close()
 
@@ -2219,7 +2220,7 @@ def buy_live_recommendation(
             return {"status": "rejected", "symbol": symbol, "reason": "Rechazado por risk manager"}
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         db.close()
 
@@ -2360,7 +2361,7 @@ def sell_paper_position(position_id: int) -> dict:
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         db.close()
 
@@ -2466,7 +2467,7 @@ def update_oco_on_position(
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     finally:
         db.close()
 
@@ -2509,7 +2510,7 @@ def clear_oco_on_position(
         return {"status": "cancelled", "oco_order_id": oco_order_id}
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     finally:
         db.close()
 
@@ -2534,7 +2535,7 @@ def stop_monitoring(position_id: int) -> dict:
         return {"status": "monitoring_stopped", "position_id": position_id}
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     finally:
         db.close()
 
@@ -2591,7 +2592,7 @@ def monitor_only(rec_id: int) -> dict:
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         db.close()
 
@@ -2666,7 +2667,7 @@ def apply_oco_from_report(
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "reason": str(exc)}
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         db.close()
 
@@ -2701,6 +2702,6 @@ def paper_place_oco(position_id: int, req: OcoRequest) -> dict:
         }
     except Exception as exc:
         db.rollback()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": safe_error(exc)}
     finally:
         db.close()

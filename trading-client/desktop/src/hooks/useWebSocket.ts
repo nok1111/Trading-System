@@ -50,7 +50,10 @@ export function useWebSocket(
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.hostname || "localhost";
     const port = window.location.port || "1420";
-    const url = `${protocol}//${host}:${port}${path}`;
+    // Append JWT token as query parameter for authentication
+    const token = localStorage.getItem("jwt") || "";
+    const separator = path.includes("?") ? "&" : "?";
+    const url = `${protocol}//${host}:${port}${path}${separator}token=${encodeURIComponent(token)}`;
 
     try {
       const ws = new WebSocket(url);
