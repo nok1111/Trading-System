@@ -15,6 +15,7 @@ from app.brokers.models import (
     Balance,
     BrokerInfo,
     BrokerOrder,
+    BrokerTrade,
     CancelOrderRequest,
     Candle,
     CredentialValidationResult,
@@ -99,6 +100,10 @@ class BrokerAdapter(ABC):
     @abstractmethod
     def get_order_history(self, symbol: str | None = None, limit: int = 50) -> tuple[BrokerOrder, ...]:
         """Devuelve el historial de ordenes."""
+
+    @abstractmethod
+    def get_trades(self, symbol: str | None = None, limit: int = 50) -> tuple[BrokerTrade, ...]:
+        """Devuelve los trades ejecutados (fills individuales con comision)."""
 
     @abstractmethod
     def get_market_info(self, symbol: str) -> MarketInfo:

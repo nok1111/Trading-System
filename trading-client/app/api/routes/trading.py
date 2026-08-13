@@ -131,10 +131,74 @@ def list_orders(
     limit: PaginateLimit = 50,
     symbol: SymbolQuery = None,
 ) -> list[Order]:
+    # ─── Merge broker-live orders with DB orders ────────────────────────
+    from app.brokers.models import normalize_symbol
+    from app.brokers.registry import get_adapter
+    from app.api.helpers import resolve_broker_credentials
+    from app.database.models.broker_account import BrokerAccount
+
+    # Get DB orders (for paper trading and app-managed orders)
     query = db.query(Order).filter(Order.user_id == current_user.id)
     if symbol:
         query = query.filter(Order.symbol == symbol.upper())
-    return query.order_by(Order.id.desc()).offset(skip).limit(limit).all()
+    db_orders = query.order_by(Order.id.desc()).offset(skip).limit(limit).all()
+
+    # Normalize symbols in DB orders
+    for o in db_orders:
+        o.symbol = normalize_symbol(o.symbol)
+
+    # Fetch orders from all connected brokers
+    connected_brokers = db.query(BrokerAccount).filter(
+        BrokerAccount.user_id == current_user.id,
+    ).all()
+
+    broker_orders: list[Order] = []
+    existing_keys: set[str] = set()
+    for o in db_orders:
+        key = f"{o.broker_order_id}:{o.symbol}" if o.broker_order_id else f"db:{o.id}"
+        existing_keys.add(key)
+
+    for ba in connected_brokers:
+        try:
+            creds = resolve_broker_credentials(ba.broker_id, current_user)
+            if not creds:
+                continue
+            adapter = get_adapter(ba.broker_id, creds)
+            broker_syms = symbol if symbol else None
+            raw_orders = adapter.get_order_history(symbol=broker_syms, limit=limit)
+            for bo in raw_orders:
+                sym = normalize_symbol(bo.symbol)
+                key = f"{bo.broker_order_id}:{sym}" if bo.broker_order_id else ""
+                if key in existing_keys:
+                    continue
+                existing_keys.add(key)
+                # Create transient Order object from broker data
+                broker_orders.append(Order(
+                    id=0,
+                    user_id=current_user.id,
+                    broker_id=ba.broker_id,
+                    client_order_id=bo.client_order_id or "",
+                    idempotency_key=f"broker_{bo.broker_order_id or bo.client_order_id or ''}",
+                    broker_order_id=bo.broker_order_id,
+                    timestamp=bo.created_at or datetime.now(UTC),
+                    symbol=sym,
+                    side=bo.side.value,
+                    order_type=bo.order_type.value,
+                    quantity=bo.quantity,
+                    filled_quantity=bo.filled_quantity,
+                    price=bo.price,
+                    status=bo.status.value,
+                    internal_status="RECONCILED",
+                    signal_id=None,
+                    created_at=bo.created_at or datetime.now(UTC),
+                ))
+        except Exception:
+            continue
+
+    # Merge and sort by timestamp desc
+    all_orders = list(db_orders) + broker_orders
+    all_orders.sort(key=lambda o: o.created_at or o.timestamp or datetime.min.replace(tzinfo=UTC), reverse=True)
+    return all_orders[:limit]
 
 
 @router.get("/positions", response_model=list[PositionOut])
@@ -195,7 +259,115 @@ def list_positions(
     except Exception:
         db.rollback()
 
-    return positions
+    # ─── Merge broker-live positions (futures + spot holdings) ──────────
+    # Fetch real positions from all connected brokers and merge with DB.
+    # DB positions that match a broker position get updated; new broker-only
+    # positions get added to the result list.
+    from app.database.models.position import Position as DBPosition
+    from app.brokers.base import BrokerError
+
+    broker_live_positions: list[DBPosition] = []
+    existing_symbols: set[str] = {p.symbol for p in positions if p.status == "open"}
+
+    # Get all unique broker_ids from DB positions
+    broker_ids = set(p.broker_id for p in positions if p.broker_id and p.status == "open")
+    # Also check connected brokers
+    from app.database.models.broker_account import BrokerAccount
+    connected_brokers = db.query(BrokerAccount).filter(
+        BrokerAccount.user_id == current_user.id,
+    ).all()
+    broker_ids.update(b.broker_id for b in connected_brokers)
+
+    for bid in broker_ids:
+        adapter = broker_adapter_cache.get(bid)
+        if not adapter:
+            try:
+                creds = resolve_broker_credentials(bid, current_user)
+                if creds:
+                    adapter = get_adapter(bid, creds)
+                    broker_adapter_cache[bid] = adapter
+            except Exception:
+                continue
+        if not adapter:
+            continue
+
+        try:
+            broker_positions = adapter.get_open_positions()
+            # If no futures positions, try spot holdings
+            if not broker_positions:
+                STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP", "EUR"}
+                balances = adapter.get_account_balances()
+                for bal in balances:
+                    if bal.asset in STABLECOINS or bal.total <= 0:
+                        continue
+                    current_price = None
+                    for quote in ("USDT", "USDC", "USD"):
+                        try:
+                            ticker = adapter.get_ticker(f"{bal.asset}/{quote}")
+                            current_price = ticker.price
+                            break
+                        except Exception:
+                            continue
+                    from app.brokers.models import Position as BrokerPosition
+                    broker_positions = broker_positions + (
+                        BrokerPosition(
+                            symbol=f"{bal.asset}/USDT",
+                            side="long",
+                            quantity=bal.total,
+                            entry_price=Decimal("0"),
+                            current_price=current_price,
+                            unrealized_pnl=Decimal("0"),
+                            status="open",
+                            strategy_name="spot_holding",
+                            metadata={"source": "broker_balance"},
+                        ),
+                    )
+
+            for bpos in broker_positions:
+                sym = normalize_symbol(bpos.symbol)
+                if sym in existing_symbols:
+                    # Update existing DB position with broker data
+                    for p in positions:
+                        if p.symbol == sym and p.status == "open":
+                            if bpos.current_price:
+                                p.current_price = bpos.current_price
+                            if bpos.unrealized_pnl:
+                                p.unrealized_pnl = bpos.unrealized_pnl
+                            break
+                else:
+                    # New position from broker not in DB — create a transient object
+                    np = DBPosition(
+                        id=0,
+                        user_id=current_user.id,
+                        broker_id=bid,
+                        symbol=sym,
+                        side=bpos.side,
+                        quantity=bpos.quantity,
+                        entry_price=bpos.entry_price,
+                        current_price=bpos.current_price,
+                        unrealized_pnl=bpos.unrealized_pnl,
+                        realized_pnl=Decimal("0"),
+                        stop_loss=None,
+                        take_profit=None,
+                        status="open",
+                        strategy_name=bpos.strategy_name or "broker_live",
+                        opened_at=bpos.opened_at or datetime.now(UTC),
+                        created_at=datetime.now(UTC),
+                    )
+                    broker_live_positions.append(np)
+                    existing_symbols.add(sym)
+        except Exception:
+            continue
+
+    # Merge broker-live positions with DB positions
+    all_positions = list(positions) + broker_live_positions
+
+    # Sort: open first, then by id desc
+    all_positions.sort(
+        key=lambda p: (0 if p.status == "open" else 1, -p.id),
+    )
+
+    return all_positions[:limit]
 
 
 @router.get("/trades", response_model=list[TradeOut])
@@ -206,10 +378,72 @@ def list_trades(
     limit: PaginateLimit = 50,
     symbol: SymbolQuery = None,
 ) -> list[Trade]:
+    # ─── Merge broker-live trades with DB trades ────────────────────────
+    from app.brokers.models import normalize_symbol
+    from app.brokers.registry import get_adapter
+    from app.api.helpers import resolve_broker_credentials
+    from app.database.models.broker_account import BrokerAccount
+
+    # Get DB trades (for paper trading and app-managed trades)
     query = db.query(Trade).filter(Trade.user_id == current_user.id)
     if symbol:
         query = query.filter(Trade.symbol == symbol.upper())
-    return query.order_by(Trade.id.desc()).offset(skip).limit(limit).all()
+    db_trades = query.order_by(Trade.id.desc()).offset(skip).limit(limit).all()
+
+    # Normalize symbols in DB trades
+    for t in db_trades:
+        t.symbol = normalize_symbol(t.symbol)
+
+    # Fetch trades from all connected brokers
+    connected_brokers = db.query(BrokerAccount).filter(
+        BrokerAccount.user_id == current_user.id,
+    ).all()
+
+    broker_trades: list[Trade] = []
+    existing_keys: set[str] = set()
+    for t in db_trades:
+        existing_keys.add(f"db:{t.id}")
+
+    for ba in connected_brokers:
+        try:
+            creds = resolve_broker_credentials(ba.broker_id, current_user)
+            if not creds:
+                continue
+            adapter = get_adapter(ba.broker_id, creds)
+            broker_syms = symbol if symbol else None
+            raw_trades = adapter.get_trades(symbol=broker_syms, limit=limit)
+            for bt in raw_trades:
+                sym = normalize_symbol(bt.symbol)
+                key = f"broker:{bt.broker_trade_id}"
+                if key in existing_keys:
+                    continue
+                existing_keys.add(key)
+                # Create transient Trade object from broker data
+                broker_trades.append(Trade(
+                    id=0,
+                    user_id=current_user.id,
+                    broker_id=ba.broker_id,
+                    timestamp=bt.timestamp or datetime.now(UTC),
+                    symbol=sym,
+                    side=bt.side.value,
+                    quantity=bt.quantity,
+                    price=bt.price,
+                    commission=bt.fee.amount if bt.fee else Decimal("0"),
+                    slippage=Decimal("0"),
+                    realized_pnl=Decimal("0"),
+                    strategy_name="broker_live",
+                    order_id=None,
+                    position_id=None,
+                    metadata_json={"broker_trade_id": bt.broker_trade_id, "broker_order_id": bt.broker_order_id},
+                    created_at=bt.timestamp or datetime.now(UTC),
+                ))
+        except Exception:
+            continue
+
+    # Merge and sort by timestamp desc
+    all_trades = list(db_trades) + broker_trades
+    all_trades.sort(key=lambda t: t.timestamp or datetime.min.replace(tzinfo=UTC), reverse=True)
+    return all_trades[:limit]
 
 
 @router.get("/backtests", response_model=list[BacktestRunOut])

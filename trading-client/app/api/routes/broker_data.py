@@ -7,8 +7,9 @@ for binance, CCXTAdapter for all others) based on the broker_id path parameter.
 Endpoints:
   GET  /api/broker/{broker_id}/balance        — account balances + USD value
   GET  /api/broker/{broker_id}/portfolio      — full portfolio snapshot
-  GET  /api/broker/{broker_id}/orders         — order history (open + filled)
-  GET  /api/broker/{broker_id}/positions      — open positions from DB
+  GET  /api/broker/{broker_id}/orders         — order history (open + filled) from broker
+  GET  /api/broker/{broker_id}/trades         — executed trades with real commission from broker
+  GET  /api/broker/{broker_id}/positions      — open positions from broker (futures + spot holdings)
   GET  /api/broker/{broker_id}/ticker         — current price for a symbol
   GET  /api/broker/{broker_id}/market-info    — market info (filters, precision)
   GET  /api/broker/{broker_id}/klines         — OHLCV candles
@@ -234,6 +235,44 @@ def get_orders(
     }
 
 
+# ─── Trades ───────────────────────────────────────────────────────────────────
+
+@router.get("/{broker_id}/trades")
+def get_trades(
+    broker_id: str,
+    symbol: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Trades ejecutados directo del broker (fills individuales con comision real)."""
+    adapter = _get_adapter(broker_id, current_user)
+
+    try:
+        trades = adapter.get_trades(symbol=symbol, limit=limit)
+    except BrokerError as exc:
+        return {"error": str(exc), "trades": [], "count": 0}
+    except Exception as exc:
+        return {"error": f"Error: {exc}", "trades": [], "count": 0}
+
+    result = []
+    for t in trades:
+        result.append({
+            "broker_trade_id": t.broker_trade_id or "",
+            "broker_order_id": t.broker_order_id or "",
+            "symbol": t.symbol,
+            "side": t.side.value,
+            "quantity": float(t.quantity),
+            "price": float(t.price),
+            "commission": float(t.fee.amount) if t.fee else 0.0,
+            "commission_asset": t.fee.asset if t.fee else "",
+            "time": int(t.timestamp.timestamp() * 1000) if t.timestamp else 0,
+            "is_maker": t.metadata.get("isMaker", False) or t.metadata.get("takerOrMaker") == "maker",
+        })
+
+    result.sort(key=lambda x: x.get("time", 0), reverse=True)
+    return {"trades": result, "count": len(result), "source": "broker"}
+
+
 # ─── Positions ────────────────────────────────────────────────────────────────
 
 @router.get("/{broker_id}/positions")
@@ -241,56 +280,122 @@ def get_positions(
     broker_id: str,
     current_user: Annotated[LocalUser, Depends(get_current_user)],
 ) -> dict:
-    """Posiciones abiertas desde la DB con precios en vivo del broker."""
-    from app.database.session import SessionLocal
-    from app.database.models.position import Position
+    """Posiciones abiertas directo del broker en tiempo real.
 
+    Para futures: usa get_open_positions() del adapter (entry_price, mark_price,
+    unrealized_pnl, leverage, liquidation_price — todo del broker).
+    Para spot: deriva holdings de get_account_balances() (non-stablecoin balances
+    con precio actual de get_ticker()).
+    SL/TP se overlay desde DB si existen (para posiciones gestionadas por la app).
+    """
     adapter = _get_adapter(broker_id, current_user)
+
+    # ─── 1. Try futures positions from broker ─────────────────────────────
+    broker_positions = adapter.get_open_positions()
+
+    # ─── 2. If no futures positions, derive spot holdings from balances ──
+    if not broker_positions:
+        STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP", "GUSD", "PAX", "EUR"}
+        try:
+            balances = adapter.get_account_balances()
+        except Exception:
+            balances = ()
+
+        for bal in balances:
+            if bal.asset in STABLECOINS or bal.total <= 0:
+                continue
+            # Fetch current price
+            current_price = None
+            for quote in ("USDT", "USDC", "USD", "FDUSD"):
+                try:
+                    ticker = adapter.get_ticker(f"{bal.asset}/{quote}")
+                    current_price = ticker.price
+                    break
+                except Exception:
+                    continue
+
+            broker_positions = broker_positions + (
+                Position(
+                    symbol=f"{bal.asset}/USDT",
+                    side="long",
+                    quantity=bal.total,
+                    entry_price=Decimal("0"),
+                    current_price=current_price,
+                    unrealized_pnl=Decimal("0"),
+                    status="open",
+                    strategy_name="spot_holding",
+                    metadata={"source": "broker_balance", "asset": bal.asset},
+                ),
+            )
+
+    if not broker_positions:
+        return {"positions": [], "count": 0, "source": "broker"}
+
+    # ─── 3. Overlay SL/TP from DB for app-managed positions ──────────────
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as DBPosition
 
     db = SessionLocal()
     try:
-        positions = db.query(Position).filter(
-            Position.status == "open",
-            Position.user_id == current_user.id,
-            Position.broker_id == broker_id,
+        db_positions = db.query(DBPosition).filter(
+            DBPosition.status == "open",
+            DBPosition.user_id == current_user.id,
+            DBPosition.broker_id == broker_id,
         ).all()
-        if not positions:
-            return {"positions": [], "count": 0}
-
-        result = []
-        for p in positions:
-            current_price = None
-            unrealized = 0.0
-            try:
-                sym = normalize_symbol(p.symbol)
-                ticker = adapter.get_ticker(sym)
-                current_price = float(ticker.price)
-                unrealized = (current_price - float(p.entry_price)) * float(p.quantity)
-            except Exception:
-                pass
-
-            if current_price:
-                p.current_price = Decimal(str(current_price))
-                p.unrealized_pnl = Decimal(str(unrealized))
-
-            result.append({
-                "id": p.id,
-                "symbol": p.symbol,
-                "side": p.side,
-                "quantity": float(p.quantity),
-                "entry_price": float(p.entry_price),
-                "current_price": current_price,
-                "unrealized_pnl": round(unrealized, 4),
+        sl_tp_map: dict[str, dict] = {}
+        for p in db_positions:
+            sym = normalize_symbol(p.symbol)
+            sl_tp_map[sym] = {
                 "stop_loss": float(p.stop_loss) if p.stop_loss else None,
                 "take_profit": float(p.take_profit) if p.take_profit else None,
-                "status": p.status,
                 "strategy_name": p.strategy_name,
-                "opened_at": p.opened_at.isoformat() if p.opened_at else None,
-            })
-        db.commit()
-        return {"positions": result, "count": len(result)}
+                "id": p.id,
+            }
     finally:
         db.close()
+
+    # ─── 4. Build response from broker data ──────────────────────────────
+    result = []
+    for pos in broker_positions:
+        sym = normalize_symbol(pos.symbol)
+        current_price = float(pos.current_price) if pos.current_price else None
+        entry_price = float(pos.entry_price) if pos.entry_price else 0.0
+
+        # Recalculate unrealized P&L if not provided by broker
+        unrealized = float(pos.unrealized_pnl)
+        if unrealized == 0 and current_price and entry_price > 0:
+            if pos.side == "long":
+                unrealized = (current_price - entry_price) * float(pos.quantity)
+            else:
+                unrealized = (entry_price - current_price) * float(pos.quantity)
+
+        # Overlay SL/TP from DB if available
+        db_info = sl_tp_map.get(sym, {})
+        sl = db_info.get("stop_loss")
+        tp = db_info.get("take_profit")
+        strategy = db_info.get("strategy_name", pos.strategy_name)
+        pos_id = db_info.get("id", 0)
+
+        result.append({
+            "id": pos_id,
+            "symbol": sym,
+            "side": pos.side,
+            "quantity": float(pos.quantity),
+            "entry_price": entry_price,
+            "current_price": current_price,
+            "unrealized_pnl": round(unrealized, 4),
+            "stop_loss": sl,
+            "take_profit": tp,
+            "status": "open",
+            "strategy_name": strategy,
+            "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
+            "leverage": pos.metadata.get("leverage"),
+            "liquidation_price": pos.metadata.get("liquidation_price"),
+            "margin_mode": pos.metadata.get("margin_mode"),
+            "source": pos.metadata.get("source", "broker"),
+        })
+
+    return {"positions": result, "count": len(result), "source": "broker"}
 
 
 # ─── Ticker ───────────────────────────────────────────────────────────────────

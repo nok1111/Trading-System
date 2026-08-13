@@ -43,9 +43,11 @@ from app.brokers.models import (
     BrokerCredentials,
     BrokerInfo,
     BrokerOrder,
+    BrokerTrade,
     CancelOrderRequest,
     Candle,
     CredentialValidationResult,
+    Fee,
     MarketInfo,
     MarketType,
     OrderCancellationResult,
@@ -583,6 +585,39 @@ class CCXTAdapter(BrokerAdapter):
         except Exception as exc:
             raise _map_ccxt_error(exc) from exc
         return tuple(_parse_ccxt_order(o) for o in orders)
+
+    def get_trades(self, symbol: str | None = None, limit: int = 50) -> tuple[BrokerTrade, ...]:
+        ccxt_symbol = symbol if symbol else None
+        try:
+            raw_trades = self._exchange.fetch_my_trades(ccxt_symbol, limit=limit)
+        except Exception as exc:
+            raise _map_ccxt_error(exc) from exc
+
+        trades: list[BrokerTrade] = []
+        for t in raw_trades:
+            fee = None
+            fee_info = t.get("fee")
+            if fee_info and fee_info.get("cost"):
+                fee = Fee(
+                    asset=fee_info.get("currency", ""),
+                    amount=_to_decimal(fee_info["cost"]),
+                )
+            side = OrderSide.BUY if t.get("side") == "buy" else OrderSide.SELL
+            ts = None
+            if t.get("timestamp"):
+                ts = datetime.fromtimestamp(t["timestamp"] / 1000, tz=UTC)
+            trades.append(BrokerTrade(
+                broker_trade_id=str(t.get("id", "")),
+                broker_order_id=str(t.get("order", "")) if t.get("order") else None,
+                symbol=normalize_symbol(t.get("symbol", "")),
+                side=side,
+                quantity=_to_decimal(t.get("amount", 0)),
+                price=_to_decimal(t.get("price", 0)),
+                fee=fee,
+                timestamp=ts,
+                metadata={"takerOrMaker": t.get("takerOrMaker", "")},
+            ))
+        return tuple(trades)
 
     def get_market_info(self, symbol: str) -> MarketInfo:
         try:

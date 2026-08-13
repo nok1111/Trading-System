@@ -260,6 +260,21 @@ class Fee:
     currency: str = "USDT"
 
 
+@dataclass(frozen=True)
+class BrokerTrade:
+    """Trade ejecutado en el broker (filled order o individual fill)."""
+
+    broker_trade_id: str | None
+    broker_order_id: str | None
+    symbol: str
+    side: OrderSide
+    quantity: Decimal
+    price: Decimal
+    fee: Fee | None = None
+    timestamp: datetime | None = None
+    metadata: dict = field(default_factory=dict)
+
+
 def normalize_symbol(symbol: str) -> str:
     """Normaliza un simbolo al formato canonico con slash.
 

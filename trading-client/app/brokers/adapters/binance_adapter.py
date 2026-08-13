@@ -30,9 +30,11 @@ from app.brokers.models import (
     BrokerCredentials,
     BrokerInfo,
     BrokerOrder,
+    BrokerTrade,
     CancelOrderRequest,
     Candle,
     CredentialValidationResult,
+    Fee,
     MarketInfo,
     MarketType,
     OrderCancellationResult,
@@ -245,6 +247,37 @@ class BinanceAdapter(BrokerAdapter):
         for o in resp:
             orders.append(self._parse_binance_order(o))
         return tuple(orders)
+
+    def get_trades(self, symbol: str | None = None, limit: int = 50) -> tuple[BrokerTrade, ...]:
+        params: dict[str, Any] = {"limit": limit}
+        if symbol:
+            params["symbol"] = denormalize_symbol(symbol, "binance")
+        try:
+            resp = self._broker._signed_request("GET", "/api/v3/myTrades", params)
+        except BinanceBrokerError as exc:
+            raise _map_binance_error(exc) from exc
+
+        trades: list[BrokerTrade] = []
+        for t in resp:
+            side = OrderSide.BUY if t.get("isBuyer", False) else OrderSide.SELL
+            fee = None
+            if t.get("commission"):
+                fee = Fee(
+                    asset=t.get("commissionAsset", ""),
+                    amount=Decimal(str(t["commission"])),
+                )
+            trades.append(BrokerTrade(
+                broker_trade_id=str(t.get("id", "")),
+                broker_order_id=str(t.get("orderId", "")),
+                symbol=normalize_symbol(t.get("symbol", "")),
+                side=side,
+                quantity=Decimal(str(t.get("qty", 0))),
+                price=Decimal(str(t.get("price", 0))),
+                fee=fee,
+                timestamp=datetime.fromtimestamp(t.get("time", 0) / 1000, tz=UTC) if t.get("time") else None,
+                metadata={"isMaker": t.get("isMaker", False)},
+            ))
+        return tuple(trades)
 
     def get_market_info(self, symbol: str) -> MarketInfo:
         broker_symbol = denormalize_symbol(symbol, "binance")
