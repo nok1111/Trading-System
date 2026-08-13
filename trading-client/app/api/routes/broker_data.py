@@ -1056,6 +1056,39 @@ def sync_positions(
         db.close()
 
 
+# ─── Reconciliation Status ────────────────────────────────────────────────────
+
+@router.get("/reconciliation/status")
+def get_reconciliation_status(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Estado del reconciliador automático de posiciones."""
+    from app.services.position_reconciler import get_position_reconciler
+
+    reconciler = get_position_reconciler()
+    return {
+        "running": reconciler.is_running,
+        "cycle_count": reconciler.cycle_count,
+        "last_cycle_at": reconciler.last_cycle_at.isoformat() if reconciler.last_cycle_at else None,
+        "last_result": reconciler.last_result,
+    }
+
+
+@router.post("/reconciliation/run")
+def trigger_reconciliation(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Ejecuta un ciclo de reconciliación inmediato (no espera al intervalo)."""
+    from app.services.position_reconciler import get_position_reconciler
+
+    reconciler = get_position_reconciler()
+    try:
+        reconciler._run_cycle()
+        return {"status": "ok", "result": reconciler.last_result}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
 # ─── Dust Transfer (convert dust to BNB) ──────────────────────────────────────
 
 class DustTransferRequest(BaseModel):

@@ -127,6 +127,8 @@ class Settings(BaseSettings):
     GROK_DEFAULT_BASE_URL: str = "https://api.x.ai/v1"
     # AI prompts directory (externalized prompt files)
     AI_PROMPTS_DIR: str = "app/ai/prompts"
+    # Position reconciler interval (seconds between reconciliation cycles)
+    RECONCILE_INTERVAL: int = Field(default=60, ge=10, le=3600)
 
     @field_validator("DEFAULT_SYMBOLS")
     @classmethod

@@ -250,6 +250,13 @@ def _startup_services() -> None:
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Failed to start social scheduler: %s", exc)
+    # Start position reconciler (auto-sync DB positions with broker)
+    try:
+        from app.services.position_reconciler import get_position_reconciler
+        get_position_reconciler().start()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to start position reconciler: %s", exc)
 
 
 @app.on_event("shutdown")
@@ -257,6 +264,11 @@ def _shutdown_services() -> None:
     stop_price_stream()
     stop_intel_scheduler()
     stop_social_scheduler()
+    try:
+        from app.services.position_reconciler import get_position_reconciler
+        get_position_reconciler().stop()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
