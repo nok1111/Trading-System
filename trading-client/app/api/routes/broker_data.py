@@ -589,6 +589,77 @@ def place_order(
             resp["stopLoss"] = req.stop_loss_price
             resp["takeProfit"] = req.take_profit_price
 
+        # ─── Create Position + Trade record in DB for BUY orders ───────────
+        if side_str == "buy" and order.filled_quantity and order.filled_quantity > 0:
+            try:
+                from app.database.session import SessionLocal
+                from app.database.models.position import Position
+                from app.database.models.trade import Trade
+                from datetime import datetime, UTC
+
+                db = SessionLocal()
+                try:
+                    # Check if position already exists (avoid duplicates)
+                    existing = db.query(Position).filter(
+                        Position.symbol == symbol,
+                        Position.status == "open",
+                        Position.user_id == getattr(current_user, "id", 0),
+                    ).first()
+
+                    if not existing:
+                        fill_price = order.price or Decimal("0")
+                        qty = order.filled_quantity
+
+                        # Create Position
+                        pos = Position(
+                            user_id=getattr(current_user, "id", 0),
+                            broker_id=broker_id,
+                            symbol=symbol,
+                            opened_at=datetime.now(UTC),
+                            closed_at=None,
+                            side="long",
+                            quantity=qty,
+                            entry_price=fill_price,
+                            current_price=fill_price,
+                            stop_loss=Decimal(str(req.stop_loss_price)) if req.stop_loss_price else None,
+                            take_profit=Decimal(str(req.take_profit_price)) if req.take_profit_price else None,
+                            unrealized_pnl=Decimal("0"),
+                            realized_pnl=Decimal("0"),
+                            status="open",
+                            strategy_name="manual",
+                            metadata_json={"source": "manual_trade", "order_id": order.broker_order_id},
+                        )
+                        db.add(pos)
+                        db.flush()
+
+                        # Create Trade record
+                        trade = Trade(
+                            user_id=getattr(current_user, "id", 0),
+                            broker_id=broker_id,
+                            timestamp=datetime.now(UTC),
+                            symbol=symbol,
+                            side="BUY",
+                            quantity=qty,
+                            price=fill_price,
+                            commission=Decimal("0"),
+                            slippage=Decimal("0"),
+                            realized_pnl=Decimal("0"),
+                            strategy_name="manual",
+                            order_id=None,
+                            position_id=pos.id,
+                            metadata_json={"entry": True, "source": "manual_trade"},
+                        )
+                        db.add(trade)
+                        db.commit()
+                        resp["position_id"] = pos.id
+                    else:
+                        db.rollback()
+                finally:
+                    db.close()
+            except Exception as exc:
+                # Don't fail the order response if DB save fails
+                resp["db_warning"] = str(exc)
+
         return resp
     except BrokerError as exc:
         return {"status": "error", "error": str(exc)}
