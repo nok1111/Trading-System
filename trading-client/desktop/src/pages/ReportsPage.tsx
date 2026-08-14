@@ -4,7 +4,7 @@ import { api, cacheInvalidate } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { isBrokerConnected } from "../lib/brokerTypes";
 import { CryptoIcon } from "../components/CryptoIcon";
-import { cn } from "../lib/utils";
+import { cn, fmtDate } from "../lib/utils";
 import { toast } from "../components/ui/Toast";
 import * as brokerApi from "../lib/brokerApi";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
@@ -39,6 +39,7 @@ interface ReportItem extends IntelligenceReport {
   take_profit_pct?: number | null;
   reason?: string | null;
   live_data?: LiveData | null;
+  timestamp?: string;
 }
 
 export function ReportsPage() {
@@ -348,7 +349,7 @@ export function ReportsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {statusBadge(r.status)}
-                    <span className="text-[10px] text-[var(--color-text-muted)]">{r.date}</span>
+                    <span className="text-[10px] text-[var(--color-text-muted)]">{r.timestamp ? fmtDate(r.timestamp) : r.date}</span>
                   </div>
                 </div>
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{r.summary}</p>
