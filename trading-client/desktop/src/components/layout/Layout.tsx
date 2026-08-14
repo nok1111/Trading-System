@@ -20,6 +20,8 @@ import {
   Bot,
   Grid3x3,
   Users,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
@@ -123,8 +125,24 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [presetTradeSymbol, setPresetTradeSymbol] = useState<string | undefined>(undefined);
   const [presetStopLoss, setPresetStopLoss] = useState<number | undefined>(undefined);
   const [presetTakeProfit, setPresetTakeProfit] = useState<number | undefined>(undefined);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+
+  // Detect mobile viewport
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // Close mobile nav when tab changes
+  const handleTabChange = (tab: TabId) => {
+    onTabChange(tab);
+    setMobileNavOpen(false);
+  };
 
   useEffect(() => {
     const onNavigate = (e: Event) => {
@@ -267,25 +285,41 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
+      {/* ---------- Mobile overlay backdrop ---------- */}
+      {isMobile && mobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
       {/* ---------- Sidebar ---------- */}
       <aside
         className={cn(
-          "flex-shrink-0 flex flex-col bg-[var(--color-surface)] transition-[width] duration-200",
-          collapsed ? "w-[68px]" : "w-[228px]"
+          "flex flex-col bg-[var(--color-surface)] transition-all duration-200 z-50",
+          isMobile
+            ? cn(
+                "fixed inset-y-0 left-0 w-[228px]",
+                mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+              )
+            : cn(
+                "flex-shrink-0",
+                collapsed ? "w-[68px]" : "w-[228px]"
+              )
         )}
       >
         {/* Brand */}
         <div
           className={cn(
             "flex items-center h-16 flex-shrink-0",
-            collapsed ? "justify-center px-2" : "gap-2.5 px-4"
+            collapsed && !isMobile ? "justify-center px-2" : "gap-2.5 px-4"
           )}
         >
           <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] flex items-center justify-center shadow-lg shadow-[var(--color-primary)]/25 flex-shrink-0">
             <span className="text-white font-extrabold text-[15px]">A</span>
           </div>
-          {!collapsed && (
-            <div className="leading-none min-w-0">
+          {(!collapsed || isMobile) && (
+            <div className="leading-none min-w-0 flex-1">
               <div className="font-extrabold text-[16px] text-[var(--color-text)] tracking-tight truncate">
                 Alvora
               </div>
@@ -293,6 +327,16 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                 AI Trading
               </div>
             </div>
+          )}
+          {/* Mobile close button */}
+          {isMobile && (
+            <button
+              onClick={() => setMobileNavOpen(false)}
+              className="flex items-center justify-center w-8 h-8 rounded-[8px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+              aria-label="Cerrar menú"
+            >
+              <X size={18} />
+            </button>
           )}
         </div>
 
@@ -311,7 +355,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onTabChange(item.id)}
+                    onClick={() => handleTabChange(item.id)}
                     title={collapsed ? item.label : undefined}
                     className={cn(
                       "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
@@ -367,7 +411,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                     selectedModule={selectedBrokerModule?.brokerId === broker.brokerId ? selectedBrokerModule.moduleId : null}
                     onSelectModule={(moduleId) => {
                       setSelectedBrokerModule({ brokerId: broker.brokerId, moduleId });
-                      onTabChange("broker");
+                      handleTabChange("broker");
                     }}
                     collapsed={collapsed}
                   />
@@ -389,7 +433,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onTabChange(item.id)}
+                    onClick={() => handleTabChange(item.id)}
                     title={collapsed ? item.label : undefined}
                     className={cn(
                       "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
@@ -429,7 +473,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
             title={collapsed ? "Expandir" : "Colapsar"}
             className={cn(
               "w-full flex items-center rounded-[10px] h-10 text-[13px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors",
-              collapsed ? "justify-center" : "gap-2.5 px-2.5"
+              collapsed ? "justify-center" : "gap-2.5 px-2.5",
+              isMobile && "hidden"
             )}
           >
             {collapsed ? (
@@ -457,6 +502,16 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <MarketStatusBar />
         <header className="flex-shrink-0 h-14 flex items-center gap-4 px-5 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
+          {/* Mobile menu button */}
+          {isMobile && (
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="flex items-center justify-center w-9 h-9 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors flex-shrink-0"
+              aria-label="Abrir menú"
+            >
+              <Menu size={18} />
+            </button>
+          )}
           <div className="min-w-0">
             <h1 className="text-[18px] font-extrabold text-[var(--color-text)] tracking-tight leading-none truncate">
               {meta.title}
@@ -484,7 +539,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                   <button
                     key={r.id}
                     onClick={() => {
-                      onTabChange(r.id);
+                      handleTabChange(r.id);
                       setQuery("");
                     }}
                     className="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-[13px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
@@ -583,7 +638,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                   </div>
                   <button
                     onClick={() => {
-                      onTabChange("preferences");
+                      handleTabChange("preferences");
                       setUserOpen(false);
                     }}
                     className="w-full flex items-center gap-2.5 px-3 h-10 text-[13px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"

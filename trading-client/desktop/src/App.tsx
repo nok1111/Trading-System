@@ -6,6 +6,7 @@ import { Toast } from "./components/ui/Toast";
 import { DashboardPage } from "./pages/DashboardPage";
 import { logger } from "./lib/logger";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { BrokerProvider, useBrokerContext } from "./context/BrokerContext";
 import { BrokerOnboarding } from "./components/brokers/BrokerOnboarding";
@@ -129,9 +130,11 @@ function BrokerAwareContent({
       {tabs.map((tab) => (
         <div key={tab} style={{ display: tab === activeTab ? "block" : "none" }}>
           {visitedTabs.has(tab) ? (
-            <Suspense fallback={<div className="flex items-center justify-center py-20 text-[var(--color-text-muted)] text-[13px]">Cargando...</div>}>
-              {pages[tab]}
-            </Suspense>
+            <PageErrorBoundary pageName={tab}>
+              <Suspense fallback={<div className="flex items-center justify-center py-20 text-[var(--color-text-muted)] text-[13px]">Cargando...</div>}>
+                {pages[tab]}
+              </Suspense>
+            </PageErrorBoundary>
           ) : null}
         </div>
       ))}

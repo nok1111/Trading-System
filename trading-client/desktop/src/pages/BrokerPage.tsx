@@ -10,6 +10,7 @@ import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PriceChart } from "../components/charts/PriceChart";
 import { SlTpPanel } from "../components/SlTpPanel";
+import { OrderConfirmModal } from "../components/trading/OrderConfirmModal";
 import * as brokerApi from "../lib/brokerApi";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
@@ -396,6 +397,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
   const [symbolSearch, setSymbolSearch] = useState("");
   const [symbolsLoading, setSymbolsLoading] = useState(false);
   const [change24h, setChange24h] = useState<number | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const BROKER_FEE_RATE = 0.001; // 0.1% spot fee (approximate, varies by exchange)
 
@@ -531,7 +533,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
   const exceedsBalance = (side === "buy" && amountUsd && parseFloat(amountUsd) > maxBuyUsd)
     || (side === "sell" && quantity && parseFloat(quantity) > maxSellQty);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError("");
     setResult(null);
     if (orderType === "limit" && !limitPrice) {
@@ -548,7 +550,12 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
         : `Excede tu saldo disponible de ${maxSellQty.toFixed(6)} ${baseAsset}`);
       return;
     }
+    // Show confirmation modal before executing
+    setShowConfirm(true);
+  };
 
+  const confirmAndExecute = async () => {
+    setShowConfirm(false);
     setSubmitting(true);
     try {
       const payload: brokerApi.PlaceOrderParams = {
@@ -1022,6 +1029,29 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
           <PriceChart symbol={symbol} interval="1h" height={380} brokerId={brokerId} stopLoss={stopLossPrice ? parseFloat(stopLossPrice) : null} takeProfit={takeProfitPrice ? parseFloat(takeProfitPrice) : null} entryPrice={entryPrice} />
         </div>
       </div>
+
+      {/* Order confirmation modal */}
+      <OrderConfirmModal
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={confirmAndExecute}
+        order={{
+          symbol,
+          side,
+          orderType,
+          quantity: computedQty,
+          price: orderType === "limit" ? limitPrice : null,
+          orderValue,
+          fee,
+          netValue,
+          quoteCurrency,
+          baseAsset,
+          sellPnl,
+          sellPnlPct,
+          stopLossPrice,
+          takeProfitPrice,
+        }}
+      />
     </div>
   );
 }
