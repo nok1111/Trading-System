@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download } from "lucide-react";
+import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download, PieChart as PieChartIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
@@ -9,6 +9,9 @@ import { BrokerStatusBadge } from "../components/brokers/BrokerStatusBadge";
 import { cn, fmt, fmtVol, fmtDate } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PriceChart } from "../components/charts/PriceChart";
+import { DonutChart, type DonutData } from "../components/charts/DonutChart";
+import { EquityCurve, type EquityPoint } from "../components/charts/EquityCurve";
+import { EmptyState } from "../components/ui/EmptyState";
 import { SlTpPanel } from "../components/SlTpPanel";
 import { OrderConfirmModal } from "../components/trading/OrderConfirmModal";
 import { OrderBook } from "../components/trading/OrderBook";
@@ -244,23 +247,35 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
   const activePositions = positions.filter((p) => p.status === "open").length;
   const activeOrders = activeOrdersCount;
 
+  // Build donut data from assets
+  const donutData: DonutData[] = assets
+    .filter((a) => (a.usd_value || 0) > 0)
+    .slice(0, 8)
+    .map((a) => ({ name: a.asset, value: a.usd_value || 0 }));
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        <div className="panel p-4">
-          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase">Balance Total</p>
-          <p className="text-[22px] font-extrabold text-[var(--color-text)] mt-1">${fmtVol(totalUsd)}</p>
-          {totalMxn > 0 && (
-            <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">≈ ${fmtVol(totalMxn)} MXN</p>
-          )}
-        </div>
-        <div className="panel p-4">
-          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase">Posiciones</p>
-          <p className="text-[22px] font-extrabold text-[var(--color-text)] mt-1">{activePositions}</p>
-        </div>
-        <div className="panel p-4">
-          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase">Órdenes Activas</p>
-          <p className="text-[22px] font-extrabold text-[var(--color-text)] mt-1">{activeOrders}</p>
+      {/* Hero metrics */}
+      <div className="panel-hero p-5">
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Wallet size={12} className="text-[var(--color-text-muted)]" />
+              <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">Balance Total</p>
+            </div>
+            <p className="num text-[26px] font-extrabold text-[var(--color-text)] leading-none">${fmtVol(totalUsd)}</p>
+            {totalMxn > 0 && (
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-1">≈ ${fmtVol(totalMxn)} MXN</p>
+            )}
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide mb-1">Posiciones</p>
+            <p className="num text-[26px] font-extrabold text-[var(--color-text)] leading-none">{activePositions}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide mb-1">Órdenes Activas</p>
+            <p className="num text-[26px] font-extrabold text-[var(--color-text)] leading-none">{activeOrders}</p>
+          </div>
         </div>
       </div>
 
@@ -270,21 +285,53 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
         </div>
       )}
 
-      <div className="panel p-4">
-        <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Top Holdings</h3>
-        {assets.length === 0 ? (
-          <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin balances disponibles</p>
+      {/* Donut chart + holdings list */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {donutData.length > 0 ? (
+          <div className="panel p-4 card-hover">
+            <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-3 flex items-center gap-2">
+              <PieChartIcon size={15} className="text-[var(--color-accent)]" />
+              Allocation
+            </h3>
+            <div className="flex items-center justify-center">
+              <DonutChart
+                data={donutData}
+                size={180}
+                centerLabel="Total"
+                centerValue={`$${fmtVol(totalUsd)}`}
+              />
+            </div>
+          </div>
         ) : (
-          <div className="space-y-1.5">
-            {assets.slice(0, 8).map((b, i) => (
-              <div key={i} className="flex items-center gap-3 h-8">
-                <span className="text-[12px] font-bold text-[var(--color-text)] w-16 truncate">{b.asset}</span>
-                <span className="text-[12px] text-[var(--color-text-muted)] flex-1">{fmt(b.free)} (free) · {fmt(b.locked)} (locked)</span>
-                <span className="text-[12px] font-bold text-[var(--color-text)]">${fmtVol(b.usd_value || 0)}</span>
-              </div>
-            ))}
+          <div className="panel p-4">
+            <EmptyState
+              icon={<PieChartIcon size={28} />}
+              title="Sin datos de allocation"
+              description="Conecta tu broker para ver la distribución de tu portfolio."
+            />
           </div>
         )}
+        <div className="panel p-4 card-hover">
+          <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-3">Top Holdings</h3>
+          {assets.length === 0 ? (
+            <EmptyState
+              icon={<Wallet size={28} />}
+              title="Sin balances disponibles"
+              description="No se encontraron activos en tu cuenta."
+            />
+          ) : (
+            <div className="space-y-1.5">
+              {assets.slice(0, 8).map((b, i) => (
+                <div key={i} className="flex items-center gap-3 h-8">
+                  <CryptoIcon symbol={b.asset + "USDT"} size={18} />
+                  <span className="text-[12px] font-bold text-[var(--color-text)] w-16 truncate">{b.asset}</span>
+                  <span className="text-[12px] text-[var(--color-text-muted)] flex-1">{fmt(b.free)} (free) · {fmt(b.locked)} (locked)</span>
+                  <span className="text-[12px] font-bold text-[var(--color-text)]">${fmtVol(b.usd_value || 0)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {activePositions > 0 && (
@@ -292,7 +339,7 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
           <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Posiciones Activas ({activePositions})</h3>
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+              <tr className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                 <th className="text-left pb-2">Symbol</th>
                 <th className="text-left pb-2">Side</th>
                 <th className="text-right pb-2">Qty</th>
@@ -334,19 +381,94 @@ function OverviewModule({ balanceData, positions, activeOrdersCount }: { balance
 function PortfolioModule({ balanceData }: { balanceData: any }) {
   const assets: any[] = balanceData?.assets || [];
   const total = balanceData?.total_usd || 0;
+  const [snapshots, setSnapshots] = useState<EquityPoint[]>([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(true);
+  const [snapRange, setSnapRange] = useState(30);
+
+  useEffect(() => {
+    const loadSnapshots = async () => {
+      setSnapshotsLoading(true);
+      try {
+        const r = await api<any[]>("/api/trading/snapshots?limit=90");
+        setSnapshots((r || []).map((s: any) => ({
+          timestamp: s.timestamp,
+          equity: parseFloat(s.equity || 0),
+        })));
+      } catch { setSnapshots([]); }
+      setSnapshotsLoading(false);
+    };
+    loadSnapshots();
+    const id = setInterval(loadSnapshots, 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const donutData: DonutData[] = assets
+    .filter((a) => (a.usd_value || 0) > 0)
+    .map((a) => ({ name: a.asset, value: a.usd_value || 0 }));
+
+  const visibleSnaps = snapshots.slice(0, snapRange);
 
   return (
-    <div className="panel p-4">
-      <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Portafolio Completo</h3>
-      {balanceData?.error && (
-        <p className="text-[12px] text-[var(--color-warning)] mb-3">{balanceData.error}</p>
-      )}
-      {assets.length === 0 ? (
-        <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin balances disponibles</p>
-      ) : (
-        <table className="w-full text-[12px]">
+    <div className="space-y-4">
+      {/* Equity curve */}
+      <div className="panel p-4 card-hover">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[14px] font-bold text-[var(--color-text)] flex items-center gap-2">
+            <LineChart size={15} className="text-[var(--color-accent)]" />
+            Equity Curve
+          </h3>
+          <div className="flex gap-1">
+            {[7, 30, 90].map((d) => (
+              <button
+                key={d}
+                onClick={() => setSnapRange(d)}
+                className={cn(
+                  "px-2 py-0.5 rounded-[6px] text-[11px] font-bold transition-colors btn-press",
+                  snapRange === d
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                )}
+              >
+                {d}D
+              </button>
+            ))}
+          </div>
+        </div>
+        {snapshotsLoading ? (
+          <LoadingSkeleton lines={4} />
+        ) : (
+          <EquityCurve data={visibleSnaps} height={200} />
+        )}
+      </div>
+
+      {/* Donut + holdings table */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {donutData.length > 0 && (
+          <div className="panel p-4 card-hover">
+            <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-3 flex items-center gap-2">
+              <PieChartIcon size={15} className="text-[var(--color-accent)]" />
+              Allocation
+            </h3>
+            <div className="flex items-center justify-center">
+              <DonutChart data={donutData} size={180} centerLabel="Total" centerValue={`$${fmtVol(total)}`} />
+            </div>
+          </div>
+        )}
+        <div className="panel p-4 card-hover">
+          <h3 className="text-[14px] font-bold text-[var(--color-text)] mb-3">Portafolio Completo</h3>
+          {balanceData?.error && (
+            <p className="text-[12px] text-[var(--color-warning)] mb-3">{balanceData.error}</p>
+          )}
+          {assets.length === 0 ? (
+            <EmptyState
+              icon={<Wallet size={28} />}
+              title="Sin balances disponibles"
+              description="No se encontraron activos en tu cuenta."
+            />
+          ) : (
+            <table className="w-full text-[12px]">
           <thead>
-            <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+            <tr className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
               <th className="text-left pb-2">Asset</th>
               <th className="text-right pb-2">Free</th>
               <th className="text-right pb-2">Locked</th>
@@ -371,7 +493,9 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
             ))}
           </tbody>
         </table>
-      )}
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -672,7 +796,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 {s.base}
                 {s.change_24h_pct !== 0 && (
                   <span className={cn(
-                    "text-[9px]",
+                    "text-[11px]",
                     symbol === s.symbol ? "text-white/70" : s.change_24h_pct >= 0 ? "text-green-400" : "text-red-400"
                   )}>
                     {s.change_24h_pct >= 0 ? "+" : ""}{s.change_24h_pct.toFixed(1)}%
@@ -793,7 +917,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold text-[var(--color-text-muted)]">{quoteCurrency}</span>
               </div>
               {exceedsBalance && (
-                <div className="text-[10px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
+                <div className="text-[11px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
               )}
               {/* Quick percentage buttons */}
               <div className="flex gap-1 mt-1.5">
@@ -801,7 +925,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                   <button
                     key={pct}
                     onClick={() => setAmountUsd((availableUsdt * pct / 100).toFixed(2))}
-                    className="flex-1 h-6 rounded-[4px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                    className="flex-1 h-6 rounded-[4px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
                   >
                     {pct}%
                   </button>
@@ -829,7 +953,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 )}
               />
               {exceedsBalance && (
-                <div className="text-[10px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
+                <div className="text-[11px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
               )}
               {/* Quick percentage buttons for sell */}
               <div className="flex gap-1 mt-1.5">
@@ -837,7 +961,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                   <button
                     key={pct}
                     onClick={() => setQuantity((maxSellQty * pct / 100).toFixed(6))}
-                    className="flex-1 h-6 rounded-[4px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                    className="flex-1 h-6 rounded-[4px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
                   >
                     {pct}%
                   </button>
@@ -869,7 +993,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
 
               {/* Position sizer */}
               <div>
-                <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
+                <label className="block text-[11px] font-bold text-[var(--color-text-muted)] mb-1">
                   {t("trading.riskPerTrade")} (% del capital)
                 </label>
                 <div className="flex gap-2 items-center">
@@ -890,7 +1014,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-danger)] mb-1">
+                  <label className="block text-[11px] font-bold text-[var(--color-danger)] mb-1">
                     {t("trading.stopLoss")} ({quoteCurrency})
                   </label>
                   <input
@@ -902,7 +1026,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-success)] mb-1">
+                  <label className="block text-[11px] font-bold text-[var(--color-success)] mb-1">
                     {t("trading.takeProfit")} ({quoteCurrency})
                   </label>
                   <input
@@ -943,14 +1067,14 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 className="w-4 h-4 rounded accent-[var(--color-primary)]"
               />
               <span className="text-[12px] font-bold text-[var(--color-text)]">{t("trading.trailingStop")}</span>
-              <span className="text-[10px] text-[var(--color-text-muted)]">
+              <span className="text-[11px] text-[var(--color-text-muted)]">
                 ({t("trading.trailingStopDesc")})
               </span>
             </label>
             {trailingStopEnabled && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-[11px] font-bold text-[var(--color-text-muted)] mb-1">
                     Callback Rate (%)
                   </label>
                   <input
@@ -965,7 +1089,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
+                  <label className="block text-[11px] font-bold text-[var(--color-text-muted)] mb-1">
                     Precio activación (opcional)
                   </label>
                   <input
@@ -1021,7 +1145,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                   : "bg-red-500/10 border-red-500/30"
               )}>
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">
+                  <span className="text-[11px] font-bold uppercase text-[var(--color-text-muted)]">
                     {sellPnl >= 0 ? "📈 Ganancia" : "📉 Pérdida"}
                   </span>
                   <span className={cn(
@@ -1033,7 +1157,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 </div>
                 {sellPnlPct !== null && (
                   <div className="flex justify-between items-center mt-0.5">
-                    <span className="text-[10px] text-[var(--color-text-muted)]">
+                    <span className="text-[11px] text-[var(--color-text-muted)]">
                       Precio entrada: ${entryPrice?.toFixed(4)}
                     </span>
                     <span className={cn(
@@ -1048,7 +1172,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
             )}
             {/* Entry price info for SELL */}
             {side === "sell" && entryPrice && (
-              <div className="flex justify-between text-[10px] text-[var(--color-text-muted)]">
+              <div className="flex justify-between text-[11px] text-[var(--color-text-muted)]">
                 <span>Posición: {heldQty.toFixed(6)} {baseAsset} @ ${entryPrice.toFixed(4)}</span>
                 <span>Costo: ${(entryPrice * (computedQty || heldQty)).toFixed(2)}</span>
               </div>
@@ -1329,7 +1453,7 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-[12px]">
                 <thead className="sticky top-0 bg-[var(--color-surface)] z-10">
-                  <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                  <tr className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                     <th className="text-left pb-2">Symbol</th>
                     <SortHeader label="Price" k="price" />
                     <SortHeader label="24h%" k="change_24h_pct" />
@@ -1380,13 +1504,13 @@ function OrdersModule({ activeOrders, filledOrders, brokerDisplayName }: { activ
     <div className="space-y-4">
       <div className="panel p-4 border-l-2 border-[var(--color-primary)]">
         <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-1">Órdenes Activas en {brokerDisplayName} ({activeOrders.length})</h3>
-        <p className="text-[10px] text-[var(--color-text-muted)] mb-3">Datos en tiempo real desde {brokerDisplayName} API</p>
+        <p className="text-[11px] text-[var(--color-text-muted)] mb-3">Datos en tiempo real desde {brokerDisplayName} API</p>
         {activeOrders.length === 0 ? (
           <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">No tienes órdenes activas en {brokerDisplayName} actualmente</p>
         ) : (
         <table className="w-full text-[12px]">
           <thead>
-            <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+            <tr className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
               <th className="text-left pb-2">Symbol</th>
               <th className="text-left pb-2">Side</th>
               <th className="text-left pb-2">Type</th>
@@ -1425,7 +1549,7 @@ function OrdersModule({ activeOrders, filledOrders, brokerDisplayName }: { activ
           <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Historial de Órdenes {brokerDisplayName} ({filledOrders.length})</h3>
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+              <tr className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                 <th className="text-left pb-2">Time</th>
                 <th className="text-left pb-2">Symbol</th>
                 <th className="text-left pb-2">Side</th>
@@ -1500,7 +1624,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
       ) : (
         <table className="w-full text-[12px]">
           <thead>
-            <tr className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+            <tr className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
               <th className="text-left pb-2">Time</th>
               <th className="text-left pb-2">Symbol</th>
               <th className="text-left pb-2">Side</th>
@@ -1950,7 +2074,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
           </button>
         )}
         <div>
-          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Interval (sec)</label>
+          <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Interval (sec)</label>
           <div className="flex gap-1">
             <input
               type="number"
@@ -1968,7 +2092,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
           </div>
         </div>
         <div>
-          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Deposit (USDT)</label>
+          <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Deposit (USDT)</label>
           <div className="flex gap-1">
             <input
               type="number"
@@ -2055,7 +2179,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                   />
                   <div>
                     <h3 className="text-[13px] font-bold text-[var(--color-text)]">Posiciones Abiertas ({openPositions.length})</h3>
-                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real · Click en una posición para ver su gráfico</p>
+                    <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">PnL no realizado en tiempo real · Click en una posición para ver su gráfico</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -2069,7 +2193,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                     </button>
                   )}
                   <div className="text-right">
-                    <p className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">PnL Total</p>
+                    <p className="text-[11px] font-bold uppercase text-[var(--color-text-muted)]">PnL Total</p>
                     <p className={cn("text-[16px] font-extrabold", totalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
                       {totalPnl >= 0 ? "+" : ""}{fmtVol(totalPnl)} USD
                     </p>
@@ -2131,16 +2255,16 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <CryptoIcon symbol={p.symbol} size={24} />
                         <div className={cn(
-                          "w-7 h-7 rounded-[8px] flex items-center justify-center text-[10px] font-extrabold",
+                          "w-7 h-7 rounded-[8px] flex items-center justify-center text-[11px] font-extrabold",
                           p.side === "long" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
                         )}>
                           {p.side === "long" ? "L" : "S"}
                         </div>
                         <div>
                           <span className="text-[13px] font-extrabold text-[var(--color-text)]">{p.symbol}</span>
-                          <span className="text-[9px] text-[var(--color-text-muted)] ml-1.5">{durationStr}</span>
+                          <span className="text-[11px] text-[var(--color-text-muted)] ml-1.5">{durationStr}</span>
                           {balanceInsufficient && (
-                            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-[var(--color-danger)]/15 text-[var(--color-danger)] border border-[var(--color-danger)]/30" title={`Tienes ${actualBalance} ${baseAsset} en el broker pero la posición dice ${qty}`}>
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-danger)]/15 text-[var(--color-danger)] border border-[var(--color-danger)]/30" title={`Tienes ${actualBalance} ${baseAsset} en el broker pero la posición dice ${qty}`}>
                               ⚠ Saldo insuficiente
                             </span>
                           )}
@@ -2168,7 +2292,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                           <div className="flex items-center gap-1">
                             <span className="text-[var(--color-danger)]">SL {fmt(sl)}</span>
                             {slDistPct !== null && (
-                              <span className="text-[9px] text-[var(--color-text-muted)]">({slDistPct >= 0 ? "+" : ""}{slDistPct.toFixed(1)}%)</span>
+                              <span className="text-[11px] text-[var(--color-text-muted)]">({slDistPct >= 0 ? "+" : ""}{slDistPct.toFixed(1)}%)</span>
                             )}
                           </div>
                         )}
@@ -2176,15 +2300,15 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                           <div className="flex items-center gap-1">
                             <span className="text-[var(--color-success)]">TP {fmt(tp)}</span>
                             {tpDistPct !== null && (
-                              <span className="text-[9px] text-[var(--color-text-muted)]">({tpDistPct >= 0 ? "+" : ""}{tpDistPct.toFixed(1)}%)</span>
+                              <span className="text-[11px] text-[var(--color-text-muted)]">({tpDistPct >= 0 ? "+" : ""}{tpDistPct.toFixed(1)}%)</span>
                             )}
                           </div>
                         )}
                         {rrRatio !== null && rrRatio > 0 && (
-                          <span className="text-[10px] font-bold text-[var(--color-primary)]">R/R 1:{rrRatio.toFixed(1)}</span>
+                          <span className="text-[11px] font-bold text-[var(--color-primary)]">R/R 1:{rrRatio.toFixed(1)}</span>
                         )}
                         {p.strategy_name && (
-                          <div className="text-[10px] text-[var(--color-text-muted)] italic">{p.strategy_name}</div>
+                          <div className="text-[11px] text-[var(--color-text-muted)] italic">{p.strategy_name}</div>
                         )}
                       </div>
 
@@ -2194,7 +2318,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                           {pnl >= 0 ? "+" : ""}{fmtVol(pnl)} USD
                         </p>
                         {pnlPct !== 0 && (
-                          <p className={cn("text-[10px] font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                          <p className={cn("text-[11px] font-bold", pnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
                             {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
                           </p>
                         )}
@@ -2225,7 +2349,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                           {/* OCO active badge + cancel button */}
                           {p.metadata_json?.oco_order_id && (
                             <>
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-success)]/15 text-[var(--color-success)] border border-[var(--color-success)]/40">
+                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-success)]/15 text-[var(--color-success)] border border-[var(--color-success)]/40">
                                 OCO activo
                               </span>
                               <button
@@ -2240,7 +2364,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                           {/* Monitoring active badge + stop button */}
                           {p.metadata_json?.monitoring_active && !p.metadata_json?.oco_order_id && (
                             <>
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-info)]/15 text-[var(--color-info)] border border-[var(--color-info)]/40">
+                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-info)]/15 text-[var(--color-info)] border border-[var(--color-info)]/40">
                                 Monitoreando
                               </span>
                               <button
@@ -2310,21 +2434,21 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
           {/* Paper stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="panel p-3">
-              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Paper Posiciones</p>
+              <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Paper Posiciones</p>
               <p className="text-[18px] font-extrabold text-[var(--color-info)]">{paperPositions.length}</p>
             </div>
             <div className="panel p-3">
-              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Valor Total</p>
+              <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Valor Total</p>
               <p className="text-[18px] font-extrabold">${fmtVol(paperTotalValue)}</p>
             </div>
             <div className="panel p-3">
-              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">PnL Total</p>
+              <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">PnL Total</p>
               <p className={cn("text-[18px] font-extrabold", paperTotalPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
                 {paperTotalPnl >= 0 ? "+" : ""}{fmtVol(paperTotalPnl)}
               </p>
             </div>
             <div className="panel p-3">
-              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Estado</p>
+              <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Estado</p>
               <p className={cn("text-[14px] font-extrabold", paperStatus?.status === "running" ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]")}>
                 {paperStatus?.status === "running" ? "RUNNING" : "STOPPED"}
               </p>
@@ -2360,11 +2484,11 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                         <CryptoIcon symbol={p.symbol} size={28} />
                         <div>
                           <span className="font-bold text-[14px]">{p.symbol}</span>
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--color-info)] text-white">PAPER</span>
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-info)] text-white">PAPER</span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10px] text-[var(--color-text-muted)]">{fmtDate(p.opened_at)}</div>
+                        <div className="text-[11px] text-[var(--color-text-muted)]">{fmtDate(p.opened_at)}</div>
                         <div className={cn("text-[16px] font-extrabold", isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
                           {isProfit ? "+" : ""}${fmtVol(Math.abs(pnl))}
                         </div>
@@ -2374,29 +2498,29 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                     {/* Stats grid */}
                     <div className="grid grid-cols-3 gap-2 text-xs mb-3">
                       <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Entry</div>
+                        <div className="text-[11px] text-[var(--color-text-muted)] uppercase">Entry</div>
                         <div className="num font-bold">{fmt(entry)}</div>
                       </div>
                       <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Actual</div>
+                        <div className="text-[11px] text-[var(--color-text-muted)] uppercase">Actual</div>
                         <div className={cn("num font-bold", isProfit ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
                           {fmt(current)}
                         </div>
                       </div>
                       <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Cant.</div>
+                        <div className="text-[11px] text-[var(--color-text-muted)] uppercase">Cant.</div>
                         <div className="num font-bold">{qty.toFixed(6)}</div>
                       </div>
                       <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-                        <div className="text-[10px] text-[var(--color-danger)] uppercase">SL</div>
+                        <div className="text-[11px] text-[var(--color-danger)] uppercase">SL</div>
                         <div className="num font-bold text-[var(--color-danger)]">{fmt(sl)}</div>
                       </div>
                       <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-                        <div className="text-[10px] text-[var(--color-success)] uppercase">TP</div>
+                        <div className="text-[11px] text-[var(--color-success)] uppercase">TP</div>
                         <div className="num font-bold text-[var(--color-success)]">{fmt(tp)}</div>
                       </div>
                       <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase">Inversión</div>
+                        <div className="text-[11px] text-[var(--color-text-muted)] uppercase">Inversión</div>
                         <div className="num font-bold">${fmtVol(invested)}</div>
                       </div>
                     </div>
@@ -2423,7 +2547,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                         ) : null}
                         <div className="absolute top-0 left-1/2 w-px h-full bg-[var(--color-border)]" />
                       </div>
-                      <div className="flex justify-between text-[9px] text-[var(--color-text-muted)] mt-1">
+                      <div className="flex justify-between text-[11px] text-[var(--color-text-muted)] mt-1">
                         <span>SL ${fmt(sl)}</span>
                         <span>Entry ${fmt(entry)}</span>
                         <span>TP ${fmt(tp)}</span>
@@ -2433,7 +2557,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                     {/* Reason */}
                     {meta.reason && (
                       <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Razón IA</span>
+                        <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Razón IA</span>
                         <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{meta.reason}</p>
                       </div>
                     )}
@@ -2443,12 +2567,12 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                       {/* Monitoring badge */}
                       {meta.monitoring_active && (
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-info)]/15 text-[var(--color-info)] border border-[var(--color-info)]/40">
+                          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[var(--color-info)]/15 text-[var(--color-info)] border border-[var(--color-info)]/40">
                             Monitoreando
                           </span>
                           <button
                             onClick={() => handleStopMonitoring(p.id, true)}
-                            className="h-6 px-2 rounded-[6px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                            className="h-6 px-2 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors"
                           >
                             Detener
                           </button>

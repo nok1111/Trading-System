@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { FileText, Clock, CheckCircle, DollarSign } from "lucide-react";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { api, cacheInvalidate } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
@@ -6,6 +7,7 @@ import { isBrokerConnected } from "../lib/brokerTypes";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { cn, fmtDate } from "../lib/utils";
 import { toast } from "../components/ui/Toast";
+import { SummaryBar } from "../components/ui/SummaryBar";
 import * as brokerApi from "../lib/brokerApi";
 import type { IntelligenceReport } from "../lib/intelligenceTypes";
 import { MarketPreviewModal } from "../components/reports/MarketPreviewModal";
@@ -252,36 +254,81 @@ export function ReportsPage() {
 
   const actionBadge = (action?: string) => {
     if (!action) return null;
-    if (action === "BUY") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">▲ COMPRA</span>;
-    if (action === "SELL") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/40">▼ VENTA</span>;
-    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/40">— HOLD</span>;
+    if (action === "BUY") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">▲ COMPRA</span>;
+    if (action === "SELL") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-danger)]/20 text-[var(--color-danger)] border border-[var(--color-danger)]/40">▼ VENTA</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)]">— HOLD</span>;
   };
 
   const statusBadge = (status?: string) => {
-    if (!status || status === "pending") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">⏳ PENDIENTE</span>;
-    if (status === "executed") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">✓ EJECUTADA</span>;
-    if (status === "dismissed") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/40">✕ DESCARTADA</span>;
-    if (status === "expired") return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/40">⏱ EXPIRADA</span>;
+    if (!status || status === "pending") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-warning)]/20 text-[var(--color-warning)] border border-[var(--color-warning)]/40">⏳ PENDIENTE</span>;
+    if (status === "executed") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">✓ EJECUTADA</span>;
+    if (status === "dismissed") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)]">✕ DESCARTADA</span>;
+    if (status === "expired") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-warning)]/20 text-[var(--color-warning)] border border-[var(--color-warning)]/40">⏱ EXPIRADA</span>;
     return null;
   };
 
   const modeBadge = (mode?: string | null, broker?: string | null) => {
     if (!mode) return null;
-    if (mode === "paper") return <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">📊 PAPER</span>;
-    if (mode === "live") return <span className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold bg-green-500/20 text-green-400 border border-green-500/40">🔴 {broker?.toUpperCase() || "LIVE"}</span>;
+    if (mode === "paper") return <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40">📊 PAPER</span>;
+    if (mode === "live") return <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">🔴 {broker?.toUpperCase() || "LIVE"}</span>;
     return null;
   };
 
   const cardStyle = (mode?: string | null, actionType?: string) => {
-    if (actionType === "position_analysis") return "bg-cyan-500/5 border-cyan-500/30 border-l-[4px] border-l-cyan-500";
-    if (mode === "paper") return "bg-blue-500/5 border-blue-500/30 border-l-[4px] border-l-blue-500";
-    if (mode === "live") return "bg-green-500/5 border-green-500/30 border-l-[4px] border-l-green-500";
+    if (actionType === "position_analysis") return "bg-[var(--color-cyan)]/5 border-[var(--color-cyan)]/30 border-l-[4px] border-l-[var(--color-cyan)]";
+    if (mode === "paper") return "bg-[var(--color-primary)]/5 border-[var(--color-primary)]/30 border-l-[4px] border-l-[var(--color-primary)]";
+    if (mode === "live") return "bg-[var(--color-success)]/5 border-[var(--color-success)]/30 border-l-[4px] border-l-[var(--color-success)]";
     return "bg-[var(--color-surface)] border-[var(--color-border)]";
   };
 
+  // Summary metrics
+  const pendingCount = filtered.filter((r) => !r.status || r.status === "pending").length;
+  const executedCount = filtered.filter((r) => r.status === "executed").length;
+  const totalPnl = filtered
+    .filter((r) => r.metadata?.realized_pnl)
+    .reduce((sum, r) => sum + (Number(r.metadata?.realized_pnl) || 0), 0);
+
+  // Group by date
+  const grouped = useMemo(() => {
+    const groups: Record<string, ReportItem[]> = {};
+    filtered.forEach((r) => {
+      const rawDate = r.timestamp || r.date || "";
+      let dateKey: string;
+      try {
+        const d = new Date(rawDate);
+        if (isNaN(d.getTime())) dateKey = "Sin fecha";
+        else {
+          const today = new Date();
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (d.toDateString() === today.toDateString()) dateKey = "Hoy";
+          else if (d.toDateString() === yesterday.toDateString()) dateKey = "Ayer";
+          else dateKey = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+        }
+      } catch {
+        dateKey = "Sin fecha";
+      }
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(r);
+    });
+    return groups;
+  }, [filtered]);
+
   return (
-    <div className="p-5 max-w-[800px] mx-auto space-y-4">
-      <h2 className="text-[16px] font-extrabold text-[var(--color-text)]">Reportes & Recomendaciones</h2>
+    <div className="p-5 max-w-[900px] mx-auto space-y-4">
+      <h2 className="text-[20px] font-extrabold text-[var(--color-text)]">Reportes & Recomendaciones</h2>
+
+      {/* Summary bar */}
+      {!loading && filtered.length > 0 && (
+        <SummaryBar
+          items={[
+            { label: "Total", value: filtered.length, icon: <FileText size={14} /> },
+            { label: "Pendientes", value: pendingCount, tone: pendingCount > 0 ? "warning" : "default", icon: <Clock size={14} /> },
+            { label: "Ejecutadas", value: executedCount, tone: executedCount > 0 ? "success" : "default", icon: <CheckCircle size={14} /> },
+            { label: "P&L", value: `${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(2)}`, tone: totalPnl >= 0 ? "success" : "danger", icon: <DollarSign size={14} /> },
+          ]}
+        />
+      )}
 
       {/* Asset selector */}
       <div className="flex gap-1.5 flex-wrap">
@@ -290,7 +337,7 @@ export function ReportsPage() {
             key={a}
             onClick={() => setAsset(a)}
             className={cn(
-              "px-2.5 h-8 rounded-[8px] text-[12px] font-bold transition-colors flex items-center gap-1.5",
+              "px-2.5 h-8 rounded-[8px] text-[12px] font-bold transition-colors flex items-center gap-1.5 btn-press",
               asset === a ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
             )}
           >
@@ -320,14 +367,21 @@ export function ReportsPage() {
           No hay reportes disponibles{asset !== "ALL" ? ` para ${asset}` : ""}.
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((r) => {
+        <div className="space-y-4">
+          {Object.entries(grouped).map(([date, items]) => (
+            <div key={date} className="space-y-2">
+              <div className="flex items-center gap-2 py-1">
+                <span className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] tracking-wide">{date}</span>
+                <div className="flex-1 h-px bg-[var(--color-border)]" />
+                <span className="text-[11px] text-[var(--color-text-muted)]">{items.length}</span>
+              </div>
+              {items.map((r) => {
             const isExpanded = expandedId === r.id;
             return (
               <div
                 key={r.id}
                 className={cn(
-                  "rounded-[10px] border p-3 cursor-pointer transition-colors",
+                  "rounded-[10px] border p-3 cursor-pointer transition-colors card-hover",
                   cardStyle(r.trading_mode, r.action_type),
                   r.action_type === "position_analysis" ? "hover:border-cyan-500/50" : r.trading_mode === "paper" ? "hover:border-blue-500/50" : r.trading_mode === "live" ? "hover:border-green-500/50" : "hover:border-[var(--color-border-strong)]"
                 )}
@@ -339,9 +393,9 @@ export function ReportsPage() {
                     <span className="text-[13px] font-bold text-[var(--color-text)]">
                       {r.action_type === "position_analysis" ? "Análisis de Posición" : r.type === "daily" ? "Daily" : r.type === "weekly" ? "Weekly" : "Monthly"} — {r.asset}
                     </span>
-                    {r.action_type === "position_analysis" ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">⚙ ANÁLISIS</span> : actionBadge(r.action_type)}
+                    {r.action_type === "position_analysis" ? <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">⚙ ANÁLISIS</span> : actionBadge(r.action_type)}
                     {r.confidence != null && (
-                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                      <span className="text-[11px] text-[var(--color-text-muted)]">
                         {Math.round(r.confidence * 100)}% confianza
                       </span>
                     )}
@@ -349,7 +403,7 @@ export function ReportsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {statusBadge(r.status)}
-                    <span className="text-[10px] text-[var(--color-text-muted)]">{r.timestamp ? fmtDate(r.timestamp) : r.date}</span>
+                    <span className="text-[11px] text-[var(--color-text-muted)]">{r.timestamp ? fmtDate(r.timestamp) : r.date}</span>
                   </div>
                 </div>
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{r.summary}</p>
@@ -358,7 +412,7 @@ export function ReportsPage() {
                     {r.action_type === "position_analysis" && r.metadata && (
                       <div className="grid grid-cols-2 gap-2 mb-2">
                         <div className="bg-red-500/10 rounded-[6px] p-2 border border-red-500/20">
-                          <div className="text-[9px] font-bold text-red-400 uppercase">Stop Loss</div>
+                          <div className="text-[11px] font-bold text-red-400 uppercase">Stop Loss</div>
                           <div className="text-[12px] text-[var(--color-text)]">
                             <span className="text-[var(--color-text-muted)] line-through">{r.metadata.current_sl ?? "N/A"}</span>
                             {" → "}
@@ -366,7 +420,7 @@ export function ReportsPage() {
                           </div>
                         </div>
                         <div className="bg-green-500/10 rounded-[6px] p-2 border border-green-500/20">
-                          <div className="text-[9px] font-bold text-green-400 uppercase">Take Profit</div>
+                          <div className="text-[11px] font-bold text-green-400 uppercase">Take Profit</div>
                           <div className="text-[12px] text-[var(--color-text)]">
                             <span className="text-[var(--color-text-muted)] line-through">{r.metadata.current_tp ?? "N/A"}</span>
                             {" → "}
@@ -377,31 +431,31 @@ export function ReportsPage() {
                     )}
                     {r.sections.marketOverview && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Market Overview</span>
+                        <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Market Overview</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.marketOverview}</p>
                       </div>
                     )}
                     {r.sections.keyEvents && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Ajuste SL" : "Recomendación"}</span>
+                        <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Ajuste SL" : "Recomendación"}</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.keyEvents}</p>
                       </div>
                     )}
                     {r.sections.performance && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Ajuste TP" : "Gestión de riesgo"}</span>
+                        <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Ajuste TP" : "Gestión de riesgo"}</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.performance}</p>
                       </div>
                     )}
                     {r.sections.outlook && (
                       <div>
-                        <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Razón y Horizonte" : "Razón"}</span>
+                        <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">{r.action_type === "position_analysis" ? "Razón y Horizonte" : "Razón"}</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5">{r.sections.outlook}</p>
                       </div>
                     )}
                     {r.sections.detailedAnalysis && (
                       <div>
-                        <span className="text-[10px] font-bold text-cyan-400 uppercase">Análisis Detallado</span>
+                        <span className="text-[11px] font-bold text-cyan-400 uppercase">Análisis Detallado</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5 whitespace-pre-wrap">{r.sections.detailedAnalysis}</p>
                       </div>
                     )}
@@ -486,35 +540,37 @@ export function ReportsPage() {
 
                     {/* Status message for executed/dismissed */}
                     {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type === "position_analysis" && (
-                      <div className="text-[10px] text-cyan-400 font-bold pt-1">
+                      <div className="text-[11px] text-[var(--color-cyan)] font-bold pt-1">
                         ✓ Ajustes de SL/TP aplicados a la posición
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type !== "position_analysis" && (
-                      <div className="text-[10px] text-[var(--color-success)] font-bold pt-1 flex items-center gap-1">
+                      <div className="text-[11px] text-[var(--color-success)] font-bold pt-1 flex items-center gap-1">
                         ✓ Compra LIVE ejecutada en tu broker
                         <span className="text-[var(--color-text-muted)]">→</span>
                         <span className="text-[var(--color-info)]">Posiciones</span>
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "dismissed" && (
-                      <div className="text-[10px] text-[var(--color-text-muted)] pt-1">
+                      <div className="text-[11px] text-[var(--color-text-muted)] pt-1">
                         ✕ Recomendación declinada
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "expired" && (
-                      <div className="text-[10px] text-orange-400 pt-1">
+                      <div className="text-[11px] text-[var(--color-warning)] pt-1">
                         ⏱ Recomendación expirada (sin acción en 24h)
                       </div>
                     )}
                   </div>
                 )}
                 {!isExpanded && (
-                  <div className="text-[10px] text-[var(--color-text-muted)] mt-1">Click para expandir ▼</div>
+                  <div className="text-[11px] text-[var(--color-text-muted)] mt-1">Click para expandir ▼</div>
                 )}
               </div>
             );
           })}
+            </div>
+          ))}
         </div>
       )}
       {/* SL/TP Options Modal for position_analysis reports */}
@@ -547,7 +603,7 @@ export function ReportsPage() {
               >
                 {actionLoading === `rec-${sltpModalRecId}` ? "Procesando..." : `Colocar SL/TP en ${firstConnectedBroker?.displayName || activeBrokerId}`}
               </button>
-              <p className="text-[10px] text-[var(--color-text-muted)] text-center -mt-1">
+              <p className="text-[11px] text-[var(--color-text-muted)] text-center -mt-1">
                 Orden real: se ejecuta automáticamente cuando se alcanza SL o TP
               </p>
               <button
@@ -557,7 +613,7 @@ export function ReportsPage() {
               >
                 {actionLoading === `rec-${sltpModalRecId}` ? "Procesando..." : "Solo Monitorear"}
               </button>
-              <p className="text-[10px] text-[var(--color-text-muted)] text-center -mt-1">
+              <p className="text-[11px] text-[var(--color-text-muted)] text-center -mt-1">
                 Guarda SL/TP y te notifica cuando se alcancen los niveles
               </p>
             </div>

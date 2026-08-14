@@ -66,25 +66,28 @@ interface NavItem {
   id: TabId;
   labelKey: string;
   icon: ReactNode;
-  group: "general" | "sistema";
+  group: "trading" | "analytics" | "sistema";
 }
 
-const generalItems: NavItem[] = [
-  { id: "dashboard", labelKey: "nav.dashboard", icon: <LayoutDashboard size={17} />, group: "general" },
-  { id: "intelligence", labelKey: "nav.intelligence", icon: <Brain size={17} />, group: "general" },
-  { id: "risks", labelKey: "nav.security", icon: <ShieldAlert size={17} />, group: "general" },
-  { id: "news", labelKey: "nav.news", icon: <Newspaper size={17} />, group: "general" },
-  { id: "reports", labelKey: "nav.reports", icon: <FileText size={17} />, group: "general" },
-  { id: "backtest", labelKey: "nav.backtest", icon: <FlaskConical size={17} />, group: "general" },
-  { id: "ai-agent", labelKey: "nav.aiAgent", icon: <Bot size={17} />, group: "general" },
-  { id: "agent-transparency", labelKey: "nav.agentPerformance", icon: <LineChart size={17} />, group: "general" },
-  { id: "bots", labelKey: "nav.bots", icon: <Grid3x3 size={17} />, group: "general" },
-  { id: "social", labelKey: "nav.social", icon: <Users size={17} />, group: "general" },
+const tradingItems: NavItem[] = [
+  { id: "dashboard", labelKey: "nav.dashboard", icon: <LayoutDashboard size={17} />, group: "trading" },
+  { id: "ai-agent", labelKey: "nav.aiAgent", icon: <Bot size={17} />, group: "trading" },
+  { id: "agent-transparency", labelKey: "nav.agentPerformance", icon: <LineChart size={17} />, group: "trading" },
+  { id: "bots", labelKey: "nav.bots", icon: <Grid3x3 size={17} />, group: "trading" },
+  { id: "connections", labelKey: "nav.connections", icon: <Plug size={17} />, group: "trading" },
+];
+
+const analyticsItems: NavItem[] = [
+  { id: "intelligence", labelKey: "nav.intelligence", icon: <Brain size={17} />, group: "analytics" },
+  { id: "risks", labelKey: "nav.security", icon: <ShieldAlert size={17} />, group: "analytics" },
+  { id: "news", labelKey: "nav.news", icon: <Newspaper size={17} />, group: "analytics" },
+  { id: "reports", labelKey: "nav.reports", icon: <FileText size={17} />, group: "analytics" },
+  { id: "backtest", labelKey: "nav.backtest", icon: <FlaskConical size={17} />, group: "analytics" },
+  { id: "social", labelKey: "nav.social", icon: <Users size={17} />, group: "analytics" },
 ];
 
 const sistemaItems: NavItem[] = [
   { id: "alerts", labelKey: "nav.alerts", icon: <Bell size={17} />, group: "sistema" },
-  { id: "connections", labelKey: "nav.connections", icon: <Plug size={17} />, group: "sistema" },
   { id: "security", labelKey: "nav.security", icon: <Shield size={17} />, group: "sistema" },
   { id: "preferences", labelKey: "nav.preferences", icon: <SettingsIcon size={17} />, group: "sistema" },
 ];
@@ -268,7 +271,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return [...generalItems, ...sistemaItems].filter((n) =>
+    return [...tradingItems, ...analyticsItems, ...sistemaItems].filter((n) =>
       t(n.labelKey).toLowerCase().includes(q)
     );
   }, [query]);
@@ -372,15 +375,49 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-          {/* GENERAL */}
+          {/* TRADING */}
           <div>
             {!collapsed && (
-              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
-                General
+              <div className="px-2.5 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+                Trading
               </div>
             )}
             <div className="space-y-0.5">
-              {generalItems.map((item) => {
+              {tradingItems.map((item) => {
+                const active = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleTabChange(item.id)}
+                    title={collapsed ? t(item.labelKey) : undefined}
+                    className={cn(
+                      "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
+                      collapsed ? "justify-center h-10" : "gap-2.5 px-2.5 h-10",
+                      active
+                        ? "bg-[var(--color-primary)]/12 text-[var(--color-primary)]"
+                        : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+                    )}
+                  >
+                    {active && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[var(--color-primary)]" />
+                    )}
+                    {item.icon}
+                    {!collapsed && <span>{t(item.labelKey)}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ANALYTICS */}
+          <div>
+            {!collapsed && (
+              <div className="px-2.5 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+                Analytics
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {analyticsItems.map((item) => {
                 const active = activeTab === item.id;
                 return (
                   <button
@@ -403,7 +440,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                     {item.id === "reports" && newReportsCount > 0 && (
                       <span
                         className={cn(
-                          "absolute min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center",
+                          "absolute min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[11px] font-bold flex items-center justify-center",
                           collapsed ? "-top-0.5 -right-0.5" : "top-1/2 -translate-y-1/2 right-1.5"
                         )}
                       >
@@ -419,7 +456,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
           {/* MIS BROKERS */}
           <div>
             {!collapsed && (
-              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+              <div className="px-2.5 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                 Mis Brokers
               </div>
             )}
@@ -453,7 +490,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
           {/* SISTEMA */}
           <div>
             {!collapsed && (
-              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+              <div className="px-2.5 pb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                 Sistema
               </div>
             )}
