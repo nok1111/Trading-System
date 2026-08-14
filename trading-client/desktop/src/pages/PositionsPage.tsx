@@ -10,6 +10,7 @@ import { fmt, fmtDate } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PositionChart } from "../components/PositionChart";
+import { VirtualList } from "../components/common/VirtualList";
 import { toast } from "../components/ui/Toast";
 
 export function PositionsPage() {
@@ -662,57 +663,102 @@ export function PositionsPage() {
         </div>
       )}
 
-      {/* Closed positions table */}
+      {/* Closed positions table — virtualized when >30 items */}
       {closed.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-3">
-            Historial de Posiciones Cerradas
+            Historial de Posiciones Cerradas ({closed.length})
           </h3>
-          <Table>
-            <thead>
-              <Tr>
-                <Th>ID</Th>
-                <Th>Símbolo</Th>
-                <Th>Lado</Th>
-                <Th>Cant.</Th>
-                <Th>Entry</Th>
-                <Th>Exit</Th>
-                <Th>Inversión</Th>
-                <Th>PnL</Th>
-                <Th>PnL %</Th>
-                <Th>Duración</Th>
-              </Tr>
-            </thead>
-            <tbody>
-              {closed.slice(-30).reverse().map((p) => (
-                <Tr key={p.id}>
-                  <Td>{p.id}</Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <CryptoIcon symbol={p.symbol} size={24} />
+          {closed.length > 30 ? (
+            <>
+              <Table>
+                <thead>
+                  <Tr>
+                    <Th>ID</Th>
+                    <Th>Símbolo</Th>
+                    <Th>Lado</Th>
+                    <Th>Cant.</Th>
+                    <Th>Entry</Th>
+                    <Th>Exit</Th>
+                    <Th>Inversión</Th>
+                    <Th>PnL</Th>
+                    <Th>PnL %</Th>
+                    <Th>Duración</Th>
+                  </Tr>
+                </thead>
+              </Table>
+              <VirtualList
+                items={closed.slice().reverse()}
+                estimateSize={42}
+                height={400}
+                renderItem={(p) => (
+                  <div className="flex items-center text-[12px] border-b border-[var(--color-border)]/50 px-2 h-[42px]">
+                    <span className="w-12 flex-shrink-0 text-[var(--color-text-muted)]">{p.id}</span>
+                    <span className="w-24 flex-shrink-0 flex items-center gap-1.5 font-bold text-[var(--color-text)]">
+                      <CryptoIcon symbol={p.symbol} size={18} />
                       {p.symbol}
-                    </div>
-                  </Td>
-                  <Td>{p.side}</Td>
-                  <Td>{fmt(p.quantity)}</Td>
-                  <Td>${fmt(p.entry_price)}</Td>
-                  <Td>${fmt(p.exit_price)}</Td>
-                  <Td>${fmt(p.invested)}</Td>
-                  <Td
-                    className={
-                      (p.pnl || 0) >= 0
-                        ? "text-[var(--color-success)]"
-                        : "text-[var(--color-danger)]"
-                    }
-                  >
-                    ${fmt(p.pnl)}
-                  </Td>
-                  <Td>{fmt(p.pnl_pct)}%</Td>
-                  <Td>{p.duration || "-"}</Td>
+                    </span>
+                    <span className="w-16 flex-shrink-0">{p.side}</span>
+                    <span className="w-20 flex-shrink-0">{fmt(p.quantity)}</span>
+                    <span className="w-24 flex-shrink-0">${fmt(p.entry_price)}</span>
+                    <span className="w-24 flex-shrink-0">${fmt(p.exit_price)}</span>
+                    <span className="w-24 flex-shrink-0">${fmt(p.invested)}</span>
+                    <span className={cn("w-24 flex-shrink-0 font-bold", (p.pnl || 0) >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]")}>
+                      ${fmt(p.pnl)}
+                    </span>
+                    <span className="w-20 flex-shrink-0">{fmt(p.pnl_pct)}%</span>
+                    <span className="flex-1 text-[var(--color-text-muted)]">{p.duration || "-"}</span>
+                  </div>
+                )}
+              />
+            </>
+          ) : (
+            <Table>
+              <thead>
+                <Tr>
+                  <Th>ID</Th>
+                  <Th>Símbolo</Th>
+                  <Th>Lado</Th>
+                  <Th>Cant.</Th>
+                  <Th>Entry</Th>
+                  <Th>Exit</Th>
+                  <Th>Inversión</Th>
+                  <Th>PnL</Th>
+                  <Th>PnL %</Th>
+                  <Th>Duración</Th>
                 </Tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {closed.slice(-30).reverse().map((p) => (
+                  <Tr key={p.id}>
+                    <Td>{p.id}</Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon symbol={p.symbol} size={24} />
+                        {p.symbol}
+                      </div>
+                    </Td>
+                    <Td>{p.side}</Td>
+                    <Td>{fmt(p.quantity)}</Td>
+                    <Td>${fmt(p.entry_price)}</Td>
+                    <Td>${fmt(p.exit_price)}</Td>
+                    <Td>${fmt(p.invested)}</Td>
+                    <Td
+                      className={
+                        (p.pnl || 0) >= 0
+                          ? "text-[var(--color-success)]"
+                          : "text-[var(--color-danger)]"
+                      }
+                    >
+                      ${fmt(p.pnl)}
+                    </Td>
+                    <Td>{fmt(p.pnl_pct)}%</Td>
+                    <Td>{p.duration || "-"}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
         </div>
       )}
 

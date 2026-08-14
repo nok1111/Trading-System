@@ -285,6 +285,11 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
+      {/* Skip to content link for keyboard navigation */}
+      <a href="#main-content" className="skip-link">
+        Saltar al contenido
+      </a>
+
       {/* ---------- Mobile overlay backdrop ---------- */}
       {isMobile && mobileNavOpen && (
         <div
@@ -295,6 +300,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
       {/* ---------- Sidebar ---------- */}
       <aside
+        role="navigation"
+        aria-label="Navegación principal"
         className={cn(
           "flex flex-col bg-[var(--color-surface)] transition-all duration-200 z-50",
           isMobile
@@ -499,7 +506,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
       </aside>
 
       {/* ---------- Main ---------- */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div id="main-content" className="flex-1 flex flex-col min-w-0" role="main">
         <MarketStatusBar />
         <header className="flex-shrink-0 h-14 flex items-center gap-4 px-5 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
           {/* Mobile menu button */}

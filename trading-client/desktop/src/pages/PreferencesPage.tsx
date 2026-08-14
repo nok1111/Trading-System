@@ -1,6 +1,7 @@
 import { Sun, Moon, Bell, Globe, Server, Rocket, Shield, Wallet, Target, Check, Network } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { useTheme } from "../theme/ThemeContext";
+import { useI18n } from "../i18n/I18nContext";
 import { useBrokerContext } from "../context/BrokerContext";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -109,6 +110,7 @@ export function PreferencesPage() {
     loadProxyConfig();
   }, [loadProxyConfig]);
   const { theme, toggleTheme } = useTheme();
+  const { lang, setLang } = useI18n();
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
 
   const [_profile, setProfile] = useState<UserProfileData | null>(null);
@@ -290,6 +292,34 @@ export function PreferencesPage() {
           <Button variant="default" size="sm" onClick={toggleTheme}>
             {theme === "dark" ? "Cambiar a Claro" : "Cambiar a Oscuro"}
           </Button>
+        </div>
+        {/* Language selector */}
+        <div className="flex items-center justify-between">
+          <span className="text-[13px] text-[var(--color-text-muted)]">Idioma</span>
+          <div className="flex gap-0.5 rounded-[8px] bg-[var(--color-surface-2)] p-0.5">
+            <button
+              onClick={() => setLang("es")}
+              className={cn(
+                "px-3 h-7 rounded-[6px] text-[12px] font-bold transition-colors",
+                lang === "es"
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+              )}
+            >
+              Español
+            </button>
+            <button
+              onClick={() => setLang("en")}
+              className={cn(
+                "px-3 h-7 rounded-[6px] text-[12px] font-bold transition-colors",
+                lang === "en"
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+              )}
+            >
+              English
+            </button>
+          </div>
         </div>
       </div>
 

@@ -21,6 +21,8 @@ export function Toast() {
 
   return (
     <div
+      role="alert"
+      aria-live="polite"
       className={cn(
         "fixed bottom-6 right-6 px-5 py-3 rounded-lg text-sm font-medium z-50 transition-opacity shadow-lg",
         toast.ok
