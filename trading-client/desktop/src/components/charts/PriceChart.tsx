@@ -34,6 +34,54 @@ const INTERVALS = [
   { value: "1w", label: "1W" },
 ];
 
+// Optimal candle count per timeframe — keeps data range sensible so the
+// time axis doesn't have to compress 500 1m candles into a tiny space.
+const LIMIT_BY_INTERVAL: Record<string, number> = {
+  "1m": 180,    // 3 hours
+  "5m": 288,    // 1 day
+  "15m": 384,   // 4 days
+  "30m": 480,   // 10 days
+  "1h": 500,    // ~21 days
+  "2h": 500,    // ~42 days
+  "4h": 500,    // ~83 days
+  "6h": 500,    // ~125 days
+  "8h": 500,    // ~167 days
+  "12h": 500,   // ~250 days
+  "1d": 500,    // ~1.4 years
+  "1w": 500,    // ~9.6 years
+};
+
+function makeTickFormatter(interval: string) {
+  return (time: any, tickMarkType: number, locale: string): string => {
+    const ts = typeof time === "number" ? time : Number(time);
+    const d = new Date(ts * 1000);
+    const isMinuteTf = interval === "1m" || interval === "5m" || interval === "15m" || interval === "30m";
+    const isHourlyTf = interval === "1h" || interval === "2h" || interval === "4h" || interval === "6h" || interval === "8h" || interval === "12h";
+
+    // tickMarkType: 0=Year, 1=Month, 2=DayOfMonth, 3=Time, 4=TimeWithSeconds
+    if (tickMarkType === 0) return d.getFullYear().toString();
+    if (tickMarkType === 1) return d.toLocaleDateString(locale, { month: "short", year: "2-digit" });
+    if (tickMarkType === 2) {
+      // Day boundary — for intraday show day+month, for daily+ show just day
+      if (isMinuteTf || isHourlyTf) {
+        return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
+      }
+      return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+    }
+    // tickMarkType 3 or 4 — Time (intraday ticks)
+    if (isMinuteTf) {
+      // 1m/5m/15m: show HH:MM
+      return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    }
+    if (isHourlyTf) {
+      // 1h/4h: show HH:MM
+      return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    }
+    // Daily/weekly: show date
+    return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
+  };
+}
+
 interface IndicatorState {
   ema: boolean;
   emaPeriod: number;
@@ -188,7 +236,8 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 5,
-      },
+        tickMarkFormatter: makeTickFormatter(interval),
+      } as any,
     });
 
     chartRef.current = chart;
@@ -290,6 +339,14 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     };
   }, [height]);
 
+  // ─── Update tickMarkFormatter when interval changes ────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    (chartRef.current.timeScale().applyOptions as any)({
+      tickMarkFormatter: makeTickFormatter(interval),
+    });
+  }, [interval]);
+
   // ─── RSI sub-chart ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!indicators.rsi || !rsiContainerRef.current) {
@@ -314,7 +371,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         horzLines: { color: c.border, style: 1 },
       },
       rightPriceScale: { borderColor: c.border },
-      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false },
+      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false, tickMarkFormatter: makeTickFormatter(interval) } as any,
     });
     rsiChartRef.current = rsiChart;
 
@@ -380,7 +437,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         horzLines: { color: c.border, style: 1 },
       },
       rightPriceScale: { borderColor: c.border },
-      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false },
+      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false, tickMarkFormatter: makeTickFormatter(interval) } as any,
     });
     macdChartRef.current = macdChart;
 
@@ -439,9 +496,10 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
 
     const load = async () => {
       try {
+        const limit = LIMIT_BY_INTERVAL[interval] || 500;
         const data = brokerId
-          ? await api<any[]>(`/api/broker/${brokerId}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=500`)
-          : await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=500`);
+          ? await api<any[]>(`/api/broker/${brokerId}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`)
+          : await api<any[]>(`/api/klines/${symbol}?interval=${interval}&limit=${limit}`);
         if (!alive || !data || data.length === 0) {
           if (alive) { setError("Sin datos para " + symbol); setLoading(false); }
           return;
