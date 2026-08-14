@@ -2,6 +2,7 @@ import { cn } from "../../lib/utils";
 import { EmptyState } from "../common/EmptyState";
 import type { WhaleActivity } from "../../lib/intelligenceTypes";
 import { fmtDate, fmtVol } from "../../lib/utils";
+import { ArrowRight } from "lucide-react";
 
 interface WhaleFeedProps {
   activities: WhaleActivity[];
@@ -49,6 +50,23 @@ export function WhaleFeed({ activities, className }: WhaleFeedProps) {
             <span className="text-[12px] font-bold text-[var(--color-text)]">
               {fmtVol(w.amountUsd)}
             </span>
+            <button
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("navigate", {
+                  detail: {
+                    page: "trade",
+                    asset: w.asset,
+                    signalType: "whale",
+                    signalData: { direction: w.direction, amount_usd: w.amountUsd },
+                  },
+                }));
+              }}
+              className="flex items-center gap-1 px-2 h-6 rounded-[6px] text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 transition-colors shrink-0"
+              title="Operar desde esta señal"
+            >
+              Trade
+              <ArrowRight size={10} />
+            </button>
           </div>
         );
       })}

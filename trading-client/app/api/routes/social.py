@@ -1093,3 +1093,42 @@ async def ws_social_feed(websocket: WebSocket):
     finally:
         if queue in _signal_subscribers:
             _signal_subscribers.remove(queue)
+
+
+# ---------------------------------------------------------------------------
+# Verified Performance — HMAC trade verification
+# ---------------------------------------------------------------------------
+
+
+@router.get("/leaders/{leader_id}/verified-stats")
+def get_leader_verified_stats(
+    leader_id: int,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Get verification stats for a leader."""
+    from app.services.trade_verification_service import TradeVerificationService
+    return TradeVerificationService().get_leader_verified_stats(leader_id)
+
+
+@router.get("/leaders/{leader_id}/trades/verified")
+def get_leader_verified_trades(
+    leader_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = Query(50, ge=1, le=200),
+) -> list[dict]:
+    """Get list of verified trades for a leader."""
+    from app.services.trade_verification_service import TradeVerificationService
+    return TradeVerificationService().get_leader_verified_trades(leader_id, limit)
+
+
+@router.post("/verify-trade")
+def verify_trade_public(
+    data: dict,
+) -> dict:
+    """Public endpoint: verify a trade's HMAC signature.
+
+    Anyone can verify that a trade's HMAC format is valid.
+    Full verification (comparing HMAC with API secret) is done server-side.
+    """
+    from app.services.trade_verification_service import TradeVerificationService
+    return TradeVerificationService().public_verify(data)

@@ -2,6 +2,7 @@ import { cn } from "../../lib/utils";
 import { EmptyState } from "../common/EmptyState";
 import type { NewsItem } from "../../lib/intelligenceTypes";
 import { fmtDate } from "../../lib/utils";
+import { ArrowRight } from "lucide-react";
 
 interface NewsFeedProps {
   news: NewsItem[];
@@ -31,22 +32,25 @@ export function NewsFeed({ news, className }: NewsFeedProps) {
           n.impact === "medium" ? "bg-[var(--color-warning)]/10 text-[var(--color-warning)]" :
           "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]";
         return (
-          <a
+          <div
             key={n.id}
-            href={n.url}
-            target="_blank"
-            rel="noopener noreferrer"
             className="block rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] p-3 hover:border-[var(--color-border-strong)] transition-colors"
           >
-            <div className="flex items-center gap-2 mb-1">
-              <span className={cn("text-[9px] font-bold uppercase px-1.5 h-4 rounded flex items-center", impactBg)}>
-                {n.impact}
-              </span>
-              <span className={cn("text-[10px] font-semibold", sentColor)}>{n.sentiment}</span>
-              <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{n.source}</span>
-            </div>
-            <p className="text-[13px] font-bold text-[var(--color-text)] leading-snug">{n.title}</p>
-            <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{n.summary}</p>
+            <a
+              href={n.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className={cn("text-[9px] font-bold uppercase px-1.5 h-4 rounded flex items-center", impactBg)}>
+                  {n.impact}
+                </span>
+                <span className={cn("text-[10px] font-semibold", sentColor)}>{n.sentiment}</span>
+                <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{n.source}</span>
+              </div>
+              <p className="text-[13px] font-bold text-[var(--color-text)] leading-snug">{n.title}</p>
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{n.summary}</p>
+            </a>
             <div className="flex items-center gap-1.5 mt-2">
               {n.assets.map((a) => (
                 <span key={a} className="text-[10px] font-bold px-1.5 h-4 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)] flex items-center">
@@ -54,8 +58,26 @@ export function NewsFeed({ news, className }: NewsFeedProps) {
                 </span>
               ))}
               <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{fmtDate(n.timestamp)}</span>
+              {n.assets.length > 0 && (
+                <button
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("navigate", {
+                      detail: {
+                        page: "trade",
+                        asset: n.assets[0],
+                        signalType: "news",
+                        signalData: { sentiment: n.sentiment, impact: n.impact, title: n.title },
+                      },
+                    }));
+                  }}
+                  className="flex items-center gap-1 px-2 h-6 rounded-[6px] text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 transition-colors"
+                >
+                  Trade
+                  <ArrowRight size={10} />
+                </button>
+              )}
             </div>
-          </a>
+          </div>
         );
       })}
     </div>

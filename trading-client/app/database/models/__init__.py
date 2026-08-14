@@ -15,6 +15,7 @@ from app.database.models.intelligence_news import IntelligenceNews
 from app.database.models.notification import Notification
 from app.database.models.order import Order
 from app.database.models.order_reconciliation import OrderReconciliation
+from app.database.models.portfolio_guard_config import PortfolioGuardConfig
 from app.database.models.position import Position
 from app.database.models.price_alert import PriceAlert
 from app.database.models.prediction_record import PredictionRecord
@@ -27,6 +28,7 @@ from app.database.models.social_signal import SocialSignal
 from app.database.models.strategy_run import StrategyRun
 from app.database.models.system_event import SystemEvent
 from app.database.models.trade import Trade
+from app.database.models.trade_verification import TradeVerification
 from app.database.models.user_settings import UserSettings
 from app.database.models.user_profile import UserProfile
 from app.database.models.user_preference import UserPreference
@@ -49,6 +51,7 @@ __all__ = [
     "Notification",
     "Order",
     "OrderReconciliation",
+    "PortfolioGuardConfig",
     "Position",
     "PriceAlert",
     "PredictionRecord",
@@ -62,6 +65,7 @@ __all__ = [
     "StrategyRun",
     "SystemEvent",
     "Trade",
+    "TradeVerification",
     "UserSettings",
     "UserProfile",
     "UserPreference",

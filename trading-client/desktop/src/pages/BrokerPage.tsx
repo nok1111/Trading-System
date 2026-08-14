@@ -22,6 +22,7 @@ interface BrokerPageProps {
   presetSymbol?: string;
   presetStopLoss?: number;
   presetTakeProfit?: number;
+  presetReason?: string;
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -50,7 +51,7 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   config: <SettingsIcon size={16} />,
 };
 
-export function BrokerPage({ brokerId, moduleId, presetSymbol, presetStopLoss, presetTakeProfit }: BrokerPageProps) {
+export function BrokerPage({ brokerId, moduleId, presetSymbol, presetStopLoss, presetTakeProfit, presetReason }: BrokerPageProps) {
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
   const [balanceData, setBalanceData] = useState<any>(null);
   const [positions, setPositions] = useState<any[]>([]);
@@ -215,7 +216,7 @@ export function BrokerPage({ brokerId, moduleId, presetSymbol, presetStopLoss, p
       ) : module === "portfolio" ? (
         <PortfolioModule balanceData={balanceData} />
       ) : module === "trade" ? (
-        <TradeModule brokerId={brokerId} presetSymbol={presetSymbol} presetStopLoss={presetStopLoss} presetTakeProfit={presetTakeProfit} />
+        <TradeModule brokerId={brokerId} presetSymbol={presetSymbol} presetStopLoss={presetStopLoss} presetTakeProfit={presetTakeProfit} presetReason={presetReason} />
       ) : module === "markets" ? (
         <MarketsModule brokerId={brokerId} />
       ) : module === "positions" ? (
@@ -375,7 +376,7 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
   );
 }
 
-function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit }: { brokerId: string; presetSymbol?: string; presetStopLoss?: number; presetTakeProfit?: number }) {
+function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit, presetReason }: { brokerId: string; presetSymbol?: string; presetStopLoss?: number; presetTakeProfit?: number; presetReason?: string }) {
   const { connectedAccounts } = useBrokerContext();
   const { t } = useI18n();
   const account = connectedAccounts.find((a) => a.brokerId === brokerId);
@@ -631,6 +632,14 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
       {account && !account.permissions.trade && (
         <div className="rounded-[10px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 p-3 text-[12px] font-semibold text-[var(--color-warning)]">
           Esta cuenta no tiene permisos de trading. Solo lectura.
+        </div>
+      )}
+
+      {/* Intelligence signal reason banner */}
+      {presetReason && (
+        <div className="rounded-[10px] bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 p-3 text-[12px] text-[var(--color-text)]">
+          <span className="font-bold text-[var(--color-primary)]">Señal: </span>
+          {presetReason}
         </div>
       )}
 

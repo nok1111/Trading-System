@@ -22,6 +22,7 @@ import {
   Users,
   Menu,
   X,
+  LineChart,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
@@ -57,6 +58,7 @@ export type TabId =
   | "preferences"
   | "broker"
   | "ai-agent"
+  | "agent-transparency"
   | "bots"
   | "social";
 
@@ -75,6 +77,7 @@ const generalItems: NavItem[] = [
   { id: "reports", labelKey: "nav.reports", icon: <FileText size={17} />, group: "general" },
   { id: "backtest", labelKey: "nav.backtest", icon: <FlaskConical size={17} />, group: "general" },
   { id: "ai-agent", labelKey: "nav.aiAgent", icon: <Bot size={17} />, group: "general" },
+  { id: "agent-transparency", labelKey: "nav.agentPerformance", icon: <LineChart size={17} />, group: "general" },
   { id: "bots", labelKey: "nav.bots", icon: <Grid3x3 size={17} />, group: "general" },
   { id: "social", labelKey: "nav.social", icon: <Users size={17} />, group: "general" },
 ];
@@ -99,6 +102,7 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
   broker: { title: "Broker", subtitle: "Vista de broker" },
   "ai-agent": { title: "AI Trading Agent", subtitle: "Agente de IA autónomo — razonamiento y estadísticas" },
+  "agent-transparency": { title: "Agent Performance", subtitle: "Transparencia y performance attribution del AI Agent" },
   bots: { title: "Trading Bots", subtitle: "Grid y DCA bots automatizados" },
   social: { title: "Social Trading", subtitle: "Copia señales de traders top en tu broker" },
 };
@@ -127,6 +131,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [presetTradeSymbol, setPresetTradeSymbol] = useState<string | undefined>(undefined);
   const [presetStopLoss, setPresetStopLoss] = useState<number | undefined>(undefined);
   const [presetTakeProfit, setPresetTakeProfit] = useState<number | undefined>(undefined);
+  const [presetReason, setPresetReason] = useState<string | undefined>(undefined);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
@@ -161,6 +166,22 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
         setPresetTradeSymbol(symbol);
         setPresetStopLoss(detail.stop_loss ?? undefined);
         setPresetTakeProfit(detail.take_profit ?? undefined);
+        setPresetReason(undefined);
+        // If signal data provided, fetch suggested trade from intelligence
+        if (detail.signalType && detail.signalData) {
+          api<any>("/api/intelligence/suggest-trade", {
+            method: "POST",
+            body: JSON.stringify({
+              signal_type: detail.signalType,
+              asset: detail.asset,
+              signal_data: detail.signalData,
+            }),
+          }).then((r) => {
+            if (r?.status === "ok") {
+              setPresetReason(r.reason || undefined);
+            }
+          }).catch(() => {});
+        }
         onTabChange("broker");
       } else if (detail?.page) {
         onTabChange(detail.page as TabId);
@@ -676,6 +697,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
               presetSymbol={presetTradeSymbol}
               presetStopLoss={presetStopLoss}
               presetTakeProfit={presetTakeProfit}
+              presetReason={presetReason}
             />
           ) : (
             children

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { TrendingDown, Waves, AlertTriangle, Zap, Shield, ShieldAlert, Bell } from "lucide-react";
+import { TrendingDown, Waves, AlertTriangle, Zap, Shield, ShieldAlert, ShieldCheck, Bell } from "lucide-react";
 import { CrashRiskGauge } from "../components/intelligence/CrashRiskGauge";
 import { WhaleFeed } from "../components/intelligence/WhaleFeed";
 import { AlertList } from "../components/intelligence/AlertList";
@@ -49,7 +49,7 @@ interface RiskStatus {
 }
 
 export function RisksPage() {
-  const [innerTab, setInnerTab] = useState<"risk" | "portfolio" | "price-alerts">("risk");
+  const [innerTab, setInnerTab] = useState<"risk" | "portfolio" | "price-alerts" | "guard">("risk");
 
   return (
     <div className="p-5 space-y-4 max-w-[900px] mx-auto">
@@ -104,12 +104,28 @@ export function RisksPage() {
             Alertas de Precio
           </button>
         </Tooltip>
+        <Tooltip text="Portfolio Guard — automatiza gestión de riesgo">
+          <button
+            onClick={() => setInnerTab("guard")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-9 text-[12px] font-bold border-b-2 transition-colors",
+              innerTab === "guard"
+                ? "border-[var(--color-primary)] text-[var(--color-text)]"
+                : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            )}
+          >
+            <ShieldCheck size={14} />
+            Portfolio Guard
+          </button>
+        </Tooltip>
       </div>
 
       {innerTab === "risk" ? (
         <RisksPageContent />
       ) : innerTab === "portfolio" ? (
         <PortfolioRiskContent />
+      ) : innerTab === "guard" ? (
+        <PortfolioGuardContent />
       ) : (
         <PriceAlertsContent />
       )}
@@ -834,6 +850,268 @@ function PortfolioRiskContent() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Guard Content
+// ---------------------------------------------------------------------------
+
+function PortfolioGuardContent() {
+  const [config, setConfig] = useState<any>(null);
+  const [status, setStatus] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cfg, st, hist] = await Promise.all([
+        api<any>("/api/portfolio-guard/config").catch(() => null),
+        api<any>("/api/portfolio-guard/status").catch(() => null),
+        api<any>("/api/portfolio-guard/history").catch(() => null),
+      ]);
+      setConfig(cfg);
+      setStatus(st);
+      setHistory(hist?.actions || []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const updateConfig = async (updates: any) => {
+    setSaving(true);
+    try {
+      const r = await api<any>("/api/portfolio-guard/config", {
+        method: "PUT",
+        body: JSON.stringify(updates),
+      });
+      setConfig(r);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const executeSuggestion = async (suggestion: any) => {
+    try {
+      await api<any>("/api/portfolio-guard/execute-suggestion", {
+        method: "POST",
+        body: JSON.stringify(suggestion),
+      });
+      await load();
+    } catch {}
+  };
+
+  if (loading) {
+    return <LoadingSkeleton className="h-64" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Config Card */}
+      <div className="panel p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-[var(--color-primary)]" />
+            <h3 className="text-[14px] font-extrabold text-[var(--color-text)]">Portfolio Guard</h3>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-[12px] text-[var(--color-text-muted)]">{config?.enabled ? "Activo" : "Inactivo"}</span>
+            <button
+              onClick={() => updateConfig({ enabled: !config?.enabled })}
+              disabled={saving}
+              className={cn(
+                "w-10 h-5 rounded-full transition-colors relative",
+                config?.enabled ? "bg-[var(--color-success)]" : "bg-[var(--color-surface-2)]"
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                config?.enabled ? "translate-x-5" : "translate-x-0.5"
+              )} />
+            </button>
+          </label>
+        </div>
+
+        {/* Mode selector */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <button
+            onClick={() => updateConfig({ mode: "manual" })}
+            className={cn(
+              "p-3 rounded-[10px] border text-left transition-colors",
+              config?.mode === "manual"
+                ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5"
+                : "border-[var(--color-border)] hover:border-[var(--color-primary)]/40"
+            )}
+          >
+            <p className="text-[12px] font-bold text-[var(--color-text)]">Manual</p>
+            <p className="text-[10px] text-[var(--color-text-muted)]">Solo sugerencias</p>
+          </button>
+          <button
+            onClick={() => updateConfig({ mode: "auto" })}
+            className={cn(
+              "p-3 rounded-[10px] border text-left transition-colors",
+              config?.mode === "auto"
+                ? "border-[var(--color-danger)] bg-[var(--color-danger)]/5"
+                : "border-[var(--color-border)] hover:border-[var(--color-danger)]/40"
+            )}
+          >
+            <p className="text-[12px] font-bold text-[var(--color-text)]">Auto</p>
+            <p className="text-[10px] text-[var(--color-text-muted)]">Ejecuta acciones automáticamente</p>
+          </button>
+        </div>
+
+        {/* Thresholds */}
+        <div className="space-y-3">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-[var(--color-text-muted)]">Max Correlación</label>
+              <span className="text-[12px] font-bold text-[var(--color-text)]">{(config?.max_correlation ?? 0.85).toFixed(2)}</span>
+            </div>
+            <input
+              type="range"
+              min={0.5}
+              max={1}
+              step={0.05}
+              value={config?.max_correlation ?? 0.85}
+              onChange={(e) => updateConfig({ max_correlation: parseFloat(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-[var(--color-text-muted)]">Max Drawdown %</label>
+              <span className="text-[12px] font-bold text-[var(--color-text)]">{config?.max_drawdown_pct ?? 15}%</span>
+            </div>
+            <input
+              type="range"
+              min={5}
+              max={50}
+              step={1}
+              value={config?.max_drawdown_pct ?? 15}
+              onChange={(e) => updateConfig({ max_drawdown_pct: parseFloat(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+          {config?.mode === "auto" && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config?.auto_close_worst ?? false}
+                onChange={(e) => updateConfig({ auto_close_worst: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <span className="text-[12px] text-[var(--color-text)]">Auto-cerrar peor posición en drawdown</span>
+            </label>
+          )}
+        </div>
+      </div>
+
+      {/* Status Card */}
+      {status?.status === "ok" && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Estado Actual</h3>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <GuardMetric label="Risk Score" value={status.metrics?.risk_score?.toFixed(0) ?? "—"} color={(status.metrics?.risk_score ?? 0) > 60 ? "danger" : (status.metrics?.risk_score ?? 0) > 30 ? "warning" : "success"} />
+            <GuardMetric label="Avg Correlación" value={status.metrics?.avg_correlation?.toFixed(2) ?? "—"} color={(status.metrics?.avg_correlation ?? 0) > 0.7 ? "danger" : "success"} />
+            <GuardMetric label="Drawdown" value={`${status.metrics?.drawdown_pct?.toFixed(1) ?? 0}%`} color={(status.metrics?.drawdown_pct ?? 0) > (config?.max_drawdown_pct ?? 15) ? "danger" : "success"} />
+          </div>
+        </div>
+      )}
+
+      {/* Suggestions */}
+      {status?.suggestions?.length > 0 && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Sugerencias ({status.suggestions.length})</h3>
+          <div className="space-y-2">
+            {status.suggestions.map((s: any, i: number) => (
+              <div
+                key={i}
+                className={cn(
+                  "rounded-[10px] p-3 border",
+                  s.severity === "critical"
+                    ? "bg-[var(--color-danger)]/5 border-[var(--color-danger)]/30"
+                    : "bg-[var(--color-warning)]/5 border-[var(--color-warning)]/30"
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] font-bold text-[var(--color-text)]">{s.message}</p>
+                  {s.severity === "critical" && (
+                    <AlertTriangle size={14} className="text-[var(--color-danger)]" />
+                  )}
+                </div>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{s.action}</p>
+                {config?.mode === "manual" && (
+                  <button
+                    onClick={() => executeSuggestion(s)}
+                    className="mt-2 px-3 h-7 rounded-[6px] text-[11px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 transition-colors"
+                  >
+                    Ejecutar
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Actions taken */}
+      {status?.actions_taken?.length > 0 && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Acciones Auto-ejecutadas</h3>
+          <div className="space-y-2">
+            {status.actions_taken.map((a: any, i: number) => (
+              <div key={i} className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-bold text-[var(--color-text)]">{a.action}: {a.position}</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)]">{new Date(a.timestamp).toLocaleString()}</span>
+                </div>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{a.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* History */}
+      {history.length > 0 && (
+        <div className="panel p-5">
+          <h3 className="text-[14px] font-extrabold text-[var(--color-text)] mb-3">Historial ({history.length})</h3>
+          <div className="space-y-1.5">
+            {history.slice(0, 10).map((h: any) => (
+              <div key={h.id} className="flex items-center justify-between text-[11px] py-1 border-b border-[var(--color-border)]/50">
+                <span className="text-[var(--color-text)] font-semibold">{h.action}: {h.position}</span>
+                <span className="text-[var(--color-text-muted)]">{h.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {status?.status === "disabled" && (
+        <div className="panel p-5 text-center">
+          <ShieldCheck size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+          <p className="text-[13px] font-bold text-[var(--color-text)]">Portfolio Guard desactivado</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-1">Actívalo arriba para monitorear tu portfolio automáticamente.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GuardMetric({ label, value, color }: { label: string; value: string; color: "success" | "danger" | "warning" }) {
+  const colorClass =
+    color === "success" ? "text-[var(--color-success)]" :
+    color === "danger" ? "text-[var(--color-danger)]" :
+    "text-[var(--color-warning)]";
+  return (
+    <div className="rounded-[8px] bg-[var(--color-surface-2)] p-2.5 text-center">
+      <div className="text-[9px] text-[var(--color-text-muted)] uppercase mb-0.5">{label}</div>
+      <div className={cn("text-[16px] font-bold", colorClass)}>{value}</div>
     </div>
   );
 }

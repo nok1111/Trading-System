@@ -2797,6 +2797,346 @@ def get_market_sources(
     }
 
 
+# ---------------------------------------------------------------------------
+# Agent Transparency Dashboard — P0
+# ---------------------------------------------------------------------------
+
+@router.get("/ai-agent/transparency")
+def ai_agent_transparency(
+    days: int = Query(30, ge=1, le=365),
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Full transparency dashboard data for the AI agent.
+
+    Returns:
+    - summary: overall win rate, total decisions, total PnL, alpha vs BTC
+    - decision_timeline: each decision with outcome (correct/incorrect, pnl)
+    - performance_attribution: PnL broken down by symbol, regime, action type
+    - comparison: agent vs paper trading vs buy-hold BTC vs buy-hold ETH
+    - monthly_evolution: win rate and PnL per month
+    """
+    try:
+        from sqlalchemy import func as sql_func
+        from app.database.models.prediction_record import PredictionRecord
+        from app.database.models.trade import Trade as TradeModel
+        from app.database.models.agent_log import AgentLog
+
+        uid = current_user.id if current_user else 0
+        since = datetime.now(tz=UTC) - timedelta(days=days)
+
+        db = SessionLocal()
+        try:
+            # ── 1. Prediction records (decisions with evaluation) ──
+            predictions = db.execute(
+                select(PredictionRecord).where(
+                    PredictionRecord.user_id == uid,
+                    PredictionRecord.timestamp >= since,
+                ).order_by(PredictionRecord.timestamp.desc()).limit(1000)
+            ).scalars().all()
+            ai_predictions = [
+                p for p in predictions if (p.metadata_json or {}).get("source") == "ai_agent"
+            ]
+
+            # ── 2. AI Agent trades ──
+            trades = db.execute(
+                select(TradeModel).where(
+                    TradeModel.user_id == uid,
+                    TradeModel.timestamp >= since,
+                    TradeModel.strategy_name.like("AI-Agent%"),
+                ).order_by(TradeModel.timestamp.desc()).limit(1000)
+            ).scalars().all()
+
+            # ── 3. Build decision timeline ──
+            timeline: list[dict] = []
+            for p in ai_predictions:
+                meta = p.metadata_json or {}
+                factors = meta.get("factors", {})
+                regime = factors.get("regime", "unknown")
+                current_price = float(p.price_at_evaluation) if p.price_at_evaluation else None
+                pred_price = float(p.price_at_prediction)
+                outcome_pct = None
+                if current_price and pred_price > 0:
+                    outcome_pct = round((current_price - pred_price) / pred_price * 100, 2)
+                    if p.signal_type.upper() in ("SELL", "SHORT"):
+                        outcome_pct = -outcome_pct
+
+                timeline.append({
+                    "id": p.id,
+                    "timestamp": p.timestamp.isoformat(),
+                    "symbol": p.symbol,
+                    "action": p.signal_type,
+                    "confidence": float(p.probability),
+                    "price_at_decision": round(pred_price, 6),
+                    "current_price": round(current_price, 6) if current_price else None,
+                    "outcome_pct": outcome_pct,
+                    "correct": p.correct,
+                    "evaluated": p.evaluated,
+                    "regime": regime,
+                    "reason": meta.get("factors", {}).get("reason", "")[:200],
+                })
+
+            # ── 4. Summary stats ──
+            evaluated = [p for p in ai_predictions if p.evaluated]
+            total_decisions = len(ai_predictions)
+            total_evaluated = len(evaluated)
+            total_correct = sum(1 for p in evaluated if p.correct is True)
+            win_rate = (total_correct / total_evaluated * 100) if total_evaluated > 0 else 0
+            confidence_avg = (
+                sum(float(p.probability) for p in ai_predictions) / total_decisions
+                if total_decisions > 0 else 0
+            )
+
+            # Total PnL from trades
+            total_pnl = sum(float(t.realized_pnl) for t in trades if t.side == "SELL")
+            total_invested = sum(float(t.quantity) * float(t.price) for t in trades if t.side == "BUY")
+            ai_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+
+            # ── 5. Performance attribution ──
+            by_symbol: dict[str, dict] = {}
+            by_regime: dict[str, dict] = {}
+            by_action: dict[str, dict] = {}
+            for p in evaluated:
+                meta = p.metadata_json or {}
+                regime = meta.get("factors", {}).get("regime", "unknown")
+                sym = p.symbol
+                action = p.signal_type.upper()
+
+                for bucket, key in [(by_symbol, sym), (by_regime, regime), (by_action, action)]:
+                    if key not in bucket:
+                        bucket[key] = {"total": 0, "correct": 0, "pnl_pct": 0.0}
+                    bucket[key]["total"] += 1
+                    if p.correct:
+                        bucket[key]["correct"] += 1
+                    pred_price = float(p.price_at_prediction)
+                    curr_price = float(p.price_at_evaluation) if p.price_at_evaluation else pred_price
+                    pct = ((curr_price - pred_price) / pred_price * 100) if pred_price > 0 else 0
+                    if action in ("SELL", "SHORT"):
+                        pct = -pct
+                    bucket[key]["pnl_pct"] += pct
+
+            # Finalize attribution (compute averages)
+            for bucket in [by_symbol, by_regime, by_action]:
+                for key, stats in bucket.items():
+                    stats["win_rate"] = round(stats["correct"] / stats["total"] * 100, 1) if stats["total"] > 0 else 0
+                    stats["avg_pnl_pct"] = round(stats["pnl_pct"] / stats["total"], 2) if stats["total"] > 0 else 0
+                    del stats["pnl_pct"]
+
+            # ── 6. Buy & Hold comparisons (BTC + ETH) ──
+            btc_then = btc_now = eth_then = eth_now = 0.0
+            try:
+                import httpx as _hx
+                base_url = get_market_data_service()._get_public_base_url()
+                from app.brokers.models import denormalize_symbol
+                settings = get_settings()
+
+                for asset, store in [("BTC/USDT", "btc"), ("ETH/USDT", "eth")]:
+                    native = denormalize_symbol(asset, settings.DEFAULT_BROKER_ID)
+                    resp = _hx.get(
+                        f"{base_url}/api/v3/klines",
+                        params={"symbol": native, "interval": "1d", "limit": days + 1},
+                        timeout=10,
+                    )
+                    if resp.status_code == 200:
+                        klines = resp.json()
+                        if klines:
+                            if store == "btc":
+                                btc_then = float(klines[0][1])
+                                btc_now = float(klines[-1][4])
+                            else:
+                                eth_then = float(klines[0][1])
+                                eth_now = float(klines[-1][4])
+            except Exception:
+                pass
+
+            btc_pnl_pct = ((btc_now - btc_then) / btc_then * 100) if btc_then > 0 else 0
+            eth_pnl_pct = ((eth_now - eth_then) / eth_then * 100) if eth_then > 0 else 0
+            btc_pnl_usd = (total_invested * btc_pnl_pct / 100) if total_invested > 0 else 0
+            eth_pnl_usd = (total_invested * eth_pnl_pct / 100) if total_invested > 0 else 0
+
+            # Paper trading PnL (trades with strategy_name like "Paper%")
+            paper_trades = db.execute(
+                select(TradeModel).where(
+                    TradeModel.user_id == uid,
+                    TradeModel.timestamp >= since,
+                    TradeModel.strategy_name.like("Paper%"),
+                )
+            ).scalars().all()
+            paper_pnl = sum(float(t.realized_pnl) for t in paper_trades if t.side == "SELL")
+            paper_pnl_pct = (paper_pnl / total_invested * 100) if total_invested > 0 else 0
+
+            # ── 7. Monthly evolution ──
+            monthly: dict[str, dict] = {}
+            for p in evaluated:
+                month_key = p.timestamp.strftime("%Y-%m")
+                if month_key not in monthly:
+                    monthly[month_key] = {"total": 0, "correct": 0, "pnl_pct": 0.0}
+                monthly[month_key]["total"] += 1
+                if p.correct:
+                    monthly[month_key]["correct"] += 1
+                pred_price = float(p.price_at_prediction)
+                curr_price = float(p.price_at_evaluation) if p.price_at_evaluation else pred_price
+                pct = ((curr_price - pred_price) / pred_price * 100) if pred_price > 0 else 0
+                if p.signal_type.upper() in ("SELL", "SHORT"):
+                    pct = -pct
+                monthly[month_key]["pnl_pct"] += pct
+
+            monthly_evolution = []
+            for month in sorted(monthly.keys()):
+                stats = monthly[month]
+                monthly_evolution.append({
+                    "month": month,
+                    "win_rate": round(stats["correct"] / stats["total"] * 100, 1) if stats["total"] > 0 else 0,
+                    "total": stats["total"],
+                    "avg_pnl_pct": round(stats["pnl_pct"] / stats["total"], 2) if stats["total"] > 0 else 0,
+                })
+
+            # ── 8. Best/worst decisions ──
+            best_decision = None
+            worst_decision = None
+            for t in timeline:
+                if t["outcome_pct"] is not None:
+                    if best_decision is None or t["outcome_pct"] > best_decision["outcome_pct"]:
+                        best_decision = t
+                    if worst_decision is None or t["outcome_pct"] < worst_decision["outcome_pct"]:
+                        worst_decision = t
+
+            return {
+                "status": "ok",
+                "days": days,
+                "summary": {
+                    "total_decisions": total_decisions,
+                    "total_evaluated": total_evaluated,
+                    "win_rate": round(win_rate, 1),
+                    "confidence_avg": round(confidence_avg, 2),
+                    "total_pnl": round(total_pnl, 2),
+                    "total_invested": round(total_invested, 2),
+                    "ai_pnl_pct": round(ai_pnl_pct, 2),
+                    "alpha_vs_btc": round(ai_pnl_pct - btc_pnl_pct, 2),
+                    "alpha_vs_eth": round(ai_pnl_pct - eth_pnl_pct, 2),
+                },
+                "decision_timeline": timeline[:200],  # cap for payload size
+                "performance_attribution": {
+                    "by_symbol": by_symbol,
+                    "by_regime": by_regime,
+                    "by_action": by_action,
+                },
+                "comparison": {
+                    "ai_agent": {
+                        "pnl_pct": round(ai_pnl_pct, 2),
+                        "pnl_usd": round(total_pnl, 2),
+                        "win_rate": round(win_rate, 1),
+                    },
+                    "paper_trading": {
+                        "pnl_pct": round(paper_pnl_pct, 2),
+                        "pnl_usd": round(paper_pnl, 2),
+                    },
+                    "buy_hold_btc": {
+                        "pnl_pct": round(btc_pnl_pct, 2),
+                        "pnl_usd": round(btc_pnl_usd, 2),
+                        "price_then": round(btc_then, 2),
+                        "price_now": round(btc_now, 2),
+                    },
+                    "buy_hold_eth": {
+                        "pnl_pct": round(eth_pnl_pct, 2),
+                        "pnl_usd": round(eth_pnl_usd, 2),
+                        "price_then": round(eth_then, 2),
+                        "price_now": round(eth_now, 2),
+                    },
+                },
+                "monthly_evolution": monthly_evolution,
+                "best_decision": best_decision,
+                "worst_decision": worst_decision,
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("transparency endpoint error: %s", exc, exc_info=True)
+        return {"status": "error", "error": "Error interno del servidor"}
+
+
+@router.get("/ai-agent/decision/{decision_id}")
+def ai_agent_decision_detail(
+    decision_id: int,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Detailed view of a single AI agent decision — what it saw, decided, and what happened."""
+    try:
+        from app.database.models.prediction_record import PredictionRecord
+        from app.database.models.agent_log import AgentLog
+
+        uid = current_user.id if current_user else 0
+        db = SessionLocal()
+        try:
+            pred = db.execute(
+                select(PredictionRecord).where(
+                    PredictionRecord.id == decision_id,
+                    PredictionRecord.user_id == uid,
+                )
+            ).scalar_one_or_none()
+            if not pred:
+                return {"status": "not_found"}
+
+            meta = pred.metadata_json or {}
+
+            # Find agent logs around the same time (±5 min)
+            time_window = timedelta(minutes=5)
+            logs = db.execute(
+                select(AgentLog).where(
+                    AgentLog.user_id == uid,
+                    AgentLog.timestamp >= pred.timestamp - time_window,
+                    AgentLog.timestamp <= pred.timestamp + time_window,
+                ).order_by(AgentLog.timestamp)
+            ).scalars().all()
+
+            log_entries = [
+                {
+                    "timestamp": l.timestamp.isoformat(),
+                    "level": l.level,
+                    "message": l.message,
+                    "cycle": l.cycle,
+                    "metadata": l.metadata_json,
+                }
+                for l in logs
+            ]
+
+            # Compute outcome
+            pred_price = float(pred.price_at_prediction)
+            curr_price = float(pred.price_at_evaluation) if pred.price_at_evaluation else None
+            outcome_pct = None
+            if curr_price and pred_price > 0:
+                outcome_pct = round((curr_price - pred_price) / pred_price * 100, 2)
+                if pred.signal_type.upper() in ("SELL", "SHORT"):
+                    outcome_pct = -outcome_pct
+
+            return {
+                "status": "ok",
+                "decision": {
+                    "id": pred.id,
+                    "timestamp": pred.timestamp.isoformat(),
+                    "symbol": pred.symbol,
+                    "action": pred.signal_type,
+                    "confidence": float(pred.probability),
+                    "price_at_decision": round(pred_price, 6),
+                    "current_price": round(curr_price, 6) if curr_price else None,
+                    "outcome_pct": outcome_pct,
+                    "correct": pred.correct,
+                    "evaluated": pred.evaluated,
+                    "evaluated_at": pred.evaluated_at.isoformat() if pred.evaluated_at else None,
+                    "factors": meta.get("factors", {}),
+                    "reason": meta.get("factors", {}).get("reason", ""),
+                    "forward_window": pred.forward_window,
+                },
+                "context_logs": log_entries,
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("decision detail error: %s", exc, exc_info=True)
+        return {"status": "error", "error": "Error interno del servidor"}
+
+
 @router.get("/intelligence/sources/context")
 def get_sources_for_agent(
     asset: str | None = Query(None),

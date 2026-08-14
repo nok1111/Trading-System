@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 import { cn, fmtDate } from "../lib/utils";
 import { Tooltip, InfoPanel } from "../components/common/Tooltip";
@@ -130,6 +130,7 @@ export function BacktestPage() {
   const [mtfLoading, setMtfLoading] = useState(false);
   const [wfLoading, setWfLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showHistorical, setShowHistorical] = useState(false);
 
   const handleRun = async () => {
     setError("");
@@ -880,6 +881,23 @@ export function BacktestPage() {
           </div>
         </>
       )}
+
+      {/* Historical Data Cache panel */}
+      <div className="panel p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[14px] font-extrabold text-[var(--color-text)]">Datos Históricos (Cache)</h2>
+          <button
+            onClick={() => setShowHistorical(!showHistorical)}
+            className="text-[11px] font-bold text-[var(--color-primary)] hover:underline"
+          >
+            {showHistorical ? "Ocultar" : "Mostrar"}
+          </button>
+        </div>
+        <p className="text-[11px] text-[var(--color-text-muted)] mb-3">
+          Descarga datos históricos de Binance y los cachea en la BD. Permite backtests con años de historia (sin límite de 1000 velas).
+        </p>
+        {showHistorical && <HistoricalDataPanel symbol={symbol} interval={interval} />}
+      </div>
     </div>
   );
 }
@@ -941,5 +959,135 @@ function EquityCurveChart({ data }: { data: { time: string; equity: number; pric
         ${minEq.toLocaleString("en-US", { maximumFractionDigits: 0 })}
       </text>
     </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Historical Data Panel — download & cache klines for extended backtests
+// ---------------------------------------------------------------------------
+
+function HistoricalDataPanel({ symbol, interval }: { symbol: string; interval: string }) {
+  const [cacheStatus, setCacheStatus] = useState<any>(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchResult, setFetchResult] = useState<any>(null);
+  const [days, setDays] = useState("365");
+
+  const loadStatus = async () => {
+    try {
+      const r = await api<any>("/api/trading/historical-data/status");
+      setCacheStatus(r);
+    } catch {}
+  };
+
+  useEffect(() => { loadStatus(); }, []);
+
+  const handleFetch = async () => {
+    setFetching(true);
+    setFetchResult(null);
+    try {
+      const r = await api<any>("/api/trading/historical-data/fetch", {
+        method: "POST",
+        body: JSON.stringify({ symbol, timeframe: interval, days: parseInt(days) }),
+      });
+      setFetchResult(r);
+      await loadStatus();
+    } catch (e: any) {
+      setFetchResult({ status: "error", error: e.message });
+    }
+    setFetching(false);
+  };
+
+  const handleClear = async () => {
+    try {
+      await api<any>(`/api/trading/historical-data/${symbol}`, { method: "DELETE" });
+      await loadStatus();
+    } catch {}
+  };
+
+  const symbolCache = cacheStatus?.cached?.find((c: any) => c.symbol === symbol && c.timeframe === interval);
+
+  return (
+    <div className="space-y-3">
+      {/* Current cache status */}
+      <div className="rounded-[10px] bg-[var(--color-surface-2)] p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[12px] font-bold text-[var(--color-text)]">Cache actual: {symbol} {interval}</span>
+          {symbolCache && (
+            <span className="text-[10px] text-[var(--color-success)] font-bold">
+              {symbolCache.count} velas
+            </span>
+          )}
+        </div>
+        {symbolCache ? (
+          <div className="text-[10px] text-[var(--color-text-muted)]">
+            Desde {fmtDate(symbolCache.earliest)} hasta {fmtDate(symbolCache.latest)}
+          </div>
+        ) : (
+          <div className="text-[10px] text-[var(--color-text-muted)]">Sin datos cacheados</div>
+        )}
+      </div>
+
+      {/* Fetch controls */}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="block text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Días</label>
+          <select
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="w-full h-8 px-2 rounded-[6px] bg-[var(--color-surface-2)] text-[12px] text-[var(--color-text)] border-none outline-none"
+          >
+            <option value="30">30 días</option>
+            <option value="90">90 días</option>
+            <option value="365">1 año</option>
+            <option value="730">2 años</option>
+            <option value="1095">3 años</option>
+          </select>
+        </div>
+        <button
+          onClick={handleFetch}
+          disabled={fetching}
+          className="h-8 px-4 rounded-[6px] bg-[var(--color-primary)] text-white text-[12px] font-bold disabled:opacity-50"
+        >
+          {fetching ? "Descargando..." : "Descargar"}
+        </button>
+        {symbolCache && (
+          <button
+            onClick={handleClear}
+            className="h-8 px-3 rounded-[6px] bg-[var(--color-danger)]/10 text-[var(--color-danger)] text-[12px] font-bold"
+          >
+            Limpiar
+          </button>
+        )}
+      </div>
+
+      {/* Fetch result */}
+      {fetchResult && (
+        <div className={cn(
+          "rounded-[8px] p-3 text-[12px]",
+          fetchResult.status === "ok"
+            ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
+            : "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
+        )}>
+          {fetchResult.status === "ok"
+            ? `Descargadas ${fetchResult.downloaded} velas (${fetchResult.cached} en cache, ${fetchResult.gaps} gaps)`
+            : `Error: ${fetchResult.error}`}
+        </div>
+      )}
+
+      {/* All cached symbols */}
+      {cacheStatus?.cached?.length > 0 && (
+        <div>
+          <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2">Todo lo cacheado ({cacheStatus.total_entries} velas)</p>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {cacheStatus.cached.map((c: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-[10px] py-1 px-2 rounded bg-[var(--color-surface-2)]">
+                <span className="font-bold text-[var(--color-text)]">{c.symbol} {c.timeframe}</span>
+                <span className="text-[var(--color-text-muted)]">{c.count} velas</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

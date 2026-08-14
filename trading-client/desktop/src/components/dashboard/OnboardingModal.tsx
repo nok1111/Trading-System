@@ -14,6 +14,8 @@ const STEPS = [
   "capital",
   "strategies",
   "goal",
+  "broker",
+  "ai",
 ] as const;
 
 type Step = (typeof STEPS)[number];
@@ -81,6 +83,8 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
       case "capital": return !!capital;
       case "strategies": return strategies.length > 0;
       case "goal": return !!goal;
+      case "broker": return true; // optional, can skip
+      case "ai": return true; // optional, can skip
     }
   })();
 
@@ -90,6 +94,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
   const handleFinish = async () => {
     setSaving(true);
+    // Save profile via existing endpoint
     const profile = await saveUserProfile({
       experience_level: experience,
       risk_tolerance: risk,
@@ -99,6 +104,24 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
       trading_goal: goal,
       preferred_language: "es",
     });
+
+    // Complete onboarding — auto-configure risk + AI
+    try {
+      const { api } = await import("../../lib/api");
+      await api<any>("/api/settings/onboarding/complete", {
+        method: "POST",
+        body: JSON.stringify({
+          experience_level: experience,
+          risk_tolerance: risk,
+          asset_interests: assets,
+          capital_range: capital,
+          preferred_strategies: strategies,
+          trading_goal: goal,
+          preferred_language: "es",
+        }),
+      });
+    } catch {}
+
     setSaving(false);
     if (profile) {
       onComplete(profile);
@@ -112,6 +135,8 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     capital: Wallet,
     strategies: Target,
     goal: Check,
+    broker: Wallet,
+    ai: Rocket,
   };
 
   const Icon = stepIcons[currentStep];
@@ -246,6 +271,42 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                   desc={opt.desc}
                 />
               ))}
+            </div>
+          )}
+
+          {currentStep === "broker" && (
+            <div className="space-y-3">
+              <p className="text-[14px] font-bold text-[var(--color-text)] mb-2">Conecta tu broker (opcional)</p>
+              <p className="text-[11px] text-[var(--color-text-muted)] mb-3">
+                Puedes conectar tu broker ahora o hacerlo después desde la sección Conexiones.
+                Sin broker, puedes usar paper trading para probar la plataforma.
+              </p>
+              <div className="rounded-[10px] bg-[var(--color-surface-2)] p-4 text-center">
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  Ve a <strong className="text-[var(--color-text)]">Conexiones</strong> después del onboarding para conectar Binance, Bybit, u otros brokers.
+                </p>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
+                  Mientras tanto, activaremos paper trading automáticamente.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {currentStep === "ai" && (
+            <div className="space-y-3">
+              <p className="text-[14px] font-bold text-[var(--color-text)] mb-2">Configura tu AI Agent (opcional)</p>
+              <p className="text-[11px] text-[var(--color-text-muted)] mb-3">
+                El agente usa IA para analizar el mercado y sugerir operaciones.
+                Puedes configurarlo ahora o después desde la sección AI Agent.
+              </p>
+              <div className="rounded-[10px] bg-[var(--color-surface-2)] p-4 text-center">
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  Por defecto usará <strong className="text-[var(--color-text)]">OmniRoute</strong> (gratis, sin API key necesaria).
+                </p>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
+                  Puedes cambiar el provider o añadir tu propia API key después.
+                </p>
+              </div>
             </div>
           )}
         </div>

@@ -17,6 +17,7 @@ const NewsPage = lazy(() => import("./pages/NewsPage").then(m => ({ default: m.N
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then(m => ({ default: m.ReportsPage })));
 const BacktestPage = lazy(() => import("./pages/BacktestPage").then(m => ({ default: m.BacktestPage })));
 const AIAgentPage = lazy(() => import("./pages/AIAgentPage").then(m => ({ default: m.AIAgentPage })));
+const AgentTransparencyPage = lazy(() => import("./pages/AgentTransparencyPage").then(m => ({ default: m.AgentTransparencyPage })));
 const BotsPage = lazy(() => import("./pages/BotsPage").then(m => ({ default: m.BotsPage })));
 const SocialPage = lazy(() => import("./pages/SocialPage").then(m => ({ default: m.SocialPage })));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage").then(m => ({ default: m.NotificationsPage })));
@@ -106,7 +107,7 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} onSkip={onBrokerSkip} />;
   }
 
-  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "bots", "social", "alerts", "connections", "security", "preferences"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "agent-transparency", "bots", "social", "alerts", "connections", "security", "preferences"];
 
   const pages: Record<TabId, React.ReactNode> = {
     dashboard: <DashboardPage />,
@@ -116,6 +117,7 @@ function BrokerAwareContent({
     reports: <ReportsPage />,
     backtest: <BacktestPage />,
     "ai-agent": <AIAgentPage />,
+    "agent-transparency": <AgentTransparencyPage />,
     "bots": <BotsPage />,
     social: <SocialPage />,
     alerts: <NotificationsPage onNavigate={(page) => onTabChange(page as TabId)} />,

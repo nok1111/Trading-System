@@ -10,6 +10,7 @@ import {
   X,
   Radio,
   Star,
+  BadgeCheck,
 } from "lucide-react";
 import { cn, fmt, fmtDateTime } from "../lib/utils";
 import { Card } from "../components/ui/Card";
@@ -24,6 +25,7 @@ import { LeaderProfile } from "../components/LeaderProfile";
 import { useBrokerContext } from "../context/BrokerContext";
 import { isBrokerConnected } from "../lib/brokerTypes";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { api } from "../lib/api";
 import * as socialApi from "../lib/socialApi";
 import type { SocialLeader, SocialSignal } from "../lib/socialApi";
 
@@ -418,7 +420,10 @@ function Leaderboard({
                         {l.display_name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div className="text-[11px] font-bold text-[var(--color-text)]">{l.display_name}</div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] font-bold text-[var(--color-text)]">{l.display_name}</span>
+                          <VerifiedBadge leaderId={l.id} />
+                        </div>
                         <div className="text-[9px] text-[var(--color-text-muted)]">{l.bio?.slice(0, 40)}</div>
                       </div>
                     </div>
@@ -963,5 +968,35 @@ function StatBox({ label, value, positive }: { label: string; value: string; pos
         {value}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Verified Badge — shows if a leader has verified trades
+// ---------------------------------------------------------------------------
+
+function VerifiedBadge({ leaderId }: { leaderId: number }) {
+  const [stats, setStats] = useState<{ verified_pct: number; total_trades: number } | null>(null);
+
+  useEffect(() => {
+    api<any>(`/api/social/leaders/${leaderId}/verified-stats`)
+      .then((r) => {
+        if (r?.status === "ok" && r.total_trades > 0) {
+          setStats({ verified_pct: r.verified_pct, total_trades: r.total_trades });
+        }
+      })
+      .catch(() => {});
+  }, [leaderId]);
+
+  if (!stats || stats.total_trades === 0) return null;
+
+  return (
+    <span
+      className="flex items-center gap-0.5 text-[9px] font-bold text-[var(--color-success)] bg-[var(--color-success)]/10 px-1.5 h-4 rounded"
+      title={`${stats.verified_pct}% de trades verificados (${stats.total_trades} total)`}
+    >
+      <BadgeCheck size={10} />
+      {stats.verified_pct}%
+    </span>
   );
 }

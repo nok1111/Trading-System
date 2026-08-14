@@ -482,6 +482,53 @@ def get_backtest(run_id: int, db: DbSession) -> BacktestRun:
     return run
 
 
+# ---------------------------------------------------------------------------
+# Historical Data Cache — for extended backtesting periods
+# ---------------------------------------------------------------------------
+
+
+@router.get("/historical-data/status")
+def get_historical_cache_status() -> dict:
+    """Get status of cached historical data."""
+    from app.services.historical_data_service import get_historical_data_service
+    return get_historical_data_service().get_cache_status()
+
+
+@router.post("/historical-data/fetch")
+def fetch_historical_data(req: dict) -> dict:
+    """Download and cache historical klines from Binance.
+
+    Body: {symbol, timeframe, days}
+    """
+    from app.services.historical_data_service import get_historical_data_service
+    symbol = req.get("symbol", "BTCUSDT")
+    timeframe = req.get("timeframe", "1h")
+    days = int(req.get("days", 365))
+    return get_historical_data_service().fetch_and_cache(symbol, timeframe, days)
+
+
+@router.get("/historical-data/{symbol}")
+def get_cached_klines(
+    symbol: str,
+    timeframe: str = "1h",
+    days: int = 365,
+) -> dict:
+    """Read cached klines from DB."""
+    from datetime import UTC, datetime, timedelta
+    from app.services.historical_data_service import get_historical_data_service
+    end = datetime.now(tz=UTC)
+    start = end - timedelta(days=days)
+    klines = get_historical_data_service().get_cached_klines(symbol, timeframe, start, end)
+    return {"status": "ok", "symbol": symbol, "timeframe": timeframe, "count": len(klines), "klines": klines}
+
+
+@router.delete("/historical-data/{symbol}")
+def clear_historical_cache(symbol: str) -> dict:
+    """Clear cached data for a symbol."""
+    from app.services.historical_data_service import get_historical_data_service
+    return get_historical_data_service().clear_cache(symbol)
+
+
 @router.get("/snapshots", response_model=list[AccountSnapshotOut])
 def list_snapshots(
     db: DbSession,

@@ -1,6 +1,6 @@
 """Stats, risk events, and chart endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.routes.trading import DbSession
 from app.brokers.models import normalize_symbol
@@ -393,3 +393,129 @@ def portfolio_risk(db: DbSession) -> dict:
     result["portfolio_value"] = round(portfolio_value, 2)
     result["cash"] = round(cash, 2)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Portfolio Guard endpoints
+# ---------------------------------------------------------------------------
+
+from typing import Annotated
+from pydantic import BaseModel
+from app.services.auth import LocalUser, get_current_user
+
+
+class GuardConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    mode: str | None = None
+    max_correlation: float | None = None
+    max_drawdown_pct: float | None = None
+    max_category_exposure: dict | None = None
+    auto_close_worst: bool | None = None
+
+
+@router.get("/portfolio-guard/config")
+def get_guard_config(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Get the user's Portfolio Guard configuration."""
+    from app.services.portfolio_guard_service import PortfolioGuardService
+    uid = current_user.id if current_user else 0
+    return PortfolioGuardService(uid).get_config()
+
+
+@router.put("/portfolio-guard/config")
+def update_guard_config(
+    req: GuardConfigUpdate,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Update Portfolio Guard configuration."""
+    from app.services.portfolio_guard_service import PortfolioGuardService
+    uid = current_user.id if current_user else 0
+    return PortfolioGuardService(uid).update_config(req.model_dump(exclude_none=True))
+
+
+@router.get("/portfolio-guard/status")
+def get_guard_status(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Get current guard status with suggestions and metrics."""
+    from app.services.portfolio_guard_service import PortfolioGuardService
+    uid = current_user.id if current_user else 0
+    service = PortfolioGuardService(uid)
+
+    # Get current positions
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as PosModel
+    db = SessionLocal()
+    try:
+        positions_db = db.query(PosModel).filter_by(user_id=uid, status="open").all()
+        positions_data = []
+        for p in positions_db:
+            entry = float(p.entry_price) if p.entry_price else 0
+            current = float(p.current_price) if p.current_price else entry
+            qty = float(p.quantity) if p.quantity else 0
+            positions_data.append({
+                "symbol": p.symbol,
+                "value": current * qty,
+                "entry_price": entry,
+                "current_price": current,
+                "qty": qty,
+                "position_id": p.id,
+            })
+
+        # Calculate portfolio value
+        total_position_value = sum(p["value"] for p in positions_data)
+        from app.database.models.account_snapshot import AccountSnapshot
+        account = db.query(AccountSnapshot).filter_by(user_id=uid).order_by(
+            AccountSnapshot.timestamp.desc()
+        ).first()
+        cash = float(account.cash) if account else 0
+        portfolio_value = total_position_value + cash
+    finally:
+        db.close()
+
+    return service.check_portfolio(positions_data, portfolio_value)
+
+
+@router.post("/portfolio-guard/execute-suggestion")
+def execute_guard_suggestion(
+    suggestion: dict,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Manually execute a guard suggestion."""
+    from app.services.portfolio_guard_service import PortfolioGuardService
+    uid = current_user.id if current_user else 0
+    service = PortfolioGuardService(uid)
+
+    from app.database.session import SessionLocal
+    from app.database.models.position import Position as PosModel
+    db = SessionLocal()
+    try:
+        positions_db = db.query(PosModel).filter_by(user_id=uid, status="open").all()
+        positions_data = []
+        for p in positions_db:
+            entry = float(p.entry_price) if p.entry_price else 0
+            current = float(p.current_price) if p.current_price else entry
+            qty = float(p.quantity) if p.quantity else 0
+            positions_data.append({
+                "symbol": p.symbol,
+                "value": current * qty,
+                "entry_price": entry,
+                "current_price": current,
+                "qty": qty,
+                "position_id": p.id,
+            })
+    finally:
+        db.close()
+
+    return service.execute_suggestion(suggestion, positions_data)
+
+
+@router.get("/portfolio-guard/history")
+def get_guard_history(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Get history of guard actions."""
+    from app.services.portfolio_guard_service import PortfolioGuardService
+    uid = current_user.id if current_user else 0
+    return {"actions": PortfolioGuardService(uid).get_history()}

@@ -2,6 +2,7 @@ import { cn } from "../../lib/utils";
 import { EmptyState } from "../common/EmptyState";
 import type { IntelligenceAlert } from "../../lib/intelligenceTypes";
 import { fmtDate } from "../../lib/utils";
+import { ArrowRight } from "lucide-react";
 
 interface AlertListProps {
   alerts: IntelligenceAlert[];
@@ -42,6 +43,24 @@ export function AlertList({ alerts, className }: AlertListProps) {
             {a.details && (
               <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{a.details}</p>
             )}
+            <div className="flex justify-end mt-1.5">
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("navigate", {
+                    detail: {
+                      page: "trade",
+                      asset: a.asset,
+                      signalType: "alert",
+                      signalData: { type: a.severity },
+                    },
+                  }));
+                }}
+                className="flex items-center gap-1 px-2 h-6 rounded-[6px] text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 transition-colors"
+              >
+                Trade
+                <ArrowRight size={10} />
+              </button>
+            </div>
           </div>
         );
       })}

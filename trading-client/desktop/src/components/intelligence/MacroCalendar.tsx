@@ -1,6 +1,7 @@
 import { cn } from "../../lib/utils";
 import { EmptyState } from "../common/EmptyState";
 import type { MacroEvent } from "../../lib/intelligenceTypes";
+import { ArrowRight } from "lucide-react";
 
 interface MacroCalendarProps {
   events: MacroEvent[];
@@ -52,6 +53,22 @@ export function MacroCalendar({ events, className }: MacroCalendarProps) {
                   <span className="font-bold text-[var(--color-success)]">{e.actual}</span>
                 </div>
               )}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("navigate", {
+                    detail: {
+                      page: "trade",
+                      asset: "BTC",
+                      signalType: "macro",
+                      signalData: { impact: e.impact, title: e.event },
+                    },
+                  }));
+                }}
+                className="flex items-center gap-1 px-2 h-6 rounded-[6px] text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 transition-colors ml-auto"
+              >
+                Trade
+                <ArrowRight size={10} />
+              </button>
             </div>
           </div>
         );

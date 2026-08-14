@@ -371,3 +371,106 @@ def reorder_watchlist(
             w.sort_order = idx
     db.commit()
     return {"status": "reordered"}
+
+
+# ---------------------------------------------------------------------------
+# Guided Onboarding — auto-configure based on profile
+# ---------------------------------------------------------------------------
+
+
+class OnboardingCompleteRequest(BaseModel):
+    experience_level: str = ""
+    risk_tolerance: str = ""
+    asset_interests: list[str] = []
+    capital_range: str = ""
+    preferred_strategies: list[str] = []
+    trading_goal: str = ""
+    preferred_language: str = "es"
+    broker_id: str | None = None
+    ai_provider: str | None = None
+    ai_key: str | None = None
+
+
+@router.post("/onboarding/complete")
+def complete_onboarding(
+    req: OnboardingCompleteRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Complete onboarding — saves profile and auto-configures risk + paper trading."""
+    uid = current_user.id if current_user else 0
+    results: dict = {"profile": "ok", "risk_config": "ok", "paper_trading": "ok"}
+
+    # 1. Save user profile
+    try:
+        from app.database.models.user_profile import UserProfile
+        from app.database.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            profile = db.query(UserProfile).filter(UserProfile.user_id == uid).first()
+            if not profile:
+                profile = UserProfile(user_id=uid)
+                db.add(profile)
+            profile.experience_level = req.experience_level
+            profile.risk_tolerance = req.risk_tolerance
+            import json as _json
+            profile.asset_interests = _json.dumps(req.asset_interests)
+            profile.capital_range = req.capital_range
+            profile.preferred_strategies = _json.dumps(req.preferred_strategies)
+            profile.trading_goal = req.trading_goal
+            profile.preferred_language = req.preferred_language
+            profile.onboarding_completed = True
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        results["profile"] = "error"
+
+    # 2. Auto-configure risk based on profile
+    try:
+        from app.database.models.risk_config import RiskConfig
+        from app.database.session import SessionLocal
+
+        risk_map = {
+            "conservative": {"max_open_positions": 3, "max_position_size_pct": 5.0, "hard_stop_loss_pct": 3.0},
+            "moderate": {"max_open_positions": 5, "max_position_size_pct": 10.0, "hard_stop_loss_pct": 5.0},
+            "aggressive": {"max_open_positions": 8, "max_position_size_pct": 20.0, "hard_stop_loss_pct": 8.0},
+        }
+        risk_cfg = risk_map.get(req.risk_tolerance, risk_map["moderate"])
+
+        db = SessionLocal()
+        try:
+            cfg = db.query(RiskConfig).filter(RiskConfig.user_id == uid).first()
+            if not cfg:
+                cfg = RiskConfig(user_id=uid)
+                db.add(cfg)
+            cfg.max_open_positions = risk_cfg["max_open_positions"]
+            cfg.max_position_size_pct = risk_cfg["max_position_size_pct"]
+            cfg.hard_stop_loss_pct = risk_cfg["hard_stop_loss_pct"]
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        results["risk_config"] = "error"
+
+    # 3. Save AI key if provided
+    if req.ai_provider and req.ai_key:
+        try:
+            from app.services.crypto import encrypt as _encrypt
+            db = SessionLocal()
+            try:
+                s = db.query(UserSettings).filter(UserSettings.user_id == uid).first()
+                if not s:
+                    s = UserSettings(user_id=uid)
+                    db.add(s)
+                key_field = f"ai_{req.ai_provider}_key_enc"
+                if hasattr(s, key_field):
+                    setattr(s, key_field, _encrypt(req.ai_key))
+                db.commit()
+                results["ai_config"] = "ok"
+            finally:
+                db.close()
+        except Exception:
+            results["ai_config"] = "error"
+
+    return {"status": "ok", "results": results}

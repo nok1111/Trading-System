@@ -2705,3 +2705,124 @@ def paper_place_oco(position_id: int, req: OcoRequest) -> dict:
         return {"status": "error", "error": safe_error(exc)}
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# One-Click Trade from Intelligence — P0
+# ---------------------------------------------------------------------------
+
+
+class SuggestTradeRequest(_BM):
+    signal_type: str  # "whale", "alert", "news", "macro"
+    asset: str
+    signal_data: dict = {}
+
+
+@router.post("/suggest-trade")
+def suggest_trade_from_intelligence(
+    req: SuggestTradeRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Suggest a trade (side + SL/TP) based on an intelligence signal.
+
+    Maps intelligence signals to trade suggestions:
+    - whale inflow -> BUY (smart money accumulating)
+    - whale outflow -> SELL (smart money distributing)
+    - high-impact positive news -> BUY
+    - high-impact negative news -> SELL
+    - macro event (CPI, FOMC) -> HOLD/caution
+    - alert (price) -> based on alert direction
+    """
+    uid = current_user.id if current_user else 0
+    asset = req.asset.upper().replace("/", "")
+    signal_type = req.signal_type.lower()
+    signal_data = req.signal_data or {}
+
+    suggested_side = "buy"
+    suggested_sl_pct = 3.0
+    suggested_tp_pct = 6.0
+    reason = ""
+
+    if signal_type == "whale":
+        direction = signal_data.get("direction", "inflow")
+        amount_usd = signal_data.get("amount_usd", 0)
+        if direction == "inflow":
+            suggested_side = "buy"
+            suggested_sl_pct = 2.5
+            suggested_tp_pct = 5.0
+            reason = f"Whale inflow detectado (${amount_usd:,.0f}) — smart money acumulando {asset}"
+        else:
+            suggested_side = "sell"
+            suggested_sl_pct = 2.5
+            suggested_tp_pct = 5.0
+            reason = f"Whale outflow detectado (${amount_usd:,.0f}) — smart money distribuyendo {asset}"
+
+    elif signal_type == "news":
+        sentiment = signal_data.get("sentiment", "neutral")
+        impact = signal_data.get("impact", "medium")
+        if sentiment == "positive" and impact in ("high", "critical"):
+            suggested_side = "buy"
+            suggested_sl_pct = 3.0
+            suggested_tp_pct = 8.0
+            reason = f"Noticia positiva de alto impacto: {signal_data.get('title', '')[:100]}"
+        elif sentiment == "negative" and impact in ("high", "critical"):
+            suggested_side = "sell"
+            suggested_sl_pct = 3.0
+            suggested_tp_pct = 8.0
+            reason = f"Noticia negativa de alto impacto: {signal_data.get('title', '')[:100]}"
+        else:
+            suggested_side = "hold"
+            reason = "Noticia de impacto medio/bajo — no se recomienda operar"
+
+    elif signal_type == "alert":
+        alert_type = signal_data.get("type", "price")
+        if alert_type == "price_above":
+            suggested_side = "buy"
+            suggested_sl_pct = 2.0
+            suggested_tp_pct = 4.0
+            reason = f"Alerta de precio superado — posible momentum alcista en {asset}"
+        elif alert_type == "price_below":
+            suggested_side = "sell"
+            suggested_sl_pct = 2.0
+            suggested_tp_pct = 4.0
+            reason = f"Alerta de precio roto — posible momentum bajista en {asset}"
+        else:
+            reason = f"Alerta: {alert_type}"
+
+    elif signal_type == "macro":
+        event_impact = signal_data.get("impact", "medium")
+        if event_impact == "high":
+            suggested_side = "hold"
+            reason = f"Evento macro de alto impacto: {signal_data.get('title', '')[:100]} — esperar claridad"
+        else:
+            suggested_side = "hold"
+            reason = "Evento macro programado — precaucion"
+
+    # Adjust SL/TP based on user risk profile
+    try:
+        from app.database.models.user_profile import UserProfile
+        from app.database.session import SessionLocal as _SL
+        profile_db = _SL()
+        try:
+            profile = profile_db.query(UserProfile).filter(UserProfile.user_id == uid).first()
+            if profile and profile.risk_tolerance:
+                if profile.risk_tolerance == "conservative":
+                    suggested_sl_pct = min(suggested_sl_pct, 2.0)
+                    suggested_tp_pct = min(suggested_tp_pct, 4.0)
+                elif profile.risk_tolerance == "aggressive":
+                    suggested_sl_pct = max(suggested_sl_pct, 4.0)
+                    suggested_tp_pct = max(suggested_tp_pct, 10.0)
+        finally:
+            profile_db.close()
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "asset": asset,
+        "suggested_side": suggested_side,
+        "suggested_sl_pct": suggested_sl_pct,
+        "suggested_tp_pct": suggested_tp_pct,
+        "reason": reason,
+        "signal_type": signal_type,
+    }
