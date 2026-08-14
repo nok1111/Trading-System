@@ -2,6 +2,7 @@ import { Sun, Moon, Bell, Globe, Server, Rocket, Shield, Wallet, Target, Check, 
 import { useEffect, useState, useCallback } from "react";
 import { useTheme } from "../theme/ThemeContext";
 import { useI18n } from "../i18n/I18nContext";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useBrokerContext } from "../context/BrokerContext";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -110,7 +111,9 @@ export function PreferencesPage() {
     loadProxyConfig();
   }, [loadProxyConfig]);
   const { theme, toggleTheme } = useTheme();
-  const { lang, setLang } = useI18n();
+  const { lang, setLang, t } = useI18n();
+  const { supported: pushSupported, subscribed: pushSubscribed, subscribe, unsubscribe, sendTest } = usePushNotifications();
+  const [pushLoading, setPushLoading] = useState(false);
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
 
   const [_profile, setProfile] = useState<UserProfileData | null>(null);
@@ -322,6 +325,58 @@ export function PreferencesPage() {
           </div>
         </div>
       </div>
+
+      {/* Push Notifications */}
+      {pushSupported && (
+        <div className="panel p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bell size={18} />
+            <h3 className="text-[14px] font-bold text-[var(--color-text)]">{t("preferences.notifications")}</h3>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] text-[var(--color-text-muted)]">{t("preferences.pushEnable")}</span>
+            <div className="flex items-center gap-2">
+              {pushSubscribed && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    setPushLoading(true);
+                    try { await sendTest(); } catch {}
+                    setPushLoading(false);
+                  }}
+                  disabled={pushLoading}
+                >
+                  Test
+                </Button>
+              )}
+              <Button
+                variant={pushSubscribed ? "ghost" : "default"}
+                size="sm"
+                onClick={async () => {
+                  setPushLoading(true);
+                  try {
+                    if (pushSubscribed) {
+                      await unsubscribe();
+                    } else {
+                      await subscribe();
+                    }
+                  } catch {}
+                  setPushLoading(false);
+                }}
+                disabled={pushLoading}
+              >
+                {pushSubscribed ? t("common.close") : t("common.confirm")}
+              </Button>
+            </div>
+          </div>
+          {pushSubscribed && (
+            <p className="text-[11px] text-[var(--color-success)]">
+              {t("preferences.pushEnabled")}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* VPS Proxy Configuration (legacy — Binance only) */}
       <div className="panel p-4 space-y-3">

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Star, X, Plus, Search } from "lucide-react";
 import { watchlistApi, type WatchlistItem } from "../../lib/watchlistApi";
 import { toast } from "../ui/Toast";
+import { useI18n } from "../../i18n/I18nContext";
 import { CryptoIcon } from "../CryptoIcon";
 
 interface WatchlistProps {
@@ -9,6 +10,7 @@ interface WatchlistProps {
 }
 
 export function Watchlist({ onSymbolClick }: WatchlistProps) {
+  const { t } = useI18n();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [prices, setPrices] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(true);
@@ -143,14 +145,14 @@ export function Watchlist({ onSymbolClick }: WatchlistProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Star size={16} className="text-yellow-400" />
-          <h2 className="text-[14px] font-extrabold text-[var(--color-text)]">Watchlist</h2>
+          <h2 className="text-[14px] font-extrabold text-[var(--color-text)]">{t("watchlist.title")}</h2>
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
           className="flex items-center gap-1 px-2.5 h-7 rounded-[8px] text-[11px] font-bold bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
         >
           <Plus size={13} />
-          Añadir
+          {t("watchlist.add")}
         </button>
       </div>
 
@@ -162,7 +164,7 @@ export function Watchlist({ onSymbolClick }: WatchlistProps) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar símbolo..."
+              placeholder={t("watchlist.searchPlaceholder")}
               autoFocus
               className="flex-1 bg-transparent text-[12px] text-[var(--color-text)] outline-none"
             />
@@ -187,8 +189,8 @@ export function Watchlist({ onSymbolClick }: WatchlistProps) {
       {items.length === 0 ? (
         <div className="text-center py-8 text-[12px] text-[var(--color-text-muted)]">
           <Star size={32} className="mx-auto mb-2 opacity-30" />
-          Sin símbolos en watchlist
-          <div className="mt-1 text-[11px]">Añade símbolos para seguirlos</div>
+          {t("watchlist.empty")}
+          <div className="mt-1 text-[11px]">{t("watchlist.emptyDesc")}</div>
         </div>
       ) : (
         <div className="space-y-0.5">

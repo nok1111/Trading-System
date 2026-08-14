@@ -11,9 +11,11 @@ import { cn } from "../lib/utils";
 import { CryptoIcon } from "../components/CryptoIcon";
 import { PositionChart } from "../components/PositionChart";
 import { VirtualList } from "../components/common/VirtualList";
+import { useI18n } from "../i18n/I18nContext";
 import { toast } from "../components/ui/Toast";
 
 export function PositionsPage() {
+  const { t } = useI18n();
   const [positions, setPositions] = useState<any[]>([]);
   const [riskEvents, setRiskEvents] = useState<any[]>([]);
   const [filter, setFilter] = useState("");
@@ -443,7 +445,7 @@ export function PositionsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
         <Card>
-          <CardLabel>Posiciones Abiertas</CardLabel>
+          <CardLabel>{t("portfolio.openPositions")}</CardLabel>
           <CardValue className="text-[var(--color-primary)]">
             {open.length}
           </CardValue>
@@ -494,7 +496,7 @@ export function PositionsPage() {
       {open.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-3">
-            Posiciones Abiertas
+            {t("portfolio.openPositions")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {open.map((p) => {
@@ -667,7 +669,7 @@ export function PositionsPage() {
       {closed.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-3">
-            Historial de Posiciones Cerradas ({closed.length})
+            {t("portfolio.closedPositions")} ({closed.length})
           </h3>
           {closed.length > 30 ? (
             <>
@@ -766,7 +768,7 @@ export function PositionsPage() {
       {riskEvents.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-[var(--color-danger)] mb-3">
-            Eventos de Riesgo
+            {t("portfolio.riskEvents")}
           </h3>
           <Table>
             <thead>

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
+import { useI18n } from "../../i18n/I18nContext";
 import { useAuthContext } from "../../context/AuthContext";
 import { useBrokerContext } from "../../context/BrokerContext";
 import { Badge } from "../ui/Badge";
@@ -61,28 +62,28 @@ export type TabId =
 
 interface NavItem {
   id: TabId;
-  label: string;
+  labelKey: string;
   icon: ReactNode;
   group: "general" | "sistema";
 }
 
 const generalItems: NavItem[] = [
-  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} />, group: "general" },
-  { id: "intelligence", label: "Market Intelligence", icon: <Brain size={17} />, group: "general" },
-  { id: "risks", label: "Alertas y Riesgos", icon: <ShieldAlert size={17} />, group: "general" },
-  { id: "news", label: "Noticias", icon: <Newspaper size={17} />, group: "general" },
-  { id: "reports", label: "Reportes", icon: <FileText size={17} />, group: "general" },
-  { id: "backtest", label: "Backtest", icon: <FlaskConical size={17} />, group: "general" },
-  { id: "ai-agent", label: "AI Agent", icon: <Bot size={17} />, group: "general" },
-  { id: "bots", label: "Bots", icon: <Grid3x3 size={17} />, group: "general" },
-  { id: "social", label: "Social Trading", icon: <Users size={17} />, group: "general" },
+  { id: "dashboard", labelKey: "nav.dashboard", icon: <LayoutDashboard size={17} />, group: "general" },
+  { id: "intelligence", labelKey: "nav.intelligence", icon: <Brain size={17} />, group: "general" },
+  { id: "risks", labelKey: "nav.security", icon: <ShieldAlert size={17} />, group: "general" },
+  { id: "news", labelKey: "nav.news", icon: <Newspaper size={17} />, group: "general" },
+  { id: "reports", labelKey: "nav.reports", icon: <FileText size={17} />, group: "general" },
+  { id: "backtest", labelKey: "nav.backtest", icon: <FlaskConical size={17} />, group: "general" },
+  { id: "ai-agent", labelKey: "nav.aiAgent", icon: <Bot size={17} />, group: "general" },
+  { id: "bots", labelKey: "nav.bots", icon: <Grid3x3 size={17} />, group: "general" },
+  { id: "social", labelKey: "nav.social", icon: <Users size={17} />, group: "general" },
 ];
 
 const sistemaItems: NavItem[] = [
-  { id: "alerts", label: "Notificaciones", icon: <Bell size={17} />, group: "sistema" },
-  { id: "connections", label: "Conexiones", icon: <Plug size={17} />, group: "sistema" },
-  { id: "security", label: "Seguridad", icon: <Shield size={17} />, group: "sistema" },
-  { id: "preferences", label: "Preferencias", icon: <SettingsIcon size={17} />, group: "sistema" },
+  { id: "alerts", labelKey: "nav.alerts", icon: <Bell size={17} />, group: "sistema" },
+  { id: "connections", labelKey: "nav.connections", icon: <Plug size={17} />, group: "sistema" },
+  { id: "security", labelKey: "nav.security", icon: <Shield size={17} />, group: "sistema" },
+  { id: "preferences", labelKey: "nav.preferences", icon: <SettingsIcon size={17} />, group: "sistema" },
 ];
 
 const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
@@ -110,6 +111,7 @@ interface LayoutProps {
 
 export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const { theme, toggleTheme } = useTheme();
+  const { t } = useI18n();
   const { user, logout, authServerOk } = useAuthContext();
   const { supportedBrokers, connectedAccounts } = useBrokerContext();
 
@@ -246,7 +248,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return [...generalItems, ...sistemaItems].filter((n) =>
-      n.label.toLowerCase().includes(q)
+      t(n.labelKey).toLowerCase().includes(q)
     );
   }, [query]);
 
@@ -363,7 +365,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                   <button
                     key={item.id}
                     onClick={() => handleTabChange(item.id)}
-                    title={collapsed ? item.label : undefined}
+                    title={collapsed ? t(item.labelKey) : undefined}
                     className={cn(
                       "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
                       collapsed ? "justify-center h-10" : "gap-2.5 px-2.5 h-10",
@@ -376,7 +378,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                       <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[var(--color-primary)]" />
                     )}
                     {item.icon}
-                    {!collapsed && <span>{item.label}</span>}
+                    {!collapsed && <span>{t(item.labelKey)}</span>}
                     {item.id === "reports" && newReportsCount > 0 && (
                       <span
                         className={cn(
@@ -441,7 +443,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                   <button
                     key={item.id}
                     onClick={() => handleTabChange(item.id)}
-                    title={collapsed ? item.label : undefined}
+                    title={collapsed ? t(item.labelKey) : undefined}
                     className={cn(
                       "relative w-full flex items-center rounded-[10px] text-[13px] font-semibold transition-all",
                       collapsed ? "justify-center h-10" : "gap-2.5 px-2.5 h-10",
@@ -454,7 +456,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                       <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[var(--color-primary)]" />
                     )}
                     {item.icon}
-                    {!collapsed && <span>{item.label}</span>}
+                    {!collapsed && <span>{t(item.labelKey)}</span>}
                   </button>
                 );
               })}
@@ -552,7 +554,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
                     className="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-lg text-[13px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
                   >
                     {r.icon}
-                    {r.label}
+                    {t(r.labelKey)}
                   </button>
                 ))}
               </div>

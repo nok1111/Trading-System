@@ -134,6 +134,7 @@ from app.api.routes import (
     market,
     ml,
     paper_trading,
+    push,
     realtime,
     settings,
     social,
@@ -155,6 +156,7 @@ app.include_router(intelligence.router)
 app.include_router(bots.router)
 app.include_router(social.router)
 app.include_router(realtime.router)
+app.include_router(push.router)
 
 # ---------------------------------------------------------------------------
 # Startup / Shutdown events

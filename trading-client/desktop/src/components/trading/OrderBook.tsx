@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useI18n } from "../../i18n/I18nContext";
 
 interface OrderBookProps {
   brokerId: string;
@@ -14,6 +15,7 @@ interface OrderBookData {
 }
 
 export function OrderBook({ brokerId, symbol }: OrderBookProps) {
+  const { t } = useI18n();
   const [data, setData] = useState<OrderBookData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,7 @@ export function OrderBook({ brokerId, symbol }: OrderBookProps) {
     <div className="flex flex-col h-full text-[11px] font-mono">
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--color-border)]">
-        <span className="font-bold text-[var(--color-text)]">Order Book</span>
+        <span className="font-bold text-[var(--color-text)]">{t("trading.orderBook")}</span>
         <span className="text-[var(--color-text-muted)]">{symbol}</span>
       </div>
 

@@ -12,6 +12,7 @@ import { PriceChart } from "../components/charts/PriceChart";
 import { SlTpPanel } from "../components/SlTpPanel";
 import { OrderConfirmModal } from "../components/trading/OrderConfirmModal";
 import { OrderBook } from "../components/trading/OrderBook";
+import { useI18n } from "../i18n/I18nContext";
 import * as brokerApi from "../lib/brokerApi";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
@@ -26,7 +27,7 @@ interface BrokerPageProps {
 const MODULE_LABELS: Record<string, string> = {
   overview: "Resumen",
   portfolio: "Portafolio",
-  trade: "Comprar / Vender",
+  trade: "Comprar / Vender", // Note: tab label, migrated dynamically below
   markets: "Mercados",
   positions: "Posiciones",
   orders: "Órdenes",
@@ -376,6 +377,7 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
 
 function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit }: { brokerId: string; presetSymbol?: string; presetStopLoss?: number; presetTakeProfit?: number }) {
   const { connectedAccounts } = useBrokerContext();
+  const { t } = useI18n();
   const account = connectedAccounts.find((a) => a.brokerId === brokerId);
   const [symbol, setSymbol] = useState(presetSymbol || "BTC/USDT");
   const [side, setSide] = useState<"buy" | "sell">("buy");
@@ -859,7 +861,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
               {/* Position sizer */}
               <div>
                 <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
-                  Riesgo por trade (% del capital)
+                  {t("trading.riskPerTrade")} (% del capital)
                 </label>
                 <div className="flex gap-2 items-center">
                   <input
@@ -871,8 +873,8 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
                   />
                   <span className="text-[11px] text-[var(--color-text-muted)]">
                     {livePrice && stopLossPrice && parseFloat(riskPct) > 0
-                      ? `Posición sugerida: ${((parseFloat(amountUsd || "0") * parseFloat(riskPct) / 100) / Math.abs(livePrice - parseFloat(stopLossPrice))).toFixed(6)} ${symbol.replace(quoteCurrency, "")}`
-                      : "Ingresa SL para calcular"}
+                      ? `${t("trading.suggestedPosition")}: ${((parseFloat(amountUsd || "0") * parseFloat(riskPct) / 100) / Math.abs(livePrice - parseFloat(stopLossPrice))).toFixed(6)} ${symbol.replace(quoteCurrency, "")}`
+                      : t("trading.enterSL")}
                   </span>
                 </div>
               </div>
@@ -880,7 +882,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-danger)] mb-1">
-                    Stop-Loss ({quoteCurrency})
+                    {t("trading.stopLoss")} ({quoteCurrency})
                   </label>
                   <input
                     type="number"
@@ -892,7 +894,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--color-success)] mb-1">
-                    Take-Profit ({quoteCurrency})
+                    {t("trading.takeProfit")} ({quoteCurrency})
                   </label>
                   <input
                     type="number"
@@ -931,9 +933,9 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
                 onChange={(e) => setTrailingStopEnabled(e.target.checked)}
                 className="w-4 h-4 rounded accent-[var(--color-primary)]"
               />
-              <span className="text-[12px] font-bold text-[var(--color-text)]">Trailing Stop</span>
+              <span className="text-[12px] font-bold text-[var(--color-text)]">{t("trading.trailingStop")}</span>
               <span className="text-[10px] text-[var(--color-text-muted)]">
-                (sigue el precio automáticamente)
+                ({t("trading.trailingStopDesc")})
               </span>
             </label>
             {trailingStopEnabled && (
@@ -1044,13 +1046,13 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
             )}
             {stopLossPrice && (
               <div className="flex justify-between">
-                <span className="text-[var(--color-danger)]">Stop-Loss</span>
+                <span className="text-[var(--color-danger)]">{t("trading.stopLoss")}</span>
                 <span className="font-bold text-[var(--color-danger)]">${parseFloat(stopLossPrice).toLocaleString("en-US")}</span>
               </div>
             )}
             {takeProfitPrice && (
               <div className="flex justify-between">
-                <span className="text-[var(--color-success)]">Take-Profit</span>
+                <span className="text-[var(--color-success)]">{t("trading.takeProfit")}</span>
                 <span className="font-bold text-[var(--color-success)]">${parseFloat(takeProfitPrice).toLocaleString("en-US")}</span>
               </div>
             )}
@@ -1115,7 +1117,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
                   : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-text)]"
               )}
             >
-              {showOrderBook ? "Ocultar Order Book" : "Mostrar Order Book"}
+              {showOrderBook ? t("trading.hideOrderBook") : t("trading.showOrderBook")}
             </button>
           </div>
           <div className={cn("flex gap-3", showOrderBook && "flex-col lg:flex-row")}>
@@ -1450,6 +1452,7 @@ function OrdersModule({ activeOrders, filledOrders, brokerDisplayName }: { activ
 }
 
 function HistoryModule({ trades }: { trades: any[] }) {
+  const { t } = useI18n();
   const handleExportCSV = async () => {
     try {
       const token = localStorage.getItem("jwt") || "";
@@ -1474,7 +1477,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
   return (
     <div className="panel p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[13px] font-bold text-[var(--color-text)]">Historial de Trades</h3>
+        <h3 className="text-[13px] font-bold text-[var(--color-text)]">{t("trading.history")}</h3>
         <button
           onClick={handleExportCSV}
           className="flex items-center gap-1.5 px-3 h-8 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-border-strong)] transition-colors"
@@ -1484,7 +1487,7 @@ function HistoryModule({ trades }: { trades: any[] }) {
         </button>
       </div>
       {trades.length === 0 ? (
-        <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin trades recientes</p>
+        <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">{t("trading.noTrades")}</p>
       ) : (
         <table className="w-full text-[12px]">
           <thead>

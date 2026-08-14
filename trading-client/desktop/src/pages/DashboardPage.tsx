@@ -10,6 +10,7 @@ import { AIActivityTimeline } from "../components/dashboard/AIActivityTimeline";
 import { OnboardingModal } from "../components/dashboard/OnboardingModal";
 import { AutoPilotWidget } from "../components/dashboard/AutoPilotWidget";
 import { Watchlist } from "../components/watchlist/Watchlist";
+import { useI18n } from "../i18n/I18nContext";
 import { useAuthContext } from "../context/AuthContext";
 import {
   getMarketOverview,
@@ -34,6 +35,7 @@ import type {
 
 export function DashboardPage() {
   const { user } = useAuthContext();
+  const { t } = useI18n();
   const [overview, setOverview] = useState<MarketOverview | null>(null);
   const [dominance, setDominance] = useState<DominanceData | null>(null);
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -102,11 +104,11 @@ export function DashboardPage() {
       {/* Market pulse — subtle, not overwhelming */}
       <div className="grid grid-cols-2 gap-3">
         <div className="panel p-3">
-          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">BTC Dominance</h3>
+          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">{t("dashboard.btcDominance")}</h3>
           <DominanceChart data={dominance} loading={loading} />
         </div>
         <div className="panel p-3">
-          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">Mercado</h3>
+          <h3 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase mb-1.5">{t("dashboard.market")}</h3>
           <RegimeBanner overview={overview} loading={loading} />
         </div>
       </div>
@@ -118,7 +120,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <AIActivityTimeline data={activity} loading={loading} />
         <div className="panel p-4">
-          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Señales que están activas ahora</h3>
+          <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">{t("dashboard.activeSignals")}</h3>
           {loading ? <LoadingSkeleton lines={3} /> : <SignalList signals={signals} />}
         </div>
       </div>
