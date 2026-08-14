@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react";
+﻿import { useEffect, useState, useCallback, useMemo } from "react";
 import { Wallet, TrendingUp, TrendingDown, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download, PieChart as PieChartIcon, AlertTriangle } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
@@ -389,7 +389,7 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
     const loadSnapshots = async () => {
       setSnapshotsLoading(true);
       try {
-        const r = await api<any[]>("/api/trading/snapshots?limit=90");
+        const r = await api<any[]>("/api/trading/snapshots?limit=500");
         setSnapshots((r || []).map((s: any) => ({
           timestamp: s.timestamp,
           equity: parseFloat(s.equity || 0),
@@ -406,7 +406,14 @@ function PortfolioModule({ balanceData }: { balanceData: any }) {
     .filter((a) => (a.usd_value || 0) > 0)
     .map((a) => ({ name: a.asset, value: a.usd_value || 0 }));
 
-  const visibleSnaps = snapshots.slice(0, snapRange);
+  // Filter snapshots by actual date range (last N days), not just count
+  const visibleSnaps = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now - snapRange * 24 * 60 * 60 * 1000;
+    return snapshots
+      .filter((s) => new Date(s.timestamp).getTime() >= cutoff)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [snapshots, snapRange]);
 
   return (
     <div className="space-y-4">

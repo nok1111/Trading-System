@@ -120,11 +120,25 @@ export function PositionChart({
     }
   }, [symbol, iv]);
 
+  // Polling interval scales with timeframe — no point refreshing 1d candles every 5s
+  const pollMs = useMemo(() => {
+    switch (iv) {
+      case "1m": return 5000;
+      case "5m": return 15000;
+      case "15m": return 30000;
+      case "1h": return 60000;
+      case "4h": return 120000;
+      case "1d": return 300000;
+      case "1w": return 600000;
+      default: return 30000;
+    }
+  }, [iv]);
+
   useEffect(() => {
     loadKlines();
-    const id = setInterval(loadKlines, 5000);
+    const id = setInterval(loadKlines, pollMs);
     return () => clearInterval(id);
-  }, [loadKlines]);
+  }, [loadKlines, pollMs]);
 
   const isLong = (side || "").toLowerCase() === "long" || (side || "").toUpperCase() === "BUY";
   void isLong;
@@ -598,7 +612,7 @@ export function PositionChart({
 
       {/* Interval selector */}
       <div className="flex gap-1 mb-2">
-        {["1m", "5m", "15m", "1h", "4h", "1d"].map((v) => (
+        {["1m", "5m", "15m", "1h", "4h", "1d", "1w"].map((v) => (
           <button
             key={v}
             onClick={() => setIv(v)}

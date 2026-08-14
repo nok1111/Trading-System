@@ -268,6 +268,12 @@ async def ws_klines(websocket: WebSocket, symbol: str, interval: str = "1m", tok
     """
     import websockets
 
+    # Validate interval against Binance-supported timeframes
+    VALID_INTERVALS = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"}
+    if interval not in VALID_INTERVALS:
+        await websocket.close(code=4002, reason=f"Invalid interval: {interval}")
+        return
+
     # Validate JWT token
     license_info = validate_license(token)
     if not license_info or not license_info.get("valid"):
