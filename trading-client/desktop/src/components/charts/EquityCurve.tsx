@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { cn } from "../../lib/utils";
+import { useTheme } from "../../theme/ThemeContext";
 
 export interface EquityPoint {
   timestamp: string;
@@ -27,7 +28,7 @@ function EquityTooltip({ active, payload }: EquityTooltipProps) {
   return (
     <div className="panel-flat px-3 py-2 text-[12px] shadow-lg">
       <div className="num font-bold text-[var(--color-text)]">${point.equity.toFixed(2)}</div>
-      <div className="text-[var(--color-text-muted)] text-[10px] mt-0.5">
+      <div className="text-[var(--color-text-muted)] text-[11px] mt-0.5">
         {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </div>
     </div>
@@ -73,13 +74,14 @@ export function EquityCurve({
     );
   }
 
+  const { theme } = useTheme();
   const resolvedColor = useMemo(() => {
     if (color.startsWith("var(")) {
       const varName = color.slice(4, -1);
       return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || color;
     }
     return color;
-  }, [color]);
+  }, [color, theme]);
 
   return (
     <div className={cn(className)} style={{ height }}>
@@ -94,7 +96,7 @@ export function EquityCurve({
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
           <XAxis
             dataKey="idx"
-            tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
+            tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: string) => {
@@ -104,7 +106,7 @@ export function EquityCurve({
             minTickGap={40}
           />
           <YAxis
-            tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
+            tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
             tickLine={false}
             axisLine={false}
             width={50}

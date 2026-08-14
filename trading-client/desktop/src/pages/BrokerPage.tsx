@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download, PieChart as PieChartIcon } from "lucide-react";
+﻿import { useEffect, useState, useCallback } from "react";
+import { Wallet, TrendingUp, TrendingDown, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download, PieChart as PieChartIcon, AlertTriangle } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
@@ -797,7 +797,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 {s.change_24h_pct !== 0 && (
                   <span className={cn(
                     "text-[11px]",
-                    symbol === s.symbol ? "text-white/70" : s.change_24h_pct >= 0 ? "text-green-400" : "text-red-400"
+                    symbol === s.symbol ? "text-white/70" : s.change_24h_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
                   )}>
                     {s.change_24h_pct >= 0 ? "+" : ""}{s.change_24h_pct.toFixed(1)}%
                   </span>
@@ -822,7 +822,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 {change24h !== null && (
                   <span className={cn(
                     "text-[12px] font-bold",
-                    change24h >= 0 ? "text-green-400" : "text-red-400"
+                    change24h >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
                   )}>
                     {change24h >= 0 ? "▲" : "▼"} {Math.abs(change24h).toFixed(2)}%
                   </span>
@@ -882,9 +882,9 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
           <div className="flex items-center justify-between text-[11px] rounded-[8px] bg-[var(--color-surface-2)]/50 px-3 py-2">
             <span className="text-[var(--color-text-muted)] font-bold">Disponible:</span>
             {side === "buy" ? (
-              <span className="font-bold text-green-400">{availableUsdt.toFixed(2)} {quoteCurrency}</span>
+              <span className="font-bold text-[var(--color-success)]">{availableUsdt.toFixed(2)} {quoteCurrency}</span>
             ) : (
-              <span className="font-bold text-red-400">
+              <span className="font-bold text-[var(--color-danger)]">
                 {availableAsset.toFixed(6)} {baseAsset}
                 {lockedAsset > 0 && availableAsset === 0 && ` (${lockedAsset.toFixed(6)} locked)`}
                 {heldQty > 0 && heldQty < availableAsset ? ` (pos: ${heldQty.toFixed(6)})` : ""}
@@ -911,13 +911,13 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                   max={availableUsdt}
                   className={cn(
                     "w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border px-3 text-[14px] font-bold text-[var(--color-text)] outline-none",
-                    exceedsBalance ? "border-red-500/50" : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+                    exceedsBalance ? "border-[var(--color-danger)]/50" : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
                   )}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold text-[var(--color-text-muted)]">{quoteCurrency}</span>
               </div>
               {exceedsBalance && (
-                <div className="text-[11px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
+                <div className="text-[11px] text-[var(--color-danger)] font-bold mt-1"><AlertTriangle size={11} className="inline mr-1" />Excede tu saldo disponible</div>
               )}
               {/* Quick percentage buttons */}
               <div className="flex gap-1 mt-1.5">
@@ -949,11 +949,11 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 max={maxSellQty}
                 className={cn(
                   "w-full h-10 rounded-[8px] bg-[var(--color-surface-2)] border px-3 text-[14px] font-bold text-[var(--color-text)] outline-none",
-                  exceedsBalance ? "border-red-500/50" : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+                  exceedsBalance ? "border-[var(--color-danger)]/50" : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
                 )}
               />
               {exceedsBalance && (
-                <div className="text-[11px] text-red-400 font-bold mt-1">⚠ Excede tu saldo disponible</div>
+                <div className="text-[11px] text-[var(--color-danger)] font-bold mt-1"><AlertTriangle size={11} className="inline mr-1" />Excede tu saldo disponible</div>
               )}
               {/* Quick percentage buttons for sell */}
               <div className="flex gap-1 mt-1.5">
@@ -1128,7 +1128,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">Comisión (0.1%)</span>
-                  <span className="font-bold text-yellow-400">−${fee.toFixed(4)} {quoteCurrency}</span>
+                  <span className="font-bold text-[var(--color-warning)]">−${fee.toFixed(4)} {quoteCurrency}</span>
                 </div>
                 <div className="flex justify-between border-t border-[var(--color-border)] pt-1.5">
                   <span className="text-[var(--color-text-muted)] font-bold">Recibes/Pagas</span>
@@ -1141,16 +1141,16 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
               <div className={cn(
                 "rounded-[6px] px-2 py-1.5 mt-1.5 border",
                 sellPnl >= 0
-                  ? "bg-green-500/10 border-green-500/30"
-                  : "bg-red-500/10 border-red-500/30"
+                  ? "bg-[var(--color-success)]/10 border-[var(--color-success)]/30"
+                  : "bg-[var(--color-danger)]/10 border-[var(--color-danger)]/30"
               )}>
                 <div className="flex justify-between items-center">
                   <span className="text-[11px] font-bold uppercase text-[var(--color-text-muted)]">
-                    {sellPnl >= 0 ? "📈 Ganancia" : "📉 Pérdida"}
+                    {sellPnl >= 0 ? <span className="flex items-center gap-1"><TrendingUp size={11} /> Ganancia</span> : <span className="flex items-center gap-1"><TrendingDown size={11} /> Pérdida</span>}
                   </span>
                   <span className={cn(
                     "text-[14px] font-extrabold",
-                    sellPnl >= 0 ? "text-green-400" : "text-red-400"
+                    sellPnl >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
                   )}>
                     {sellPnl >= 0 ? "+" : ""}{sellPnl.toFixed(2)} {quoteCurrency}
                   </span>
@@ -1162,7 +1162,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                     </span>
                     <span className={cn(
                       "text-[11px] font-bold",
-                      sellPnlPct >= 0 ? "text-green-400" : "text-red-400"
+                      sellPnlPct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
                     )}>
                       {sellPnlPct >= 0 ? "+" : ""}{sellPnlPct.toFixed(2)}%
                     </span>
@@ -1216,7 +1216,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
 
           {/* Success */}
           {result && result.status === "ok" && (
-            <div className="rounded-[8px] bg-green-500/10 border border-green-500/30 p-3 space-y-1.5 text-[12px] font-semibold text-green-400">
+            <div className="rounded-[8px] bg-[var(--color-success)]/10 border border-[var(--color-success)]/30 p-3 space-y-1.5 text-[12px] font-semibold text-[var(--color-success)]">
               <div className="flex items-center gap-2">
                 <span className="text-[14px]">✓</span>
                 <span>Orden ejecutada correctamente</span>
@@ -1226,13 +1226,13 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 <div>Símbolo: {result.symbol} · Lado: {result.side} · Tipo: {result.type}</div>
                 <div>Cantidad ejecutada: {result.executedQty || "N/A"} · Estado: {result.status}</div>
                 {result.price && <div>Precio: ${result.price}</div>}
-                {result.ocoOrderId && <div className="text-yellow-400">OCO (SL/TP) configurado · ID: {result.ocoOrderId}</div>}
+                {result.ocoOrderId && <div className="text-[var(--color-warning)]">OCO (SL/TP) configurado · ID: {result.ocoOrderId}</div>}
               </div>
             </div>
           )}
           {/* Show raw result if status is not "ok" but no error */}
           {result && result.status !== "ok" && !result.error && (
-            <div className="rounded-[8px] bg-yellow-500/10 border border-yellow-500/30 p-3 text-[12px] font-semibold text-yellow-400">
+            <div className="rounded-[8px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 p-3 text-[12px] font-semibold text-[var(--color-warning)]">
               Respuesta del broker: {JSON.stringify(result)}
             </div>
           )}
@@ -1372,7 +1372,7 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Gainers */}
           <div className="panel p-4">
-            <h3 className="text-[13px] font-bold text-green-400 mb-3 flex items-center gap-1.5">
+            <h3 className="text-[13px] font-bold text-[var(--color-success)] mb-3 flex items-center gap-1.5">
               <ChevronUp size={14} /> Top Gainers (24h)
             </h3>
             <div className="space-y-1.5">
@@ -1393,7 +1393,7 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[11px] text-[var(--color-text-muted)]">${fmt(m.price)}</span>
-                    <span className="text-[12px] font-bold text-green-400">+{m.price_change_percent.toFixed(2)}%</span>
+                    <span className="text-[12px] font-bold text-[var(--color-success)]">+{m.price_change_percent.toFixed(2)}%</span>
                   </div>
                 </button>
               ))}
@@ -1401,7 +1401,7 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
           </div>
           {/* Losers */}
           <div className="panel p-4">
-            <h3 className="text-[13px] font-bold text-red-400 mb-3 flex items-center gap-1.5">
+            <h3 className="text-[13px] font-bold text-[var(--color-danger)] mb-3 flex items-center gap-1.5">
               <ChevronDown size={14} /> Top Losers (24h)
             </h3>
             <div className="space-y-1.5">
@@ -1422,7 +1422,7 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[11px] text-[var(--color-text-muted)]">${fmt(m.price)}</span>
-                    <span className="text-[12px] font-bold text-red-400">{m.price_change_percent.toFixed(2)}%</span>
+                    <span className="text-[12px] font-bold text-[var(--color-danger)]">{m.price_change_percent.toFixed(2)}%</span>
                   </div>
                 </button>
               ))}
@@ -1479,7 +1479,7 @@ function MarketsModule({ brokerId }: { brokerId: string }) {
                       <td className="text-right text-[var(--color-text)]">${fmt(s.price)}</td>
                       <td className={cn(
                         "text-right font-bold",
-                        s.change_24h_pct >= 0 ? "text-green-400" : "text-red-400"
+                        s.change_24h_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
                       )}>
                         {s.change_24h_pct >= 0 ? "+" : ""}{s.change_24h_pct.toFixed(2)}%
                       </td>
@@ -2265,7 +2265,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
                           <span className="text-[11px] text-[var(--color-text-muted)] ml-1.5">{durationStr}</span>
                           {balanceInsufficient && (
                             <span className="ml-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-danger)]/15 text-[var(--color-danger)] border border-[var(--color-danger)]/30" title={`Tienes ${actualBalance} ${baseAsset} en el broker pero la posición dice ${qty}`}>
-                              ⚠ Saldo insuficiente
+                              <AlertTriangle size={11} className="inline mr-1" />Saldo insuficiente
                             </span>
                           )}
                         </div>

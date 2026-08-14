@@ -37,7 +37,7 @@ export function SummaryBar({ items, className }: { items: SummaryItem[]; classNa
               </span>
             )}
             <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
                 {item.label}
               </div>
               <div className="num text-[16px] font-bold leading-tight mt-0.5" style={{ color }}>

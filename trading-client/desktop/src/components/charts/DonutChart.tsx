@@ -1,5 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { cn } from "../../lib/utils";
+import { useTheme } from "../../theme/ThemeContext";
 
 export interface DonutData {
   name: string;
@@ -14,10 +15,10 @@ const DEFAULT_PALETTE = [
   "var(--color-success)",
   "var(--color-warning)",
   "var(--color-danger)",
-  "#f97316",
-  "#ec4899",
-  "#84cc16",
-  "#06b6d4",
+  "var(--color-primary)",
+  "var(--color-accent)",
+  "var(--color-success)",
+  "var(--color-cyan)",
 ];
 
 function resolveColor(c: string): string {
@@ -36,12 +37,11 @@ interface TooltipProps {
 function DonutTooltip({ active, payload }: TooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   const item = payload[0].payload;
-  const total = payload[0].payload.value;
   return (
     <div className="panel-flat px-3 py-2 text-[12px] shadow-lg">
       <div className="font-bold text-[var(--color-text)]">{item.name}</div>
       <div className="text-[var(--color-text-muted)] mt-0.5">
-        ${total.toFixed(2)} · {item.value > 0 ? "" : ""}
+        ${item.value.toFixed(2)}
       </div>
     </div>
   );
@@ -64,10 +64,13 @@ export function DonutChart({
   centerValue?: string;
   className?: string;
 }) {
+  const { theme } = useTheme();
   const coloredData = data.map((d, i) => ({
     ...d,
     resolvedColor: resolveColor(d.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length]),
   }));
+  // theme dependency forces re-evaluation on theme switch
+  void theme;
 
   if (data.length === 0 || data.every((d) => d.value <= 0)) {
     return (
@@ -110,7 +113,7 @@ export function DonutChart({
             </div>
           )}
           {centerLabel && (
-            <div className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] mt-1">
+            <div className="text-[11px] font-bold uppercase text-[var(--color-text-muted)] mt-1">
               {centerLabel}
             </div>
           )}

@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { FileText, Clock, CheckCircle, DollarSign } from "lucide-react";
+﻿import { useEffect, useState, useMemo, useCallback } from "react";
+import { FileText, Clock, CheckCircle, DollarSign, X } from "lucide-react";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { api, cacheInvalidate } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
@@ -260,17 +260,17 @@ export function ReportsPage() {
   };
 
   const statusBadge = (status?: string) => {
-    if (!status || status === "pending") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-warning)]/20 text-[var(--color-warning)] border border-[var(--color-warning)]/40">⏳ PENDIENTE</span>;
-    if (status === "executed") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">✓ EJECUTADA</span>;
-    if (status === "dismissed") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)]">✕ DESCARTADA</span>;
-    if (status === "expired") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-warning)]/20 text-[var(--color-warning)] border border-[var(--color-warning)]/40">⏱ EXPIRADA</span>;
+    if (!status || status === "pending") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-warning)]/20 text-[var(--color-warning)] border border-[var(--color-warning)]/40">PENDIENTE</span>;
+    if (status === "executed") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">EJECUTADA</span>;
+    if (status === "dismissed") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)]">DESCARTADA</span>;
+    if (status === "expired") return <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-warning)]/20 text-[var(--color-warning)] border border-[var(--color-warning)]/40">EXPIRADA</span>;
     return null;
   };
 
   const modeBadge = (mode?: string | null, broker?: string | null) => {
     if (!mode) return null;
-    if (mode === "paper") return <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40">📊 PAPER</span>;
-    if (mode === "live") return <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">🔴 {broker?.toUpperCase() || "LIVE"}</span>;
+    if (mode === "paper") return <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40">PAPER</span>;
+    if (mode === "live") return <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">{broker?.toUpperCase() || "LIVE"}</span>;
     return null;
   };
 
@@ -383,7 +383,7 @@ export function ReportsPage() {
                 className={cn(
                   "rounded-[10px] border p-3 cursor-pointer transition-colors card-hover",
                   cardStyle(r.trading_mode, r.action_type),
-                  r.action_type === "position_analysis" ? "hover:border-cyan-500/50" : r.trading_mode === "paper" ? "hover:border-blue-500/50" : r.trading_mode === "live" ? "hover:border-green-500/50" : "hover:border-[var(--color-border-strong)]"
+                  r.action_type === "position_analysis" ? "hover:border-[var(--color-cyan)]/50" : r.trading_mode === "paper" ? "hover:border-[var(--color-primary)]/50" : r.trading_mode === "live" ? "hover:border-[var(--color-success)]/50" : "hover:border-[var(--color-border-strong)]"
                 )}
                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
               >
@@ -393,7 +393,7 @@ export function ReportsPage() {
                     <span className="text-[13px] font-bold text-[var(--color-text)]">
                       {r.action_type === "position_analysis" ? "Análisis de Posición" : r.type === "daily" ? "Daily" : r.type === "weekly" ? "Weekly" : "Monthly"} — {r.asset}
                     </span>
-                    {r.action_type === "position_analysis" ? <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">⚙ ANÁLISIS</span> : actionBadge(r.action_type)}
+                    {r.action_type === "position_analysis" ? <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-[var(--color-cyan)]/20 text-[var(--color-cyan)] border border-[var(--color-cyan)]/40">ANÁLISIS</span> : actionBadge(r.action_type)}
                     {r.confidence != null && (
                       <span className="text-[11px] text-[var(--color-text-muted)]">
                         {Math.round(r.confidence * 100)}% confianza
@@ -411,20 +411,20 @@ export function ReportsPage() {
                   <div className="mt-3 space-y-2 border-t border-[var(--color-border)] pt-3">
                     {r.action_type === "position_analysis" && r.metadata && (
                       <div className="grid grid-cols-2 gap-2 mb-2">
-                        <div className="bg-red-500/10 rounded-[6px] p-2 border border-red-500/20">
-                          <div className="text-[11px] font-bold text-red-400 uppercase">Stop Loss</div>
+                        <div className="bg-[var(--color-danger)]/10 rounded-[6px] p-2 border border-[var(--color-danger)]/20">
+                          <div className="text-[11px] font-bold text-[var(--color-danger)] uppercase">Stop Loss</div>
                           <div className="text-[12px] text-[var(--color-text)]">
                             <span className="text-[var(--color-text-muted)] line-through">{r.metadata.current_sl ?? "N/A"}</span>
                             {" → "}
-                            <span className="text-red-400 font-bold">{r.metadata.suggested_sl ?? "N/A"}</span>
+                            <span className="text-[var(--color-danger)] font-bold">{r.metadata.suggested_sl ?? "N/A"}</span>
                           </div>
                         </div>
-                        <div className="bg-green-500/10 rounded-[6px] p-2 border border-green-500/20">
-                          <div className="text-[11px] font-bold text-green-400 uppercase">Take Profit</div>
+                        <div className="bg-[var(--color-success)]/10 rounded-[6px] p-2 border border-[var(--color-success)]/20">
+                          <div className="text-[11px] font-bold text-[var(--color-success)] uppercase">Take Profit</div>
                           <div className="text-[12px] text-[var(--color-text)]">
                             <span className="text-[var(--color-text-muted)] line-through">{r.metadata.current_tp ?? "N/A"}</span>
                             {" → "}
-                            <span className="text-green-400 font-bold">{r.metadata.suggested_tp ?? "N/A"}</span>
+                            <span className="text-[var(--color-success)] font-bold">{r.metadata.suggested_tp ?? "N/A"}</span>
                           </div>
                         </div>
                       </div>
@@ -455,7 +455,7 @@ export function ReportsPage() {
                     )}
                     {r.sections.detailedAnalysis && (
                       <div>
-                        <span className="text-[11px] font-bold text-cyan-400 uppercase">Análisis Detallado</span>
+                        <span className="text-[11px] font-bold text-[var(--color-cyan)] uppercase">Análisis Detallado</span>
                         <p className="text-[12px] text-[var(--color-text)] mt-0.5 whitespace-pre-wrap">{r.sections.detailedAnalysis}</p>
                       </div>
                     )}
@@ -487,14 +487,14 @@ export function ReportsPage() {
                           disabled={actionLoading === r.id}
                           onClick={(e) => handleAccept(e, parseInt(r.id.replace("rec-", "")), r.action_type)}
                         >
-                          {actionLoading === r.id ? "Procesando..." : "✓ Comprar LIVE"}
+                          {actionLoading === r.id ? "Procesando..." : "Comprar LIVE"}
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
                           disabled={actionLoading === r.id}
                           onClick={(e) => handleDecline(e, parseInt(r.id.replace("rec-", "")))}
                         >
-                          ✕ Declinar
+                          Declinar
                         </button>
                       </div>
                     )}
@@ -522,18 +522,18 @@ export function ReportsPage() {
                           � Ir a Trade
                         </button>
                         <button
-                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-cyan-500 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                          className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-cyan)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
                           disabled={actionLoading === r.id}
                           onClick={(e) => { e.stopPropagation(); setSltpModalRecId(parseInt(r.id.replace("rec-", ""))); }}
                         >
-                          {actionLoading === r.id ? "Aplicando..." : "⚙ Aplicar SL/TP"}
+                          {actionLoading === r.id ? "Aplicando..." : "Aplicar SL/TP"}
                         </button>
                         <button
                           className="flex-1 h-8 rounded-[6px] text-[11px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
                           disabled={actionLoading === r.id}
                           onClick={(e) => handleDecline(e, parseInt(r.id.replace("rec-", "")))}
                         >
-                          ✕ Ignorar
+                          Ignorar
                         </button>
                       </div>
                     )}
@@ -541,30 +541,30 @@ export function ReportsPage() {
                     {/* Status message for executed/dismissed */}
                     {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type === "position_analysis" && (
                       <div className="text-[11px] text-[var(--color-cyan)] font-bold pt-1">
-                        ✓ Ajustes de SL/TP aplicados a la posición
+                        Ajustes de SL/TP aplicados a la posición
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "executed" && r.action_type !== "position_analysis" && (
                       <div className="text-[11px] text-[var(--color-success)] font-bold pt-1 flex items-center gap-1">
-                        ✓ Compra LIVE ejecutada en tu broker
+                        Compra LIVE ejecutada en tu broker
                         <span className="text-[var(--color-text-muted)]">→</span>
                         <span className="text-[var(--color-info)]">Posiciones</span>
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "dismissed" && (
                       <div className="text-[11px] text-[var(--color-text-muted)] pt-1">
-                        ✕ Recomendación declinada
+                        Recomendación declinada
                       </div>
                     )}
                     {r.id?.startsWith("rec-") && r.status === "expired" && (
                       <div className="text-[11px] text-[var(--color-warning)] pt-1">
-                        ⏱ Recomendación expirada (sin acción en 24h)
+                        Recomendación expirada (sin acción en 24h)
                       </div>
                     )}
                   </div>
                 )}
                 {!isExpanded && (
-                  <div className="text-[11px] text-[var(--color-text-muted)] mt-1">Click para expandir ▼</div>
+                  <div className="text-[11px] text-[var(--color-text-muted)] mt-1">Click para expandir</div>
                 )}
               </div>
             );
@@ -587,9 +587,9 @@ export function ReportsPage() {
               <h3 className="text-[14px] font-bold text-[var(--color-text)]">Aplicar SL/TP</h3>
               <button
                 onClick={() => setSltpModalRecId(null)}
-                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-[16px]"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-[16px] flex items-center justify-center w-6 h-6"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
             <p className="text-[12px] text-[var(--color-text-muted)]">

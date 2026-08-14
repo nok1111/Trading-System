@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Bot, Power, BarChart3, Lightbulb, GraduationCap, Zap, Activity, BrainCircuit } from "lucide-react";
+import { Bot, Power, BarChart3, Lightbulb, GraduationCap, Zap, Activity, BrainCircuit, Play, Square, Settings, Star, Target, DollarSign, Shield, Scale, Rocket, Pause, AlertTriangle, CheckCircle, TrendingUp, Wallet, Filter } from "lucide-react";
 import { api } from "../lib/api";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -626,13 +626,13 @@ export function AIAgentPage() {
           </div>
           <div className="flex gap-2">
             <Tooltip text="Inicia el asistente. Analiza el mercado y genera señales de compra/venta automáticamente.">
-              <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9 btn-press">▶ Activar</Button>
+              <Button variant="success" onClick={start} disabled={!canStart || isRunning} className="h-9 btn-press flex items-center gap-1.5"><Play size={14} /> Activar</Button>
             </Tooltip>
             <Tooltip text="Detiene el asistente. Las posiciones abiertas se mantienen hasta SL/TP.">
-              <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9 btn-press">⏹ Detener</Button>
+              <Button variant="danger" onClick={stop} disabled={!isRunning} className="h-9 btn-press flex items-center gap-1.5"><Square size={14} /> Detener</Button>
             </Tooltip>
             <Tooltip text="Muestra u oculta opciones avanzadas: proveedor de IA, API key, intervalo.">
-              <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9 btn-press">⚙ Avanzado</Button>
+              <Button variant="default" onClick={() => setShowConfig(!showConfig)} disabled={isRunning} className="h-9 btn-press flex items-center gap-1.5"><Settings size={14} /> Avanzado</Button>
             </Tooltip>
           </div>
         </div>
@@ -645,7 +645,7 @@ export function AIAgentPage() {
               ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)]"
               : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
           )}>
-            {isPaid ? "⭐ " : ""}{subscription}
+            {isPaid ? <Star size={10} className="inline mr-0.5" /> : null}{subscription}
           </span>
           <span className="text-[11px] text-[var(--color-text-muted)]">
             {maxRequestsPerDay === 99999 ? "Ilimitado" : `${maxRequestsPerDay} análisis/día`} · min intervalo {minInterval}s
@@ -845,7 +845,7 @@ function AgentConfigTab(props: any) {
               )}
             >
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[16px]">🎯</span>
+                <Target size={16} className="text-[var(--color-success)]" />
                 <span className={cn("text-[13px] font-extrabold", tradeMode === "paper" ? "text-[var(--color-success)]" : "text-[var(--color-text)]")}>
                   Practica (sin dinero real)
                 </span>
@@ -865,7 +865,7 @@ function AgentConfigTab(props: any) {
               )}
             >
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[16px]">💰</span>
+                <DollarSign size={16} className="text-[var(--color-danger)]" />
                 <span className={cn("text-[13px] font-extrabold", tradeMode === "live" ? "text-[var(--color-danger)]" : "text-[var(--color-text)]")}>
                   Dinero Real
                 </span>
@@ -878,7 +878,7 @@ function AgentConfigTab(props: any) {
           {tradeMode === "live" && (
             <div className="mt-2 p-2.5 rounded-[8px] bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30">
               <p className="text-[11px] font-bold text-[var(--color-danger)]">
-                ⚠️ Modo Dinero Real activado. La IA usará tu saldo del broker para comprar y vender.
+                <AlertTriangle size={12} className="inline mr-1" />Modo Dinero Real activado. La IA usará tu saldo del broker para comprar y vender.
               </p>
               <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
                 Puedes limitar cuanto dinero usa en la seccion "Presupuesto" abajo. La IA nunca usará más de lo que tu permitas.
@@ -895,9 +895,9 @@ function AgentConfigTab(props: any) {
           </div>
           <div className="grid grid-cols-3 gap-2">
             {([
-              { value: "conservative", label: "Cauteloso", desc: "Menos operaciones, stops ajustados. Prioriza proteger tu capital.", icon: "🛡️" },
-              { value: "balanced", label: "Balanceado", desc: "Mezcla de operaciones seguras y oportunidades. Recomendado.", icon: "⚖️" },
-              { value: "aggressive", label: "Agresivo", desc: "Más operaciones, stops amplios. Busca maximizar ganancias pero con más riesgo.", icon: "🚀" },
+              { value: "conservative", label: "Cauteloso", desc: "Menos operaciones, stops ajustados. Prioriza proteger tu capital.", icon: <Shield size={20} /> },
+              { value: "balanced", label: "Balanceado", desc: "Mezcla de operaciones seguras y oportunidades. Recomendado.", icon: <Scale size={20} /> },
+              { value: "aggressive", label: "Agresivo", desc: "Más operaciones, stops amplios. Busca maximizar ganancias pero con más riesgo.", icon: <Rocket size={20} /> },
             ] as const).map((m) => (
               <button
                 key={m.value}
@@ -910,7 +910,7 @@ function AgentConfigTab(props: any) {
                     : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
                 )}
               >
-                <div className="text-[20px] mb-1">{m.icon}</div>
+                <div className="flex justify-center mb-1">{m.icon}</div>
                 <div className="text-[12px] font-bold">{m.label}</div>
                 <div className="text-[11px] mt-1 leading-tight opacity-80">{m.desc}</div>
               </button>
@@ -933,12 +933,12 @@ function AgentConfigTab(props: any) {
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-1 leading-relaxed">
                   {autoTrade ? (
                     <>
-                      ✅ La IA comprará y venderá automáticamente cuando detecte oportunidades.<br />
+                      <CheckCircle size={12} className="inline mr-1 text-[var(--color-success)]" />La IA comprará y venderá automáticamente cuando detecte oportunidades.<br />
                       <span className="text-[var(--color-warning)]">Solo usará el dinero que le asignes en el Presupuesto.</span>
                     </>
                   ) : (
                     <>
-                      ⏸️ La IA solo te mostrará señales de compra/venta. <strong>Tu decides</strong> si ejecutarlas manualmente.
+                      <Pause size={12} className="inline mr-1" />La IA solo te mostrará señales de compra/venta. <strong>Tu decides</strong> si ejecutarlas manualmente.
                     </>
                   )}
                 </p>
@@ -950,7 +950,7 @@ function AgentConfigTab(props: any) {
             {autoTrade && tradeMode === "live" && (
               <div className="mt-2 p-2 rounded-[6px] bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/20">
                 <p className="text-[11px] text-[var(--color-warning)] font-bold">
-                  ⚠️ La IA operará con dinero real automáticamente. Asegúrate de haber configurado un presupuesto límite.
+                  <AlertTriangle size={11} className="inline mr-1" />La IA operará con dinero real automáticamente. Asegúrate de haber configurado un presupuesto límite.
                 </p>
               </div>
             )}
@@ -1000,11 +1000,11 @@ function AgentConfigTab(props: any) {
                           : b.name
                     }
                   >
-                    {b.id === "binance" && "🟡"}
-                    {b.id === "bybit" && "🟠"}
-                    {b.id === "coinbase" && "🔵"}
-                    {b.id === "kraken" && "🟣"}
-                    {b.id === "okx" && "⚫"}
+                    {b.id === "binance" && <span className="w-2 h-2 rounded-full bg-[#F0B90B]" />}
+                    {b.id === "bybit" && <span className="w-2 h-2 rounded-full bg-[#F7A600]" />}
+                    {b.id === "coinbase" && <span className="w-2 h-2 rounded-full bg-[#0052FF]" />}
+                    {b.id === "kraken" && <span className="w-2 h-2 rounded-full bg-[#5841D8]" />}
+                    {b.id === "okx" && <span className="w-2 h-2 rounded-full bg-[#000000] dark:bg-[#888]" />}
                     {b.name}
                     {b.connected && (
                       <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
@@ -1021,7 +1021,7 @@ function AgentConfigTab(props: any) {
             </div>
             {!brokers.some((b: any) => b.connected) && (
               <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
-                💡 No tienes ningún broker conectado. Ve a <strong>Connections</strong> para conectar tu cuenta de Binance u otro exchange.
+                <Lightbulb size={11} className="inline mr-1 text-[var(--color-warning)]" />No tienes ningún broker conectado. Ve a <strong>Connections</strong> para conectar tu cuenta de Binance u otro exchange.
               </p>
             )}
           </div>
@@ -1031,7 +1031,7 @@ function AgentConfigTab(props: any) {
         {tradeMode === "live" && selectedBroker !== "paper" && selectedBroker !== "mock" && (
           <div className="mt-3 rounded-[10px] border border-[var(--color-success)]/30 bg-[var(--color-success)]/5 p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="text-[12px] font-bold text-[var(--color-success)]">💰 Presupuesto de Trading</span>
+              <span className="text-[12px] font-bold text-[var(--color-success)] flex items-center gap-1.5"><Wallet size={14} /> Presupuesto de Trading</span>
               {allocatedCapital > 0 ? (
                 <span className="px-2 py-0.5 rounded-[4px] text-[11px] font-bold bg-[var(--color-success)]/20 text-[var(--color-success)] border border-[var(--color-success)]/40">
                   LÍMITE: ${allocatedCapital.toFixed(2)}
@@ -1105,7 +1105,7 @@ function AgentConfigTab(props: any) {
               </Tooltip>
             </div>
             <div className="text-[11px] text-[var(--color-text-muted)]">
-              💡 <strong>Fijar límite</strong> = la IA solo usa ese monto. <strong>Sin límite</strong> = usa todo el USDT disponible.
+              <Lightbulb size={11} className="inline mr-1 text-[var(--color-warning)]" /><strong>Fijar límite</strong> = la IA solo usa ese monto. <strong>Sin límite</strong> = usa todo el USDT disponible.
               El saldo se actualiza cada 30s. Cuando la IA compra, el USDT libre baja en tu broker.
             </div>
           </div>
@@ -1207,7 +1207,7 @@ function AgentConfigTab(props: any) {
 
             {/* Nivel 1: Filtros Inteligentes */}
             <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-3">
-              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2">🧠 Filtros Inteligentes</div>
+              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-2 flex items-center gap-1.5"><Filter size={12} /> Filtros Inteligentes</div>
 
               {/* Feature toggles */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -1333,7 +1333,7 @@ function AgentConfigTab(props: any) {
                 </div>
                 {shortsEnabled && leverage > 3 && (
                   <p className="text-[11px] text-[var(--color-warning)] mt-1.5">
-                    ⚠️ Leverage {leverage}x es alto. Una subida del {(100/leverage).toFixed(1)}% del precio puede liquidar tu posición short.
+                    <AlertTriangle size={11} className="inline mr-1" />Leverage {leverage}x es alto. Una subida del {(100/leverage).toFixed(1)}% del precio puede liquidar tu posición short.
                   </p>
                 )}
               </div>
@@ -1498,7 +1498,7 @@ function AgentPerformanceTab(props: any) {
           {/* Weekly evolution chart */}
           {learningInsights.weekly_evolution && learningInsights.weekly_evolution.length > 1 && (
             <div className="mb-3">
-              <div className="text-[11px] font-bold text-[var(--color-text)] mb-2">📈 Evolución semanal del win rate</div>
+              <div className="text-[11px] font-bold text-[var(--color-text)] mb-2 flex items-center gap-1"><TrendingUp size={12} /> Evolución semanal del win rate</div>
               <div className="flex items-end gap-1 h-20 bg-[var(--color-surface-2)] rounded-[8px] p-2">
                 {learningInsights.weekly_evolution.map((week: any, i: number) => (
                   <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={`${week.week}: ${(week.win_rate * 100).toFixed(0)}% (${week.total} ops)`}>
@@ -1520,7 +1520,7 @@ function AgentPerformanceTab(props: any) {
           {/* Best factors */}
           {learningInsights.best_factors && Object.keys(learningInsights.best_factors).length > 0 && (
             <div className="mb-3">
-              <div className="text-[11px] font-bold text-[var(--color-success)] mb-1.5">✅ Factores que funcionaron (priorizar)</div>
+              <div className="text-[11px] font-bold text-[var(--color-success)] mb-1.5 flex items-center gap-1"><CheckCircle size={12} /> Factores que funcionaron (priorizar)</div>
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(learningInsights.best_factors).slice(0, 5).map(([factor, data]: [string, any]) => (
                   <span key={factor} className="rounded-[6px] bg-[var(--color-success)]/10 text-[var(--color-success)] px-2 py-1 text-[11px] font-bold">
@@ -1587,7 +1587,7 @@ function AgentPerformanceTab(props: any) {
           <div className="grid grid-cols-2 gap-3 mb-3">
             {/* AI Agent */}
             <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
-              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">🤖 AI Agent</div>
+              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1"><Bot size={12} /> AI Agent</div>
               <div className={cn(
                 "text-[20px] font-bold",
                 backtestData.ai_agent.pnl_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
@@ -1604,7 +1604,7 @@ function AgentPerformanceTab(props: any) {
 
             {/* Buy & Hold BTC */}
             <div className="rounded-[8px] bg-[var(--color-surface-2)] p-3">
-              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">📈 Buy & Hold BTC</div>
+              <div className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1 flex items-center gap-1"><TrendingUp size={12} /> Buy & Hold BTC</div>
               <div className={cn(
                 "text-[20px] font-bold",
                 backtestData.buy_hold_btc.pnl_pct >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"
@@ -1629,8 +1629,8 @@ function AgentPerformanceTab(props: any) {
           )}>
             <span className="text-[12px] font-bold">
               {backtestData.comparison.winner === "ai_agent"
-                ? `🤖 La IA ganó por ${backtestData.comparison.ai_vs_btc_pct > 0 ? "+" : ""}${backtestData.comparison.ai_vs_btc_pct}% (${backtestData.comparison.ai_vs_btc_usd > 0 ? "+" : ""}$${backtestData.comparison.ai_vs_btc_usd})`
-                : `📈 Buy & Hold BTC ganó por ${backtestData.comparison.ai_vs_btc_pct < 0 ? "+" : ""}${Math.abs(backtestData.comparison.ai_vs_btc_pct)}% ($${Math.abs(backtestData.comparison.ai_vs_btc_usd).toFixed(2)})`
+                ? `La IA ganó por ${backtestData.comparison.ai_vs_btc_pct > 0 ? "+" : ""}${backtestData.comparison.ai_vs_btc_pct}% (${backtestData.comparison.ai_vs_btc_usd > 0 ? "+" : ""}$${backtestData.comparison.ai_vs_btc_usd})`
+                : `Buy & Hold BTC ganó por ${backtestData.comparison.ai_vs_btc_pct < 0 ? "+" : ""}${Math.abs(backtestData.comparison.ai_vs_btc_pct)}% ($${Math.abs(backtestData.comparison.ai_vs_btc_usd).toFixed(2)})`
               }
             </span>
           </div>

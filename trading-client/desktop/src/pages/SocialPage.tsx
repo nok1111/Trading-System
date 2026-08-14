@@ -674,10 +674,10 @@ function CopyModal({ signal, onClose, onCopied }: { signal: SocialSignal; onClos
               <div><div className="text-[var(--color-text-muted)]">Entry</div><div className="font-bold">${fmt(signal.entry_price)}</div></div>
             )}
             {signal.stop_loss && (
-              <div><div className="text-[var(--color-text-muted)]">SL</div><div className="font-bold text-red-400">${fmt(signal.stop_loss)}</div></div>
+              <div><div className="text-[var(--color-text-muted)]">SL</div><div className="font-bold text-[var(--color-danger)]">${fmt(signal.stop_loss)}</div></div>
             )}
             {signal.take_profit && (
-              <div><div className="text-[var(--color-text-muted)]">TP</div><div className="font-bold text-green-400">${fmt(signal.take_profit)}</div></div>
+              <div><div className="text-[var(--color-text-muted)]">TP</div><div className="font-bold text-[var(--color-success)]">${fmt(signal.take_profit)}</div></div>
             )}
           </div>
         </div>
