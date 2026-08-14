@@ -86,9 +86,58 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
   const [indicators, setIndicators] = useState<IndicatorState>(DEFAULT_INDICATORS);
   const [showSettings, setShowSettings] = useState(false);
 
+  // Drawing tools state
+  const [drawMode, setDrawMode] = useState(false);
+  const [userLines, setUserLines] = useState<number[]>([]);
+  const userLineRefs = useRef<IPriceLine[]>([]);
+
   const slLineRef = useRef<IPriceLine | null>(null);
   const tpLineRef = useRef<IPriceLine | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
+
+  // Load saved drawing lines from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(`chart_lines_${symbol}`);
+    if (saved) {
+      try {
+        const lines = JSON.parse(saved) as number[];
+        setUserLines(lines);
+      } catch { /* ignore */ }
+    } else {
+      setUserLines([]);
+    }
+  }, [symbol]);
+
+  // Save drawing lines to localStorage
+  useEffect(() => {
+    if (userLines.length > 0) {
+      localStorage.setItem(`chart_lines_${symbol}`, JSON.stringify(userLines));
+    } else {
+      localStorage.removeItem(`chart_lines_${symbol}`);
+    }
+  }, [userLines, symbol]);
+
+  // Apply/remove user lines on the chart
+  useEffect(() => {
+    if (!seriesRef.current) return;
+
+    // Remove old lines
+    userLineRefs.current.forEach((line) => seriesRef.current?.removePriceLine(line));
+    userLineRefs.current = [];
+
+    // Add new lines
+    userLines.forEach((price) => {
+      const line = seriesRef.current!.createPriceLine({
+        price,
+        color: "rgba(100, 149, 237, 0.6)",
+        lineWidth: 1,
+        lineStyle: 2, // dashed
+        axisLabelVisible: true,
+        title: "",
+      });
+      userLineRefs.current.push(line);
+    });
+  }, [userLines]);
 
   // Helper: get CSS vars
   const getCssVars = useCallback(() => {
@@ -142,6 +191,15 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     });
 
     chartRef.current = chart;
+
+    // Click handler for drawing mode — add horizontal line at clicked price
+    chart.subscribeClick((param) => {
+      if (!drawMode || !param.time || !seriesRef.current) return;
+      const price = (param.point as any)?.price;
+      if (price != null && price > 0) {
+        setUserLines((prev) => [...prev, price]);
+      }
+    });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: c.success,
@@ -652,6 +710,31 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
             <IndButton active={indicators.volume} onClick={() => toggleIndicator("volume")} color="var(--color-text-muted)" label="VOL" />
             <IndButton active={indicators.rsi} onClick={() => toggleIndicator("rsi")} color="var(--color-warning)" label="RSI" />
             <IndButton active={indicators.macd} onClick={() => toggleIndicator("macd")} color="var(--color-primary)" label="MACD" />
+          </div>
+
+          {/* Drawing tools */}
+          <div className="flex gap-0.5 rounded-[8px] bg-[var(--color-surface-2)] p-0.5">
+            <button
+              onClick={() => setDrawMode(!drawMode)}
+              className={cn(
+                "px-2 h-6 rounded-[6px] text-[10px] font-bold transition-colors flex items-center gap-1",
+                drawMode
+                  ? "bg-blue-500 text-white"
+                  : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+              )}
+              title="Modo dibujo: click en chart para añadir línea horizontal"
+            >
+              {drawMode ? "Click chart →" : "Línea"}
+            </button>
+            {userLines.length > 0 && (
+              <button
+                onClick={() => setUserLines([])}
+                className="px-2 h-6 rounded-[6px] text-[10px] font-bold text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-colors"
+                title="Borrar todas las líneas"
+              >
+                Borrar
+              </button>
+            )}
           </div>
 
           {/* Settings */}

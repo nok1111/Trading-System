@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw } from "lucide-react";
+import { Wallet, TrendingUp, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download } from "lucide-react";
 import { api } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
@@ -11,6 +11,7 @@ import { CryptoIcon } from "../components/CryptoIcon";
 import { PriceChart } from "../components/charts/PriceChart";
 import { SlTpPanel } from "../components/SlTpPanel";
 import { OrderConfirmModal } from "../components/trading/OrderConfirmModal";
+import { OrderBook } from "../components/trading/OrderBook";
 import * as brokerApi from "../lib/brokerApi";
 import type { BrokerAccount } from "../lib/brokerTypes";
 
@@ -398,6 +399,10 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
   const [symbolsLoading, setSymbolsLoading] = useState(false);
   const [change24h, setChange24h] = useState<number | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showOrderBook, setShowOrderBook] = useState(false);
+  const [trailingStopEnabled, setTrailingStopEnabled] = useState(false);
+  const [trailingCallbackRate, setTrailingCallbackRate] = useState("1.0");
+  const [trailingActivatePrice, setTrailingActivatePrice] = useState("");
 
   const BROKER_FEE_RATE = 0.001; // 0.1% spot fee (approximate, varies by exchange)
 
@@ -581,6 +586,33 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
         toast(r.error, false);
       } else if (r.status === "ok") {
         toast(`Orden ejecutada: ${r.executedQty || r.quantity || ""} ${r.symbol || symbol}`, true);
+        // Place trailing stop if enabled
+        if (trailingStopEnabled && computedQty > 0) {
+          try {
+            const tsResp = await fetch(`/api/broker/${brokerId}/trailing-stop`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${localStorage.getItem("jwt") || ""}`,
+              },
+              body: JSON.stringify({
+                symbol,
+                side: side === "buy" ? "sell" : "buy",
+                quantity: computedQty,
+                callback_rate: parseFloat(trailingCallbackRate) || 1.0,
+                activate_price: trailingActivatePrice ? parseFloat(trailingActivatePrice) : null,
+              }),
+            });
+            const tsResult = await tsResp.json();
+            if (tsResult.status === "ok") {
+              toast(`Trailing stop colocado (${trailingCallbackRate}%)`, true);
+            } else {
+              toast(`Trailing stop falló: ${tsResult.detail || tsResult.error || "error"}`, false);
+            }
+          } catch (e: any) {
+            toast(`Trailing stop error: ${e.message}`, false);
+          }
+        }
       } else {
         toast(`Respuesta: ${JSON.stringify(r)}`, true);
       }
@@ -890,6 +922,53 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
             </div>
           )}
 
+          {/* Trailing Stop */}
+          <div className="rounded-[10px] bg-[var(--color-surface-2)] p-3 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={trailingStopEnabled}
+                onChange={(e) => setTrailingStopEnabled(e.target.checked)}
+                className="w-4 h-4 rounded accent-[var(--color-primary)]"
+              />
+              <span className="text-[12px] font-bold text-[var(--color-text)]">Trailing Stop</span>
+              <span className="text-[10px] text-[var(--color-text-muted)]">
+                (sigue el precio automáticamente)
+              </span>
+            </label>
+            {trailingStopEnabled && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
+                    Callback Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={trailingCallbackRate}
+                    onChange={(e) => setTrailingCallbackRate(e.target.value)}
+                    step="0.1"
+                    min="0.1"
+                    max="5.0"
+                    placeholder="1.0"
+                    className="w-full h-8 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[var(--color-text-muted)] mb-1">
+                    Precio activación (opcional)
+                  </label>
+                  <input
+                    type="number"
+                    value={trailingActivatePrice}
+                    onChange={(e) => setTrailingActivatePrice(e.target.value)}
+                    placeholder={livePrice ? livePrice.toFixed(2) : "0"}
+                    className="w-full h-8 rounded-[6px] bg-[var(--color-surface)] border border-[var(--color-border)] px-2 text-[12px] font-bold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Summary with fees and P&L */}
           <div className="rounded-[10px] bg-[var(--color-surface-2)] p-3 space-y-1.5 text-[12px]">
             <div className="flex justify-between">
@@ -1024,9 +1103,31 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit 
           )}
         </div>
 
-        {/* Chart */}
+        {/* Chart + Order Book */}
         <div className="space-y-3">
-          <PriceChart symbol={symbol} interval="1h" height={380} brokerId={brokerId} stopLoss={stopLossPrice ? parseFloat(stopLossPrice) : null} takeProfit={takeProfitPrice ? parseFloat(takeProfitPrice) : null} entryPrice={entryPrice} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowOrderBook(!showOrderBook)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 h-8 rounded-[8px] text-[12px] font-bold transition-colors",
+                showOrderBook
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-text)]"
+              )}
+            >
+              {showOrderBook ? "Ocultar Order Book" : "Mostrar Order Book"}
+            </button>
+          </div>
+          <div className={cn("flex gap-3", showOrderBook && "flex-col lg:flex-row")}>
+            <div className={showOrderBook ? "flex-1 min-w-0" : "w-full"}>
+              <PriceChart symbol={symbol} interval="1h" height={380} brokerId={brokerId} stopLoss={stopLossPrice ? parseFloat(stopLossPrice) : null} takeProfit={takeProfitPrice ? parseFloat(takeProfitPrice) : null} entryPrice={entryPrice} />
+            </div>
+            {showOrderBook && (
+              <div className="w-full lg:w-[280px] flex-shrink-0 rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] h-[420px] overflow-hidden">
+                <OrderBook brokerId={brokerId} symbol={symbol} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1349,9 +1450,39 @@ function OrdersModule({ activeOrders, filledOrders, brokerDisplayName }: { activ
 }
 
 function HistoryModule({ trades }: { trades: any[] }) {
+  const handleExportCSV = async () => {
+    try {
+      const token = localStorage.getItem("jwt") || "";
+      const resp = await fetch("/api/trades/export", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) throw new Error("Error al exportar");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `alvora_trades_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast(e.message || "Error al exportar CSV", false);
+    }
+  };
+
   return (
     <div className="panel p-4">
-      <h3 className="text-[13px] font-bold text-[var(--color-text)] mb-3">Historial de Trades</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[13px] font-bold text-[var(--color-text)]">Historial de Trades</h3>
+        <button
+          onClick={handleExportCSV}
+          className="flex items-center gap-1.5 px-3 h-8 rounded-[8px] text-[12px] font-bold bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-border-strong)] transition-colors"
+        >
+          <Download size={14} />
+          Exportar CSV
+        </button>
+      </div>
       {trades.length === 0 ? (
         <p className="text-[12px] text-[var(--color-text-muted)] py-4 text-center">Sin trades recientes</p>
       ) : (

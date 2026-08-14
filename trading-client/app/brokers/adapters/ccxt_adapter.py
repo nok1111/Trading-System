@@ -59,6 +59,7 @@ from app.brokers.models import (
     PortfolioSnapshot,
     Position,
     Ticker,
+    OrderBook,
     normalize_symbol,
 )
 
@@ -665,6 +666,19 @@ class CCXTAdapter(BrokerAdapter):
             price_change_percent_24h=_to_decimal(t.get("percentage")) if t.get("percentage") else None,
             timestamp=ts,
         )
+
+    def get_order_book(self, symbol: str, limit: int = 50) -> OrderBook:
+        try:
+            ob = self._exchange.fetch_order_book(symbol, limit=limit)
+        except Exception as exc:
+            raise _map_ccxt_error(exc) from exc
+
+        bids = [(_to_decimal(p), _to_decimal(q)) for p, q in ob.get("bids", [])]
+        asks = [(_to_decimal(p), _to_decimal(q)) for p, q in ob.get("asks", [])]
+        ts = None
+        if ob.get("timestamp"):
+            ts = datetime.fromtimestamp(ob["timestamp"] / 1000, tz=UTC)
+        return OrderBook(symbol=symbol, bids=bids, asks=asks, timestamp=ts)
 
     def place_order(self, request: OrderRequest) -> OrderExecutionResult:
         ccxt_type = _ORDER_TYPE_TO_CCXT.get(request.order_type, "market")

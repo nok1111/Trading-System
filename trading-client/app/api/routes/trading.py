@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import case
 from sqlalchemy.orm import Session
@@ -511,3 +512,58 @@ def toggle_auto_sell(
     pos.auto_sell_enabled = enabled
     db.commit()
     return {"id": pos.id, "auto_sell_enabled": pos.auto_sell_enabled}
+
+
+# ---------------------------------------------------------------------------
+# CSV Export
+# ---------------------------------------------------------------------------
+
+@router.get("/trades/export")
+def export_trades(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+    start_date: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    end_date: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+) -> StreamingResponse:
+    """Export trades as CSV for tax/accounting purposes.
+
+    Columns: date, symbol, side, quantity, price, fee, pnl, broker, order_id
+    """
+    import csv
+    import io
+
+    db = SessionLocal()
+    try:
+        query = db.query(Trade).filter(Trade.user_id == current_user.id)
+        if start_date:
+            query = query.filter(Trade.timestamp >= start_date)
+        if end_date:
+            query = query.filter(Trade.timestamp <= end_date + " 23:59:59")
+        trades = query.order_by(Trade.timestamp.desc()).all()
+    finally:
+        db.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["date", "symbol", "side", "quantity", "price", "fee", "pnl", "broker", "order_id"])
+
+    for t in trades:
+        writer.writerow([
+            t.timestamp.isoformat() if t.timestamp else "",
+            t.symbol or "",
+            t.side or "",
+            str(t.quantity) if t.quantity else "",
+            str(t.price) if t.price else "",
+            str(t.fee) if t.fee else "",
+            str(t.pnl) if t.pnl else "",
+            getattr(t, "broker_id", "") or "",
+            getattr(t, "order_id", "") or "",
+        ])
+
+    output.seek(0)
+
+    filename = f"alvora_trades_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

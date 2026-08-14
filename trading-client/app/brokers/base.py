@@ -20,6 +20,7 @@ from app.brokers.models import (
     Candle,
     CredentialValidationResult,
     MarketInfo,
+    OrderBook,
     OrderCancellationResult,
     OrderExecutionResult,
     OrderRequest,
@@ -112,6 +113,10 @@ class BrokerAdapter(ABC):
     @abstractmethod
     def get_ticker(self, symbol: str) -> Ticker:
         """Devuelve la cotizacion en tiempo real de un simbolo."""
+
+    def get_order_book(self, symbol: str, limit: int = 50) -> OrderBook:
+        """Devuelve el order book (bids/asks). Override en subclasses."""
+        raise NotImplementedError(f"Order book no soportado en {self.__class__.__name__}")
 
     @abstractmethod
     def place_order(self, request: OrderRequest) -> OrderExecutionResult:

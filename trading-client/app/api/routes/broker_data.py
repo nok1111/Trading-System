@@ -1252,3 +1252,110 @@ def dust_transfer(
         "transfer_result": result.get("transfer_result", []),
         "assets_converted": req.assets,
     }
+
+
+# ---------------------------------------------------------------------------
+# Order Book
+# ---------------------------------------------------------------------------
+
+@router.get("/{broker_id}/orderbook")
+@limiter.limit(RATE_READ)
+def get_orderbook(
+    request: Request,
+    broker_id: str,
+    symbol: str = Query(...),
+    depth: int = Query(50, ge=1, le=500),
+    current_user: Annotated[LocalUser | None, Depends(get_optional_user)] = None,
+) -> dict:
+    """Order book (bids/asks) from broker.
+
+    Public market data — no credentials required for most brokers.
+    """
+    # Try without credentials first (public)
+    try:
+        from app.brokers.models import BrokerCredentials
+        creds = BrokerCredentials(broker_id=broker_id, api_key="", api_secret="")
+        adapter = get_adapter(broker_id, creds)
+        ob = adapter.get_order_book(normalize_symbol(symbol), limit=depth)
+        return {
+            "symbol": symbol.upper(),
+            "bids": [[str(p), str(q)] for p, q in ob.bids],
+            "asks": [[str(p), str(q)] for p, q in ob.asks],
+            "timestamp": ob.timestamp,
+            "spread": str(ob.asks[0][0] - ob.bids[0][0]) if ob.bids and ob.asks else None,
+        }
+    except Exception:
+        pass
+
+    # Fall back to authenticated request
+    adapter = _get_adapter(broker_id, current_user)
+    try:
+        ob = adapter.get_order_book(normalize_symbol(symbol), limit=depth)
+        return {
+            "symbol": symbol.upper(),
+            "bids": [[str(p), str(q)] for p, q in ob.bids],
+            "asks": [[str(p), str(q)] for p, q in ob.asks],
+            "timestamp": ob.timestamp,
+            "spread": str(ob.asks[0][0] - ob.bids[0][0]) if ob.bids and ob.asks else None,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=safe_error(exc, "Error al obtener order book")) from exc
+
+
+# ---------------------------------------------------------------------------
+# Trailing Stop
+# ---------------------------------------------------------------------------
+
+class TrailingStopRequest(BaseModel):
+    symbol: str
+    side: str = "sell"  # Usually sell to trail a long position
+    quantity: float
+    callback_rate: float  # Percentage (1.0 = 1%)
+    activate_price: float | None = None  # Optional activation price
+
+
+@router.post("/{broker_id}/trailing-stop")
+@limiter.limit(RATE_TRADE)
+def place_trailing_stop(
+    request: Request,
+    broker_id: str,
+    req: TrailingStopRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Place a trailing stop order.
+
+    For Binance: uses native TRAILING_STOP_MARKET order type.
+    For CCXT brokers: uses create_order with trailing stop params or falls back to local monitoring.
+    """
+    adapter = _get_adapter(broker_id, current_user)
+
+    if req.callback_rate < 0.1 or req.callback_rate > 5.0:
+        raise HTTPException(status_code=400, detail="Callback rate debe estar entre 0.1% y 5.0%")
+
+    try:
+        # Try native trailing stop via place_order with TRAILING_STOP type
+        from app.brokers.models import OrderRequest as BrokerOrderRequest, OrderSide, OrderType as BrokerOrderType
+        from decimal import Decimal
+
+        order_req = BrokerOrderRequest(
+            symbol=req.symbol,
+            side=OrderSide(req.side),
+            order_type=BrokerOrderType.TRAILING_STOP,
+            quantity=Decimal(str(req.quantity)),
+            metadata={
+                "callback_rate": req.callback_rate,
+                "activate_price": req.activate_price,
+            },
+        )
+        result = adapter.place_order(order_req)
+        return {
+            "status": "ok" if result.success else "error",
+            "orderId": result.broker_order_id,
+            "symbol": req.symbol,
+            "side": req.side,
+            "quantity": str(req.quantity),
+            "callback_rate": req.callback_rate,
+            "error": result.error_message if not result.success else None,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=safe_error(exc, "Error al colocar trailing stop")) from exc

@@ -31,6 +31,8 @@ class OrderType(StrEnum):
     STOP_LIMIT = "stop_limit"
     TAKE_PROFIT = "take_profit"
     TAKE_PROFIT_LIMIT = "take_profit_limit"
+    TRAILING_STOP = "trailing_stop"
+    TRAILING_STOP_LIMIT = "trailing_stop_limit"
 
 
 class OrderStatus(StrEnum):
@@ -235,6 +237,16 @@ class Ticker:
     volume_24h: Decimal | None = None
     price_change_24h: Decimal | None = None
     price_change_percent_24h: Decimal | None = None
+    timestamp: datetime | None = None
+
+
+@dataclass(frozen=True)
+class OrderBook:
+    """Order book (bids/asks) normalizado."""
+
+    symbol: str
+    bids: list[tuple[Decimal, Decimal]]  # (price, quantity)
+    asks: list[tuple[Decimal, Decimal]]
     timestamp: datetime | None = None
 
 

@@ -9,6 +9,7 @@ import { TodayPriorities } from "../components/dashboard/TodayPriorities";
 import { AIActivityTimeline } from "../components/dashboard/AIActivityTimeline";
 import { OnboardingModal } from "../components/dashboard/OnboardingModal";
 import { AutoPilotWidget } from "../components/dashboard/AutoPilotWidget";
+import { Watchlist } from "../components/watchlist/Watchlist";
 import { useAuthContext } from "../context/AuthContext";
 import {
   getMarketOverview,
@@ -124,6 +125,11 @@ export function DashboardPage() {
 
       {/* Daily report — at the bottom, optional read */}
       <DailyReportCard report={report} loading={loading} />
+
+      {/* Watchlist — favorite symbols with live prices */}
+      <div className="panel p-4">
+        <Watchlist />
+      </div>
     </div>
   );
 }

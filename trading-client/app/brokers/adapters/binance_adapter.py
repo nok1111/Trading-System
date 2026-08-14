@@ -46,6 +46,7 @@ from app.brokers.models import (
     PortfolioSnapshot,
     Position,
     Ticker,
+    OrderBook,
     ValidatedOrderRequest,
     denormalize_symbol,
     normalize_symbol,
@@ -69,6 +70,8 @@ _ORDER_TYPE_TO_BINANCE = {
     OrderType.STOP_LIMIT: "STOP_LOSS_LIMIT",
     OrderType.TAKE_PROFIT: "TAKE_PROFIT",
     OrderType.TAKE_PROFIT_LIMIT: "TAKE_PROFIT_LIMIT",
+    OrderType.TRAILING_STOP: "TRAILING_STOP_MARKET",
+    OrderType.TRAILING_STOP_LIMIT: "TRAILING_STOP_LIMIT",
 }
 
 _ORDER_SIDE_TO_BINANCE = {
@@ -350,6 +353,24 @@ class BinanceAdapter(BrokerAdapter):
             timestamp=datetime.now(tz=UTC),
         )
 
+    def get_order_book(self, symbol: str, limit: int = 50) -> OrderBook:
+        broker_symbol = denormalize_symbol(symbol, "binance")
+        resp = httpx.get(
+            f"{self._base_url}/api/v3/depth",
+            params={"symbol": broker_symbol, "limit": min(limit, 100)},
+            timeout=self._broker._timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        bids = [(Decimal(str(p)), Decimal(str(q))) for p, q in data.get("bids", [])]
+        asks = [(Decimal(str(p)), Decimal(str(q))) for p, q in data.get("asks", [])]
+        return OrderBook(
+            symbol=normalize_symbol(symbol),
+            bids=bids,
+            asks=asks,
+            timestamp=datetime.now(tz=UTC),
+        )
+
     def place_order(self, request: OrderRequest) -> OrderExecutionResult:
         broker_symbol = denormalize_symbol(request.symbol, "binance")
         ValidatedOrderRequest(
@@ -378,6 +399,17 @@ class BinanceAdapter(BrokerAdapter):
 
         if request.stop_price:
             params["stopPrice"] = self._broker._format_price(broker_symbol, request.stop_price)
+
+        # Trailing stop: add trailingDelta (in bips, 1% = 100) and optional activate price
+        if request.order_type in (OrderType.TRAILING_STOP, OrderType.TRAILING_STOP_LIMIT):
+            meta = request.metadata or {}
+            callback_rate = meta.get("callback_rate", 1.0)
+            params["trailingDelta"] = int(callback_rate * 100)  # Convert % to bips
+            if meta.get("activate_price"):
+                params["activatePrice"] = self._broker._format_price(broker_symbol, Decimal(str(meta["activate_price"])))
+            if request.order_type == OrderType.TRAILING_STOP_LIMIT and request.price:
+                params["price"] = self._broker._format_price(broker_symbol, request.price)
+                params["timeInForce"] = "GTC"
 
         if request.client_order_id:
             params["newClientOrderId"] = request.client_order_id
