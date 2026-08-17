@@ -234,7 +234,7 @@ export function AlvoraConfigModal({ open, onClose }: { open: boolean; onClose: (
       const payload = {
         provider: config.provider,
         api_key: primaryApiKey || null,
-        model: config.model,
+        model: config.model || null,
         fallback_chain: fallbacks.map((f) => ({
           provider: f.provider,
           api_key: f.api_key || null,

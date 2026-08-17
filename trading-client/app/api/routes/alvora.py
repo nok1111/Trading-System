@@ -589,7 +589,7 @@ def save_alvora_config(
         if req.api_key is not None:
             cfg.api_key_enc = encrypt(req.api_key) if req.api_key else None
         if req.model is not None:
-            cfg.model = req.model
+            cfg.model = req.model.strip() or None
 
         # Fallback chain
         if req.fallback_chain is not None:
