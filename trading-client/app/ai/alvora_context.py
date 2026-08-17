@@ -66,6 +66,13 @@ def _get_broker_accounts(db, user_id: int) -> list[dict]:
 
 
 def _get_open_positions(db, user_id: int) -> list[dict]:
+    """Get open positions — tries broker API first (real-time), falls back to DB."""
+    # ─── 1. Try broker API (real-time positions from Binance, etc.) ──────
+    broker_positions = _get_broker_positions(db, user_id)
+    if broker_positions:
+        return broker_positions
+
+    # ─── 2. Fallback: DB positions ───────────────────────────────────────
     try:
         from app.database.models.position import Position
         rows = (
@@ -104,7 +111,140 @@ def _get_open_positions(db, user_id: int) -> list[dict]:
         return []
 
 
+def _get_broker_positions(db, user_id: int) -> list[dict]:
+    """Fetch real-time open positions from the user's connected broker.
+
+    Uses the broker adapter directly (same logic as /api/broker/{id}/positions).
+    Returns empty list if no broker connected or fetch fails.
+    """
+    try:
+        from app.api.helpers import resolve_broker_credentials
+        from app.brokers.registry import get_adapter
+        from app.brokers.base import BrokerAdapter
+
+        # Find the user's connected broker(s)
+        from app.database.models.broker_account import BrokerAccount
+        accounts = db.query(BrokerAccount).filter(
+            BrokerAccount.user_id == user_id,
+            BrokerAccount.status == "CONNECTED_TRADING",
+        ).all()
+        if not accounts:
+            return []
+
+        all_positions: list[dict] = []
+        STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "UST", "TUSD", "FDUSD", "USDP", "GUSD", "PAX", "EUR"}
+
+        for acct in accounts:
+            try:
+                creds = resolve_broker_credentials(acct.broker_id, None)
+                # resolve_broker_credentials uses current_user param, but we need user_id
+                # Re-resolve manually since we have user_id not current_user
+                if not creds:
+                    # Manual resolution
+                    from app.services.crypto import decrypt
+                    if acct.api_key_enc:
+                        creds = type("BrokerCredentials", (), {
+                            "broker_id": acct.broker_id,
+                            "api_key": decrypt(acct.api_key_enc),
+                            "api_secret": decrypt(acct.api_secret_enc),
+                            "passphrase": decrypt(acct.passphrase_enc) if acct.passphrase_enc else None,
+                            "testnet": acct.environment in ("testnet", "demo", "sandbox"),
+                        })()
+                if not creds:
+                    continue
+
+                adapter = get_adapter(acct.broker_id, creds)
+
+                # Try futures positions first
+                broker_positions = adapter.get_open_positions()
+
+                # If no futures, derive spot holdings from balances
+                if not broker_positions:
+                    try:
+                        balances = adapter.get_account_balances()
+                    except Exception:
+                        balances = ()
+
+                    for bal in balances:
+                        if bal.asset in STABLECOINS or bal.total <= 0:
+                            continue
+                        current_price = None
+                        for quote in ("USDT", "USDC", "USD", "FDUSD"):
+                            try:
+                                ticker = adapter.get_ticker(f"{bal.asset}/{quote}")
+                                current_price = ticker.price
+                                break
+                            except Exception:
+                                continue
+
+                        entry_price = 0.0
+                        try:
+                            from app.brokers.models import normalize_symbol
+                            sym = normalize_symbol(f"{bal.asset}/USDT")
+                            trades = adapter.get_trades(symbol=sym, limit=500)
+                            buy_trades = [t for t in trades if t.side.value == "buy"]
+                            if buy_trades:
+                                total_cost = sum(float(t.price) * float(t.quantity) for t in buy_trades)
+                                total_qty = sum(float(t.quantity) for t in buy_trades)
+                                if total_qty > 0:
+                                    entry_price = round(total_cost / total_qty, 8)
+                        except Exception:
+                            pass
+
+                        unrealized = 0.0
+                        if entry_price > 0 and current_price:
+                            unrealized = round((float(current_price) - entry_price) * float(bal.total), 8)
+
+                        from app.brokers.models import Position as BrokerPosition
+                        broker_positions = broker_positions + (
+                            BrokerPosition(
+                                symbol=f"{bal.asset}/USDT",
+                                side="long",
+                                quantity=bal.total,
+                                entry_price=entry_price,
+                                current_price=current_price,
+                                unrealized_pnl=unrealized,
+                                status="open",
+                                strategy_name="spot_holding",
+                                metadata={"source": "broker_balance", "asset": bal.asset},
+                            ),
+                        )
+
+                for pos in broker_positions:
+                    entry = _safe_float(pos.entry_price)
+                    current = _safe_float(pos.current_price) or entry
+                    pnl = _safe_float(pos.unrealized_pnl)
+                    qty = _safe_float(pos.quantity)
+                    pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
+                    all_positions.append({
+                        "id": 0,  # broker positions don't have DB id
+                        "symbol": pos.symbol,
+                        "side": pos.side,
+                        "broker_id": acct.broker_id,
+                        "quantity": qty,
+                        "entry_price": entry,
+                        "current_price": current,
+                        "unrealized_pnl": pnl,
+                        "pnl_pct": round(pnl_pct, 2),
+                        "stop_loss": None,
+                        "take_profit": None,
+                        "auto_sell_enabled": True,
+                        "strategy": pos.strategy_name,
+                        "opened_at": "",
+                    })
+            except Exception as exc:
+                logger.warning("Alvora context: broker positions for %s failed: %s", acct.broker_id, exc)
+                continue
+
+        return all_positions
+    except Exception as exc:
+        logger.warning("Alvora context: broker positions failed: %s", exc)
+        return []
+
+
 def _get_account_snapshot(db, user_id: int) -> dict | None:
+    """Get account snapshot — tries DB first, falls back to broker balance API."""
+    # ─── 1. Try DB snapshot ──────────────────────────────────────────────
     try:
         from app.database.models.account_snapshot import AccountSnapshot
         row = (
@@ -113,19 +253,76 @@ def _get_account_snapshot(db, user_id: int) -> dict | None:
             .order_by(AccountSnapshot.timestamp.desc())
             .first()
         )
-        if not row:
-            return None
-        return {
-            "broker_id": row.broker_id,
-            "cash": _safe_float(row.cash),
-            "equity": _safe_float(row.equity),
-            "buying_power": _safe_float(row.buying_power),
-            "total_pnl": _safe_float(row.total_pnl),
-            "daily_pnl": _safe_float(row.daily_pnl),
-            "open_positions_count": row.open_positions_count or 0,
-            "timestamp": row.timestamp.isoformat() if row.timestamp else "",
-        }
+        if row:
+            return {
+                "broker_id": row.broker_id,
+                "cash": _safe_float(row.cash),
+                "equity": _safe_float(row.equity),
+                "buying_power": _safe_float(row.buying_power),
+                "total_pnl": _safe_float(row.total_pnl),
+                "daily_pnl": _safe_float(row.daily_pnl),
+                "open_positions_count": row.open_positions_count or 0,
+                "timestamp": row.timestamp.isoformat() if row.timestamp else "",
+            }
     except Exception:
+        pass
+
+    # ─── 2. Fallback: live broker balance ────────────────────────────────
+    try:
+        from app.database.models.broker_account import BrokerAccount
+        from app.api.helpers import resolve_broker_credentials
+        from app.brokers.registry import get_adapter
+        from app.services.crypto import decrypt
+
+        accounts = db.query(BrokerAccount).filter(
+            BrokerAccount.user_id == user_id,
+            BrokerAccount.status == "CONNECTED_TRADING",
+        ).all()
+        if not accounts:
+            return None
+
+        acct = accounts[0]
+        creds = type("BrokerCredentials", (), {
+            "broker_id": acct.broker_id,
+            "api_key": decrypt(acct.api_key_enc),
+            "api_secret": decrypt(acct.api_secret_enc),
+            "passphrase": decrypt(acct.passphrase_enc) if acct.passphrase_enc else None,
+            "testnet": acct.environment in ("testnet", "demo", "sandbox"),
+        })()
+        adapter = get_adapter(acct.broker_id, creds)
+
+        balances = adapter.get_account_balances()
+        STABLECOINS = {"USDT", "BUSD", "USDC", "USD", "FDUSD", "EUR"}
+        cash = 0.0
+        total_asset_value = 0.0
+        for bal in balances:
+            if bal.asset in STABLECOINS:
+                cash += _safe_float(bal.total)
+            else:
+                # Estimate USD value
+                price = 0.0
+                for quote in ("USDT", "USDC", "USD"):
+                    try:
+                        ticker = adapter.get_ticker(f"{bal.asset}/{quote}")
+                        price = _safe_float(ticker.price)
+                        break
+                    except Exception:
+                        continue
+                total_asset_value += _safe_float(bal.total) * price
+
+        equity = cash + total_asset_value
+        return {
+            "broker_id": acct.broker_id,
+            "cash": round(cash, 2),
+            "equity": round(equity, 2),
+            "buying_power": round(cash, 2),
+            "total_pnl": 0.0,
+            "daily_pnl": 0.0,
+            "open_positions_count": 0,
+            "timestamp": "",
+        }
+    except Exception as exc:
+        logger.warning("Alvora context: broker balance fallback failed: %s", exc)
         return None
 
 
