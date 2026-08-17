@@ -434,6 +434,38 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
         </div>
       )}
 
+      {/* No API configured warning banner */}
+      {status && !status.available && (
+        <div className="mx-3 mt-3 rounded-[10px] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="text-[var(--color-danger)] flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-bold text-[var(--color-danger)] mb-1">
+                Alvora no tiene una API de IA configurada
+              </div>
+              <div className="text-[11px] text-[var(--color-danger)]/90 leading-relaxed space-y-0.5">
+                <p>Para usar Alvora necesitas configurar al menos un proveedor de IA. Pasos:</p>
+                <ol className="list-decimal pl-4 space-y-0.5 mt-1">
+                  <li>Haz clic en el icono de ajustes <Settings size={11} className="inline align-middle" /> en la esquina superior derecha de esta ventana.</li>
+                  <li>Selecciona un proveedor (recomendado: <strong>Gemini</strong> o <strong>Groq</strong> — son gratis).</li>
+                  <li>Pega tu API key en el campo correspondiente (debajo del campo hay un link directo para obtenerla).</li>
+                  <li>Haz clic en <strong>Test</strong> para verificar que funciona.</li>
+                  <li>Haz clic en <strong>Guardar</strong> y listo — podras chatear con Alvora.</li>
+                </ol>
+                <p className="mt-1.5">Tambien puedes configurarlo desde <strong>Settings &gt; Alvora — IA Advisor</strong>.</p>
+              </div>
+              <button
+                onClick={() => setShowConfigModal(true)}
+                className="mt-2 inline-flex items-center gap-1.5 px-3 h-7 rounded-[8px] bg-[var(--color-danger)] text-white text-[11px] font-bold hover:opacity-90 transition-opacity"
+              >
+                <Settings size={13} />
+                Configurar ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div
         ref={scrollRef}
