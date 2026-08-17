@@ -82,11 +82,71 @@ def parse_actions(text: str) -> tuple[str, list[dict[str, Any]]]:
 
 
 def _get_provider_for_user(user_id: int):
-    """Resolve the AI provider configured by the user (reuses the agent singleton)."""
+    """Resolve the AI provider configured by the user.
+
+    Loads the user's saved provider/keys from DB, applies them to the agent
+    singleton, and rebuilds the provider. Falls back to .env defaults if the
+    user has no saved settings.
+    """
     import app.api.state as state
     from app.api.helpers import get_or_create_agent
     agent = get_or_create_agent()
-    # Ensure provider reflects the user's saved config
+
+    # Load this user's saved settings from DB and apply to the agent
+    try:
+        from app.database.session import SessionLocal
+        from app.database.models.user_settings import UserSettings
+        from app.services.crypto import decrypt
+        from app.config import get_settings
+        settings = get_settings()
+
+        db = SessionLocal()
+        try:
+            s = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+            if s:
+                if s.ai_provider:
+                    agent.provider = s.ai_provider
+                if s.ai_model:
+                    if s.ai_provider == "groq":
+                        agent.groq_model = s.ai_model
+                    elif s.ai_provider == "gemini":
+                        agent.gemini_model = s.ai_model
+                if s.ai_groq_key_enc:
+                    try:
+                        agent.groq_api_key = decrypt(s.ai_groq_key_enc)
+                    except Exception:
+                        pass
+                if s.ai_gemini_key_enc:
+                    try:
+                        agent.gemini_api_key = decrypt(s.ai_gemini_key_enc)
+                    except Exception:
+                        pass
+                if s.ai_premium_key_enc:
+                    try:
+                        agent.openai_api_key = decrypt(s.ai_premium_key_enc)
+                    except Exception:
+                        pass
+                if s.ai_premium_provider:
+                    if s.ai_premium_base_url:
+                        agent.openai_base_url = s.ai_premium_base_url
+                    if s.ai_premium_model:
+                        agent.openai_model = s.ai_premium_model
+                if s.ai_omniroute_key_enc:
+                    try:
+                        agent.omniroute_api_key = decrypt(s.ai_omniroute_key_enc)
+                    except Exception:
+                        pass
+            else:
+                # No saved settings — use .env defaults
+                agent.provider = getattr(settings, "AI_PROVIDER", "groq")
+                agent.groq_api_key = getattr(settings, "GROQ_API_KEY", None)
+                agent.gemini_api_key = getattr(settings, "GEMINI_API_KEY", None)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Alvora: failed to load user AI config: %s", exc)
+
+    # Rebuild provider with the updated config
     try:
         agent._rebuild_provider()
     except Exception:

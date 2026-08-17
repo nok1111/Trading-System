@@ -24,6 +24,7 @@ from app.api.helpers import resolve_binancekeys
 from app.api.rate_limit import RATE_AI, RATE_TRADE, limiter
 from app.config import get_settings
 from app.database.session import SessionLocal
+from app.database.models.user_settings import UserSettings
 from app.services.auth import LocalUser, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,12 @@ class NewConversationRequest(BaseModel):
     title: str | None = None
 
 
+class ConfigureRequest(BaseModel):
+    provider: str  # groq | gemini | omniroute | ollama | openai | deepseek | mistral | ...
+    api_key: str | None = None  # groq/gemini/premium key
+    model: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
@@ -72,6 +79,120 @@ def alvora_chat(
     if result.get("error") and not result.get("conversation_id"):
         raise HTTPException(status_code=500, detail=result["error"])
     return result
+
+
+# ---------------------------------------------------------------------------
+# Configure provider (without starting the autonomous agent)
+# ---------------------------------------------------------------------------
+
+@router.post("/configure")
+@limiter.limit(RATE_AI)
+def alvora_configure(
+    request: Request,
+    req: ConfigureRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Save AI provider + key for Alvora without starting the autonomous agent.
+
+    Persists to the same user_settings table used by AIAgentPage, so the
+    config is shared. Rebuilds the provider immediately so Alvora can chat
+    right away.
+    """
+    from app.api.routes.ai_agent import _save_user_keys
+    from app.api.helpers import get_or_create_agent
+
+    provider = req.provider.strip().lower()
+    valid = {"groq", "gemini", "omniroute", "ollama", "openai", "deepseek", "mistral", "together", "perplexity", "grok"}
+    if provider not in valid:
+        raise HTTPException(status_code=400, detail=f"Provider invalido: {provider}")
+
+    api_key = (req.api_key or "").strip() or None
+    model = (req.model or "").strip() or None
+
+    # Save to DB using the same function as AIAgentPage
+    save_kwargs: dict = {"ai_provider": provider, "last_ai_provider_used": provider}
+    if provider == "groq":
+        if api_key:
+            save_kwargs["groq_key"] = api_key
+        if model:
+            save_kwargs["ai_model"] = model
+            save_kwargs["last_model_used"] = model
+    elif provider == "gemini":
+        if api_key:
+            save_kwargs["gemini_key"] = api_key
+        if model:
+            save_kwargs["ai_model"] = model
+            save_kwargs["last_model_used"] = model
+    elif provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+        if api_key:
+            save_kwargs["premium_key"] = api_key
+            save_kwargs["premium_provider"] = provider
+        if model:
+            save_kwargs["ai_model"] = model
+            save_kwargs["last_model_used"] = model
+            save_kwargs["premium_model"] = model
+    elif provider == "omniroute":
+        if api_key:
+            save_kwargs["omniroute_key"] = api_key  # handled by _save_user_keys? no, need custom
+        if model:
+            save_kwargs["ai_model"] = model
+            save_kwargs["last_model_used"] = model
+
+    # _save_user_keys doesn't handle omniroute_key, save manually
+    if provider == "omniroute" and api_key:
+        try:
+            from app.services.crypto import encrypt
+            db = SessionLocal()
+            try:
+                s = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
+                if not s:
+                    s = UserSettings(user_id=current_user.id)
+                    db.add(s)
+                s.ai_omniroute_key_enc = encrypt(api_key)
+                db.commit()
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning("Alvora configure: failed to save omniroute key: %s", exc)
+
+    _save_user_keys(current_user.id, **save_kwargs)
+
+    # Apply to the agent singleton and rebuild provider
+    agent = get_or_create_agent()
+    agent.provider = provider
+    if provider == "groq":
+        if api_key:
+            agent.groq_api_key = api_key
+        if model:
+            agent.groq_model = model
+    elif provider == "gemini":
+        if api_key:
+            agent.gemini_api_key = api_key
+        if model:
+            agent.gemini_model = model
+    elif provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+        if api_key:
+            agent.openai_api_key = api_key
+        if model:
+            agent.openai_model = model
+    elif provider == "omniroute":
+        if api_key:
+            agent.omniroute_api_key = api_key
+        if model:
+            agent.omniroute_model = model
+    try:
+        agent._rebuild_provider()
+    except Exception:
+        pass
+
+    # Check availability
+    available = agent._ai_provider is not None and agent._ai_provider.is_available()
+    return {
+        "ok": True,
+        "provider": provider,
+        "model": model,
+        "available": available,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -10,10 +10,13 @@ import {
   alvoraExecuteAction,
   alvoraDeleteConversation,
   alvoraListConversations,
+  alvoraGetStatus,
+  alvoraConfigure,
   type AlvoraMessage,
   type AlvoraAction,
   type AlvoraQuickPrompt,
   type AlvoraConversation,
+  type AlvoraStatus,
 } from "../../lib/alvoraApi";
 
 interface AlvoraChatProps {
@@ -186,6 +189,12 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
   const [quickPrompts, setQuickPrompts] = useState<AlvoraQuickPrompt[]>([]);
   const [conversations, setConversations] = useState<AlvoraConversation[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [status, setStatus] = useState<AlvoraStatus | null>(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [cfgProvider, setCfgProvider] = useState("gemini");
+  const [cfgApiKey, setCfgApiKey] = useState("");
+  const [cfgModel, setCfgModel] = useState("");
+  const [cfgSaving, setCfgSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -193,6 +202,13 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
     try {
       const q = await alvoraGetQuickPrompts();
       setQuickPrompts(q);
+    } catch {}
+  }, []);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const s = await alvoraGetStatus();
+      setStatus(s);
     } catch {}
   }, []);
 
@@ -215,7 +231,8 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
   useEffect(() => {
     loadQuickPrompts();
     loadConversations();
-  }, [loadQuickPrompts, loadConversations]);
+    loadStatus();
+  }, [loadQuickPrompts, loadConversations, loadStatus]);
 
   useEffect(() => {
     if (initialConversationId) {
@@ -311,6 +328,25 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
     }
   };
 
+  const saveConfig = async () => {
+    setCfgSaving(true);
+    try {
+      const r = await alvoraConfigure(cfgProvider, cfgApiKey || undefined, cfgModel || undefined);
+      if (r.available) {
+        toast("Alvora configurado y listo");
+        setShowConfig(false);
+        setStatus({ available: true, provider: r.provider });
+      } else {
+        toast("Guardado pero el provider no responde. Verifica tu API key.", false);
+      }
+      loadStatus();
+    } catch (e: any) {
+      toast(e.message || "Error al guardar configuracion", false);
+    } finally {
+      setCfgSaving(false);
+    }
+  };
+
   const handleActionExecuted = (msgId: number) => (result: { status: string; [k: string]: any }) => {
     // Mark action as resolved in the message
     if (result.status === "dismissed") {
@@ -395,7 +431,7 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
         className={cn("flex-1 overflow-y-auto p-3 space-y-3", compact ? "min-h-[300px]" : "min-h-[400px]")}
       >
         {isEmpty && (
-          <div className="flex flex-col items-center justify-center h-full text-center py-8">
+          <div className="flex flex-col items-center justify-center h-full text-center py-6">
             <div className="w-12 h-12 rounded-[14px] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] flex items-center justify-center mb-3 shadow-lg shadow-[var(--color-primary)]/20">
               <Sparkles size={22} className="text-white" />
             </div>
@@ -403,18 +439,92 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
             <div className="text-[12px] text-[var(--color-text-muted)] max-w-[280px] mb-4">
               Tu asesor de trading personal. Preguntame sobre tu portafolio, el mercado, o tus posiciones.
             </div>
-            {/* Quick prompts */}
-            <div className="flex flex-wrap gap-1.5 justify-center max-w-[340px]">
-              {quickPrompts.map((q) => (
+
+            {/* Config panel — shown when provider not available or user clicks "configurar" */}
+            {showConfig ? (
+              <div className="w-full max-w-[300px] space-y-2 text-left">
+                <div>
+                  <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Proveedor</label>
+                  <select
+                    value={cfgProvider}
+                    onChange={(e) => setCfgProvider(e.target.value)}
+                    className="w-full h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                  >
+                    <option value="gemini">Gemini (Google) - Gratis</option>
+                    <option value="groq">Groq (Cloud) - Gratis</option>
+                    <option value="omniroute">OmniRoute (Gateway) - Gratis</option>
+                    <option value="ollama">Ollama (Local) - Gratis</option>
+                    <option value="openai">OpenAI (GPT-4o) - Premium</option>
+                    <option value="deepseek">DeepSeek - Premium</option>
+                    <option value="mistral">Mistral AI - Premium</option>
+                  </select>
+                </div>
+                {(cfgProvider === "groq" || cfgProvider === "gemini" || cfgProvider === "openai" || cfgProvider === "deepseek" || cfgProvider === "mistral" || cfgProvider === "omniroute") && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">API Key</label>
+                    <input
+                      type="password"
+                      value={cfgApiKey}
+                      onChange={(e) => setCfgApiKey(e.target.value)}
+                      placeholder={cfgProvider === "omniroute" ? "Opcional (free providers sin key)" : "Pega tu API key aqui"}
+                      className="w-full h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[11px] font-bold text-[var(--color-text-muted)] uppercase mb-1">Modelo (opcional)</label>
+                  <input
+                    type="text"
+                    value={cfgModel}
+                    onChange={(e) => setCfgModel(e.target.value)}
+                    placeholder="Default del proveedor"
+                    className="w-full h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" variant="primary" onClick={saveConfig} disabled={cfgSaving} className="flex-1">
+                    {cfgSaving ? "Guardando..." : "Guardar"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowConfig(false)}>
+                    Cancelar
+                  </Button>
+                </div>
+                {cfgProvider === "groq" && (
+                  <p className="text-[10px] text-[var(--color-text-muted)]">Obten tu key gratis en console.groq.com</p>
+                )}
+                {cfgProvider === "gemini" && (
+                  <p className="text-[10px] text-[var(--color-text-muted)]">Obten tu key gratis en aistudio.google.com</p>
+                )}
+              </div>
+            ) : status && !status.available ? (
+              <div className="space-y-2">
+                <div className="text-[12px] text-[var(--color-danger)] font-semibold">
+                  Alvora necesita un proveedor de IA configurado
+                </div>
+                <Button size="sm" variant="primary" onClick={() => setShowConfig(true)}>
+                  Configurar ahora
+                </Button>
+              </div>
+            ) : (
+              /* Quick prompts — shown when provider is available */
+              <div className="flex flex-wrap gap-1.5 justify-center max-w-[340px]">
+                {quickPrompts.map((q) => (
+                  <button
+                    key={q.id}
+                    onClick={() => send(q.message)}
+                    className="px-2.5 py-1.5 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[11px] font-semibold text-[var(--color-text)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all"
+                  >
+                    {q.label}
+                  </button>
+                ))}
                 <button
-                  key={q.id}
-                  onClick={() => send(q.message)}
-                  className="px-2.5 py-1.5 rounded-[8px] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[11px] font-semibold text-[var(--color-text)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all"
+                  onClick={() => setShowConfig(true)}
+                  className="px-2.5 py-1.5 rounded-[8px] text-[11px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-all"
                 >
-                  {q.label}
+                  Configurar proveedor
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
