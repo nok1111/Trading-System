@@ -10,6 +10,7 @@ import { TodayPriorities } from "../components/dashboard/TodayPriorities";
 import { AIActivityTimeline } from "../components/dashboard/AIActivityTimeline";
 import { OnboardingModal } from "../components/dashboard/OnboardingModal";
 import { AutoPilotWidget } from "../components/dashboard/AutoPilotWidget";
+import { AlvoraSection } from "../components/dashboard/AlvoraSection";
 import { Watchlist } from "../components/watchlist/Watchlist";
 import { useI18n } from "../i18n/I18nContext";
 import { useAuthContext } from "../context/AuthContext";
@@ -267,6 +268,8 @@ export function DashboardPage() {
           <div className="panel p-4 card-hover">
             <Watchlist />
           </div>
+          {/* Alvora advisor chat */}
+          <AlvoraSection />
         </div>
       </div>
     </div>

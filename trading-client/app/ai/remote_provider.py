@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-from app.ai.provider import AIProvider, AIProviderConfig, AIResponse
+from app.ai.provider import AIProvider, AIProviderConfig, AIResponse, ChatMessage, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,50 @@ class RemoteAIProvider(AIProvider):
 
     def is_available(self) -> bool:
         return bool(self._url)
+
+    def chat(
+        self,
+        system_prompt: str,
+        messages: list[ChatMessage],
+        max_tokens: int = 1500,
+        temperature: float = 0.5,
+    ) -> ChatResponse:
+        """Chat libre via gateway remoto."""
+        start = time.monotonic()
+        if not self._url:
+            return ChatResponse(text="", provider_name=self.get_name(), model="remote-gateway", error="REMOTE_AI_URL no configurado")
+        try:
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._token:
+                headers["Authorization"] = f"Bearer {self._token}"
+            resp = httpx.post(
+                f"{self._url.rstrip('/')}/v1/ai/chat",
+                headers=headers,
+                json={
+                    "system_prompt": system_prompt,
+                    "messages": [{"role": m.role, "content": m.content} for m in messages],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+                timeout=60.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return ChatResponse(
+                text=data.get("text", ""),
+                provider_name=self.get_name(),
+                model=data.get("model", "remote-gateway"),
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+        except Exception as exc:
+            logger.error(f"Remote AI chat error: {exc}")
+            return ChatResponse(
+                text="",
+                provider_name=self.get_name(),
+                model="remote-gateway",
+                latency_ms=int((time.monotonic() - start) * 1000),
+                error=str(exc),
+            )
 
     def ask(self, system_prompt: str, user_message: str) -> AIResponse:
         start = time.monotonic()

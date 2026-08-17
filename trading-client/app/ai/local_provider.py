@@ -17,7 +17,7 @@ import time
 
 import httpx
 
-from app.ai.provider import AIProvider, AIProviderConfig, AIResponse
+from app.ai.provider import AIProvider, AIProviderConfig, AIResponse, ChatMessage, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,198 @@ class LocalAIProvider(AIProvider):
 
     def get_logs(self) -> list[str]:
         return list(self._log)
+
+    # ─── Chat (texto libre, con historial) ────────────────────────────────────
+
+    def chat(
+        self,
+        system_prompt: str,
+        messages: list[ChatMessage],
+        max_tokens: int = 1500,
+        temperature: float = 0.5,
+    ) -> ChatResponse:
+        """Conversacion libre con historial. Devuelve texto plano (no JSON).
+
+        Usa la misma cadena de fallback que ask() pero sin response_format json.
+        """
+        start = time.monotonic()
+        timeout = 60.0
+        fallback_timeout = 45.0
+        ollama_timeout = 45.0
+
+        if self._provider == "groq":
+            result = self._chat_groq(system_prompt, messages, max_tokens, temperature, timeout)
+            if result is None and self._config.gemini_api_key:
+                result = self._chat_gemini(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_omniroute(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_ollama(system_prompt, messages, temperature, ollama_timeout)
+        elif self._provider == "gemini":
+            result = self._chat_gemini(system_prompt, messages, max_tokens, temperature, timeout)
+            if result is None and self._config.groq_api_key:
+                result = self._chat_groq(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_omniroute(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_ollama(system_prompt, messages, temperature, ollama_timeout)
+        elif self._provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            self._ensure_provider_model()
+            result = self._chat_openai_compat(system_prompt, messages, max_tokens, temperature, timeout)
+            if result is None and self._config.groq_api_key:
+                result = self._chat_groq(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_omniroute(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_ollama(system_prompt, messages, temperature, ollama_timeout)
+        elif self._provider == "omniroute":
+            result = self._chat_omniroute(system_prompt, messages, max_tokens, temperature, timeout)
+            if result is None and self._config.groq_api_key:
+                result = self._chat_groq(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None and self._config.gemini_api_key:
+                result = self._chat_gemini(system_prompt, messages, max_tokens, temperature, fallback_timeout)
+            if result is None:
+                result = self._chat_ollama(system_prompt, messages, temperature, ollama_timeout)
+        elif self._provider == "ollama":
+            result = self._chat_ollama(system_prompt, messages, temperature, timeout)
+        else:
+            return ChatResponse(
+                text="",
+                provider_name=self.get_name(),
+                model="unknown",
+                error=f"Provider desconocido: {self._provider}",
+            )
+
+        latency_ms = int((time.monotonic() - start) * 1000)
+        model = self._get_model_name()
+
+        if result is None:
+            error_msg = f"Ni {self._provider}, fallback ni Ollama disponibles."
+            if self._last_http_error:
+                error_msg += f" Ultimo error HTTP: {self._last_http_error}"
+            return ChatResponse(
+                text="",
+                provider_name=self.get_name(),
+                model=model,
+                latency_ms=latency_ms,
+                error=error_msg,
+            )
+
+        return ChatResponse(
+            text=result,
+            provider_name=self.get_name(),
+            model=model,
+            latency_ms=latency_ms,
+        )
+
+    def _chat_groq(self, system_prompt: str, messages: list[ChatMessage], max_tokens: int, temperature: float, timeout: float) -> str | None:
+        if not self._config.groq_api_key:
+            return None
+        try:
+            msgs = [{"role": "system", "content": system_prompt}] + [{"role": m.role, "content": m.content} for m in messages]
+            resp = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {self._config.groq_api_key}", "Content-Type": "application/json"},
+                json={"model": self._config.groq_model, "messages": msgs, "temperature": temperature, "max_tokens": max_tokens},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as exc:
+            self._last_http_error = f"HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+            logger.error(f"Groq chat error: {self._last_http_error}")
+            return None
+        except Exception as exc:
+            self._last_http_error = str(exc)
+            logger.error(f"Groq chat error: {exc}")
+            return None
+
+    def _chat_gemini(self, system_prompt: str, messages: list[ChatMessage], max_tokens: int, temperature: float, timeout: float) -> str | None:
+        if not self._config.gemini_api_key:
+            return None
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._config.gemini_model}:generateContent?key={self._config.gemini_api_key}"
+            contents = [{"role": "user" if m.role == "user" else "model", "parts": [{"text": m.content}]} for m in messages]
+            resp = httpx.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "system_instruction": {"parts": [{"text": system_prompt}]},
+                    "contents": contents,
+                    "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+                },
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except httpx.HTTPStatusError as exc:
+            self._last_http_error = f"HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+            logger.error(f"Gemini chat error: {self._last_http_error}")
+            return None
+        except Exception as exc:
+            self._last_http_error = str(exc)
+            logger.error(f"Gemini chat error: {exc}")
+            return None
+
+    def _chat_openai_compat(self, system_prompt: str, messages: list[ChatMessage], max_tokens: int, temperature: float, timeout: float) -> str | None:
+        if not self._config.openai_api_key:
+            return None
+        model = self._effective_model or self._config.openai_model
+        try:
+            msgs = [{"role": "system", "content": system_prompt}] + [{"role": m.role, "content": m.content} for m in messages]
+            resp = httpx.post(
+                f"{self._config.openai_base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {self._config.openai_api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": msgs, "temperature": temperature, "max_tokens": max_tokens},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as exc:
+            self._last_http_error = f"HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+            logger.error(f"{self._provider} chat error: {self._last_http_error}")
+            return None
+        except Exception as exc:
+            self._last_http_error = str(exc)
+            logger.error(f"{self._provider} chat error: {exc}")
+            return None
+
+    def _chat_omniroute(self, system_prompt: str, messages: list[ChatMessage], max_tokens: int, temperature: float, timeout: float) -> str | None:
+        url = self._config.omniroute_url.rstrip("/")
+        api_key = self._config.omniroute_api_key or "omniroute"
+        model = self._config.omniroute_model or "auto"
+        try:
+            msgs = [{"role": "system", "content": system_prompt}] + [{"role": m.role, "content": m.content} for m in messages]
+            resp = httpx.post(
+                f"{url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": msgs, "temperature": temperature, "max_tokens": max_tokens, "stream": False},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as exc:
+            self._last_http_error = f"OmniRoute HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+            logger.error(f"OmniRoute chat error: {self._last_http_error}")
+            return None
+        except Exception as exc:
+            self._last_http_error = str(exc)
+            logger.error(f"OmniRoute chat error: {exc}")
+            return None
+
+    def _chat_ollama(self, system_prompt: str, messages: list[ChatMessage], temperature: float, timeout: float) -> str | None:
+        try:
+            msgs = [{"role": "system", "content": system_prompt}] + [{"role": m.role, "content": m.content} for m in messages]
+            resp = httpx.post(
+                f"{self._config.ollama_url.rstrip('/')}/api/chat",
+                json={"model": self._config.ollama_model, "messages": msgs, "stream": False, "options": {"temperature": temperature}},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["message"]["content"]
+        except Exception as exc:
+            logger.error(f"Ollama chat error: {exc}")
+            return None
 
     def get_last_http_error(self) -> str | None:
         return self._last_http_error

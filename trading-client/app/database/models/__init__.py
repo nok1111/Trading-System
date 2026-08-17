@@ -2,6 +2,8 @@
 
 from app.database.models.account_snapshot import AccountSnapshot
 from app.database.models.agent_log import AgentLog
+from app.database.models.alvora_conversation import AlvoraConversation
+from app.database.models.alvora_message import AlvoraMessage
 from app.database.models.agent_session import AgentSession
 from app.database.models.ai_recommendation import AIRecommendation
 from app.database.models.backtest_run import BacktestRun
@@ -37,6 +39,8 @@ from app.database.models.watchlist import Watchlist
 __all__ = [
     "AccountSnapshot",
     "AgentLog",
+    "AlvoraConversation",
+    "AlvoraMessage",
     "AgentSession",
     "AIRecommendation",
     "BacktestRun",

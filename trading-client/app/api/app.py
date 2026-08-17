@@ -126,6 +126,7 @@ async def license_check(request: Request, call_next):
 # ---------------------------------------------------------------------------
 from app.api.routes import (
     ai_agent,
+    alvora,
     bots,
     broker_accounts,
     broker_data,
@@ -143,6 +144,7 @@ from app.api.routes import (
 )
 
 app.include_router(market.router)
+app.include_router(alvora.router)
 app.include_router(trading.router)
 app.include_router(paper_trading.router)
 app.include_router(ml.router)

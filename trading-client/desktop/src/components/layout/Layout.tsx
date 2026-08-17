@@ -36,6 +36,7 @@ import { BrokerConnectModal } from "../brokers/BrokerConnectModal";
 import { BrokerPage } from "../../pages/BrokerPage";
 import { NotificationDropdown } from "./NotificationDropdown";
 import { NotificationToasts } from "./NotificationToasts";
+import { AlvoraFloatingWidget } from "../alvora/AlvoraFloatingWidget";
 import { getUnreadNotificationCount } from "../../lib/intelligenceApi";
 import { api } from "../../lib/api";
 import {
@@ -752,6 +753,9 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
       {/* Toast notifications */}
       <NotificationToasts />
+
+      {/* Alvora floating advisor — available on all pages */}
+      <AlvoraFloatingWidget />
     </div>
   );
 }

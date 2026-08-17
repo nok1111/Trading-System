@@ -49,18 +49,67 @@ class AIResponse:
         return self.decision is not None and self.error is None
 
 
+@dataclass(frozen=True)
+class ChatMessage:
+    """Mensaje de conversacion (para el metodo chat)."""
+    role: str  # "user" | "assistant" | "system"
+    content: str
+
+
+@dataclass(frozen=True)
+class ChatResponse:
+    """Respuesta de chat (texto libre, no JSON)."""
+    text: str
+    provider_name: str
+    model: str
+    latency_ms: int = 0
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        return self.text is not None and self.error is None
+
+
 class AIProvider(ABC):
     """Interfaz para proveedores de IA.
 
     Metodos:
-        ask: Envia system_prompt + user_message y devuelve AIResponse.
+        ask: Envia system_prompt + user_message y devuelve AIResponse (JSON).
+        chat: Conversacion libre con historial, devuelve ChatResponse (texto).
         get_name: Devuelve el nombre del proveedor para logging.
         is_available: Verifica si el proveedor esta configurado.
     """
 
     @abstractmethod
     def ask(self, system_prompt: str, user_message: str) -> AIResponse:
-        """Envia un mensaje al proveedor de IA y devuelve la respuesta normalizada."""
+        """Envia un mensaje al proveedor de IA y devuelve la respuesta normalizada (JSON)."""
+
+    def chat(
+        self,
+        system_prompt: str,
+        messages: list[ChatMessage],
+        max_tokens: int = 1500,
+        temperature: float = 0.5,
+    ) -> ChatResponse:
+        """Conversacion libre con historial. Devuelve texto (no JSON).
+
+        Implementacion por defecto: convierte a ask() con el ultimo mensaje.
+        Los providers deben sobreescribir para soporte real de historial.
+        """
+        last = messages[-1] if messages else ChatMessage(role="user", content="")
+        resp = self.ask(system_prompt, last.content)
+        if resp.success and resp.decision is not None:
+            import json as _json
+            text = _json.dumps(resp.decision, ensure_ascii=False, indent=2)
+        else:
+            text = resp.error or "Sin respuesta"
+        return ChatResponse(
+            text=text,
+            provider_name=self.get_name(),
+            model=resp.model,
+            latency_ms=resp.latency_ms,
+            error=resp.error,
+        )
 
     @abstractmethod
     def get_name(self) -> str:
