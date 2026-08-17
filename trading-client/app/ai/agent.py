@@ -113,7 +113,7 @@ class AITradingAgent:
         self,
         provider: str = "groq",
         groq_api_key: str | None = None,
-        groq_model: str = "llama-3.1-8b-instant",
+        groq_model: str = "openai/gpt-oss-120b",
         gemini_api_key: str | None = None,
         gemini_model: str = "gemini-flash-latest",
         ollama_url: str = "http://localhost:11434",

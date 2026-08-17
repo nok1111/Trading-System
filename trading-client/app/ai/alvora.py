@@ -100,6 +100,11 @@ def _get_provider_for_user(user_id: int):
         from app.config import get_settings
         settings = get_settings()
 
+        # Always start with .env defaults so keys are available even if
+        # the user didn't save their own
+        agent.groq_api_key = getattr(settings, "GROQ_API_KEY", None) or agent.groq_api_key
+        agent.gemini_api_key = getattr(settings, "GEMINI_API_KEY", None) or agent.gemini_api_key
+
         db = SessionLocal()
         try:
             s = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
@@ -111,6 +116,7 @@ def _get_provider_for_user(user_id: int):
                         agent.groq_model = s.ai_model
                     elif s.ai_provider == "gemini":
                         agent.gemini_model = s.ai_model
+                # Override with user-specific keys if they saved them
                 if s.ai_groq_key_enc:
                     try:
                         agent.groq_api_key = decrypt(s.ai_groq_key_enc)
@@ -139,8 +145,7 @@ def _get_provider_for_user(user_id: int):
             else:
                 # No saved settings — use .env defaults
                 agent.provider = getattr(settings, "AI_PROVIDER", "groq")
-                agent.groq_api_key = getattr(settings, "GROQ_API_KEY", None)
-                agent.gemini_api_key = getattr(settings, "GEMINI_API_KEY", None)
+                # Keys already set above from .env
         finally:
             db.close()
     except Exception as exc:

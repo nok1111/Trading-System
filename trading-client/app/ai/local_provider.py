@@ -359,6 +359,7 @@ class LocalAIProvider(AIProvider):
             "gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro",
             "llama-3.1-8b-instant", "llama-3.3-70b-versatile",
             "gpt-4o-mini",
+            "openai/gpt-oss-120b", "openai/gpt-oss-20b",
         ):
             self._effective_model = defaults["model"]
             logger.info(f"Auto-set model to {defaults['model']} for {self._provider}")
