@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Send, Sparkles, Check, X, AlertTriangle, MessageSquarePlus, Trash2, ChevronDown } from "lucide-react";
+import { Send, Sparkles, Check, X, AlertTriangle, MessageSquarePlus, Trash2, ChevronDown, Settings } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import { toast } from "../ui/Toast";
@@ -18,6 +18,7 @@ import {
   type AlvoraConversation,
   type AlvoraStatus,
 } from "../../lib/alvoraApi";
+import { AlvoraConfigModal } from "./AlvoraConfigModal";
 
 interface AlvoraChatProps {
   /** Compact mode for the floating widget (smaller heights, no sidebar) */
@@ -191,6 +192,7 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
   const [showHistory, setShowHistory] = useState(false);
   const [status, setStatus] = useState<AlvoraStatus | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
   const [cfgProvider, setCfgProvider] = useState("gemini");
   const [cfgApiKey, setCfgApiKey] = useState("");
   const [cfgModel, setCfgModel] = useState("");
@@ -387,6 +389,13 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
               Historial
             </button>
           )}
+          <button
+            onClick={() => setShowConfigModal(true)}
+            className="flex items-center justify-center w-7 h-7 rounded-[6px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            title="Configuracion de Alvora"
+          >
+            <Settings size={14} />
+          </button>
           <button
             onClick={startNewConversation}
             className="flex items-center gap-1 px-2 h-7 rounded-[6px] text-[11px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
@@ -602,6 +611,9 @@ export function AlvoraChat({ compact = false, initialConversationId = null, clas
           </Button>
         </div>
       </div>
+
+      {/* Config modal */}
+      <AlvoraConfigModal open={showConfigModal} onClose={() => setShowConfigModal(false)} />
     </div>
   );
 }

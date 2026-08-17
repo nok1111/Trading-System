@@ -56,6 +56,38 @@ class ConfigureRequest(BaseModel):
     model: str | None = None
 
 
+class FallbackProviderEntry(BaseModel):
+    provider: str
+    api_key: str | None = None
+    model: str | None = None
+
+
+class SaveAlvoraConfigRequest(BaseModel):
+    """Full Alvora config — primary provider + fallback chain + persona."""
+    provider: str = "gemini"
+    api_key: str | None = None  # none = don't change existing
+    model: str | None = None
+    fallback_chain: list[FallbackProviderEntry] | None = None
+    # Persona
+    language: str = "es"
+    response_style: str = "detailed"
+    risk_advice_level: str = "balanced"
+    auto_suggest_actions: bool = True
+    max_tokens: int = 1800
+    temperature: float = 0.5
+    # Context
+    include_positions: bool = True
+    include_market_data: bool = True
+    include_profile: bool = True
+    include_recommendations: bool = True
+
+
+class TestProviderRequest(BaseModel):
+    provider: str
+    api_key: str | None = None
+    model: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
@@ -505,3 +537,337 @@ def alvora_status(
 ) -> dict:
     """Check if Alvora is available (AI provider configured)."""
     return alvora_svc.alvora_status(current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# Configuration (full Alvora config: primary + fallback + persona)
+# ---------------------------------------------------------------------------
+
+def _get_or_create_alvora_config(db, user_id: int):
+    from app.database.models.alvora_config import AlvoraConfig
+    cfg = db.query(AlvoraConfig).filter(AlvoraConfig.user_id == user_id).first()
+    if not cfg:
+        cfg = AlvoraConfig(user_id=user_id)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+
+@router.get("/config")
+def get_alvora_config(
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Get the user's Alvora configuration (API keys masked)."""
+    db = SessionLocal()
+    try:
+        cfg = _get_or_create_alvora_config(db, current_user.id)
+        return cfg.to_dict(include_keys=False)
+    finally:
+        db.close()
+
+
+@router.post("/config")
+def save_alvora_config(
+    req: SaveAlvoraConfigRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Save full Alvora configuration.
+
+    API keys are encrypted before storage. If api_key is None, the existing
+    key is preserved. The fallback chain is stored as encrypted JSON.
+    """
+    import json
+    from app.services.crypto import encrypt
+
+    db = SessionLocal()
+    try:
+        cfg = _get_or_create_alvora_config(db, current_user.id)
+
+        # Primary provider
+        cfg.provider = req.provider
+        if req.api_key is not None:
+            cfg.api_key_enc = encrypt(req.api_key) if req.api_key else None
+        if req.model is not None:
+            cfg.model = req.model
+
+        # Fallback chain
+        if req.fallback_chain is not None:
+            chain = []
+            for entry in req.fallback_chain:
+                item = {"provider": entry.provider, "model": entry.model or ""}
+                if entry.api_key is not None:
+                    item["api_key_enc"] = encrypt(entry.api_key) if entry.api_key else None
+                else:
+                    # Preserve existing key if we have one
+                    item["api_key_enc"] = None  # will be filled from existing
+                chain.append(item)
+
+            # Preserve existing fallback keys for entries that didn't provide a new key
+            if cfg.fallback_chain_json:
+                try:
+                    existing = json.loads(cfg.fallback_chain_json)
+                    for i, new_entry in enumerate(chain):
+                        if new_entry["api_key_enc"] is None and i < len(existing):
+                            new_entry["api_key_enc"] = existing[i].get("api_key_enc")
+                except Exception:
+                    pass
+
+            cfg.fallback_chain_json = json.dumps(chain)
+
+        # Persona
+        cfg.language = req.language
+        cfg.response_style = req.response_style
+        cfg.risk_advice_level = req.risk_advice_level
+        cfg.auto_suggest_actions = req.auto_suggest_actions
+        cfg.max_tokens = req.max_tokens
+        cfg.temperature = req.temperature
+
+        # Context
+        cfg.include_positions = req.include_positions
+        cfg.include_market_data = req.include_market_data
+        cfg.include_profile = req.include_profile
+        cfg.include_recommendations = req.include_recommendations
+
+        db.commit()
+
+        # Apply to the agent singleton so Alvora uses the new config immediately
+        try:
+            alvora_svc._apply_alvora_config(current_user.id, cfg)
+        except Exception as exc:
+            logger.warning("Alvora config: failed to apply immediately: %s", exc)
+
+        return {"ok": True, "config": cfg.to_dict(include_keys=False)}
+    except Exception as exc:
+        db.rollback()
+        logger.error("Alvora config save error: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@router.post("/test-provider")
+@limiter.limit(RATE_AI)
+def test_provider(
+    request: Request,
+    req: TestProviderRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Test a specific AI provider + key + model by sending a minimal request."""
+    import requests as req_lib
+    from app.config import get_settings
+    from app.services.crypto import decrypt
+
+    settings = get_settings()
+    provider = req.provider.strip().lower()
+    api_key = (req.api_key or "").strip() or None
+    model = (req.model or "").strip() or None
+
+    # If no key provided in request, try DB then .env
+    if not api_key:
+        db = SessionLocal()
+        try:
+            cfg = _get_or_create_alvora_config(db, current_user.id)
+            if cfg.api_key_enc and cfg.provider == provider:
+                try:
+                    api_key = decrypt(cfg.api_key_enc)
+                except Exception:
+                    pass
+            # Also check fallback chain
+            if not api_key and cfg.fallback_chain_json:
+                import json
+                try:
+                    chain = json.loads(cfg.fallback_chain_json)
+                    for entry in chain:
+                        if entry.get("provider") == provider and entry.get("api_key_enc"):
+                            try:
+                                api_key = decrypt(entry["api_key_enc"])
+                            except Exception:
+                                pass
+                            if api_key:
+                                break
+                except Exception:
+                    pass
+        finally:
+            db.close()
+
+    # .env fallback
+    if not api_key:
+        env_map = {
+            "groq": "GROQ_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+        }
+        if provider in env_map:
+            api_key = getattr(settings, env_map[provider], None)
+
+    try:
+        if provider == "groq":
+            if not api_key:
+                return {"ok": False, "error": "GROQ_API_KEY no configurada"}
+            test_model = model or "openai/gpt-oss-120b"
+            resp = req_lib.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": test_model, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "provider": "Groq", "model": test_model}
+            return {"ok": False, "error": f"Groq {resp.status_code}: {resp.text[:200]}"}
+
+        elif provider == "gemini":
+            if not api_key:
+                return {"ok": False, "error": "GEMINI_API_KEY no configurada"}
+            test_model = model or "gemini-flash-latest"
+            resp = req_lib.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{test_model}:generateContent?key={api_key}",
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": "Hi"}]}], "generationConfig": {"maxOutputTokens": 5}},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "provider": "Gemini", "model": test_model}
+            return {"ok": False, "error": f"Gemini {resp.status_code}: {resp.text[:200]}"}
+
+        elif provider == "ollama":
+            ollama_url = getattr(settings, "OLLAMA_URL", "http://localhost:11434")
+            test_model = model or "qwen2.5:14b"
+            try:
+                resp = req_lib.post(
+                    f"{ollama_url}/api/chat",
+                    json={"model": test_model, "messages": [{"role": "user", "content": "Hi"}], "stream": False},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    return {"ok": True, "provider": "Ollama", "model": test_model}
+                return {"ok": False, "error": f"Ollama {resp.status_code}: {resp.text[:200]}"}
+            except Exception as exc:
+                return {"ok": False, "error": f"Ollama no disponible: {exc}"}
+
+        elif provider == "omniroute":
+            omni_url = getattr(settings, "OMNIROUTE_URL", "http://localhost:20128")
+            test_model = model or "default"
+            try:
+                resp = req_lib.post(
+                    f"{omni_url}/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key or 'free'}", "Content-Type": "application/json"},
+                    json={"model": test_model, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    return {"ok": True, "provider": "OmniRoute", "model": test_model}
+                return {"ok": False, "error": f"OmniRoute {resp.status_code}: {resp.text[:200]}"}
+            except Exception as exc:
+                return {"ok": False, "error": f"OmniRoute no disponible: {exc}"}
+
+        elif provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            PREMIUM_BASE_URLS = {
+                "openai": "https://api.openai.com/v1",
+                "deepseek": "https://api.deepseek.com/v1",
+                "mistral": "https://api.mistral.ai/v1",
+                "together": "https://api.together.xyz/v1",
+                "perplexity": "https://api.perplexity.ai",
+                "grok": "https://api.x.ai/v1",
+            }
+            if not api_key:
+                return {"ok": False, "error": f"{provider.upper()}_API_KEY no configurada"}
+            base_url = PREMIUM_BASE_URLS[provider]
+            test_model = model or "default"
+            resp = req_lib.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": test_model, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "provider": provider, "model": test_model}
+            return {"ok": False, "error": f"{provider} {resp.status_code}: {resp.text[:200]}"}
+
+        else:
+            return {"ok": False, "error": f"Provider '{provider}' no soportado"}
+
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@router.post("/test-chain")
+@limiter.limit(RATE_AI)
+def test_fallback_chain(
+    request: Request,
+    current_user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Test the full fallback chain — primary + all fallbacks in order."""
+    import json
+    from app.services.crypto import decrypt
+
+    db = SessionLocal()
+    try:
+        cfg = _get_or_create_alvora_config(db, current_user.id)
+        results = []
+
+        # Test primary
+        primary_key = None
+        if cfg.api_key_enc:
+            try:
+                primary_key = decrypt(cfg.api_key_enc)
+            except Exception:
+                pass
+
+        # Also test .env keys as fallback
+        from app.config import get_settings
+        settings = get_settings()
+        if not primary_key:
+            env_map = {"groq": "GROQ_API_KEY", "gemini": "GEMINI_API_KEY"}
+            if cfg.provider in env_map:
+                primary_key = getattr(settings, env_map[cfg.provider], None)
+
+        # Test primary via the test-provider endpoint logic
+        test_req = TestProviderRequest(provider=cfg.provider, api_key=primary_key, model=cfg.model)
+        primary_result = test_provider(request, test_req, current_user)
+        results.append({
+            "role": "primary",
+            "provider": cfg.provider,
+            "model": cfg.model or "",
+            **primary_result,
+        })
+
+        # Test fallbacks
+        if cfg.fallback_chain_json:
+            try:
+                chain = json.loads(cfg.fallback_chain_json)
+                for i, entry in enumerate(chain):
+                    fb_key = None
+                    if entry.get("api_key_enc"):
+                        try:
+                            fb_key = decrypt(entry["api_key_enc"])
+                        except Exception:
+                            pass
+                    if not fb_key:
+                        env_map = {"groq": "GROQ_API_KEY", "gemini": "GEMINI_API_KEY"}
+                        if entry.get("provider") in env_map:
+                            fb_key = getattr(settings, env_map[entry["provider"]], None)
+
+                    fb_req = TestProviderRequest(
+                        provider=entry.get("provider", ""),
+                        api_key=fb_key,
+                        model=entry.get("model"),
+                    )
+                    fb_result = test_provider(request, fb_req, current_user)
+                    results.append({
+                        "role": f"fallback_{i+1}",
+                        "provider": entry.get("provider", ""),
+                        "model": entry.get("model", ""),
+                        **fb_result,
+                    })
+            except Exception:
+                pass
+
+        working = [r for r in results if r.get("ok")]
+        return {
+            "total": len(results),
+            "working": len(working),
+            "results": results,
+            "has_working": len(working) > 0,
+        }
+    finally:
+        db.close()

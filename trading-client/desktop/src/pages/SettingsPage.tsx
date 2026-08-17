@@ -8,6 +8,7 @@ import { Badge } from "../components/ui/Badge";
 import { toast } from "../components/ui/Toast";
 import { getProxyConfig, setProxyConfig, testProxyConnection } from "../lib/binanceProxy";
 import { fmtDateOnly } from "../lib/utils";
+import { AlvoraSettingsSection } from "../components/settings/AlvoraSettingsSection";
 
 export function SettingsPage() {
   const { user } = useAuthContext();
@@ -332,22 +333,8 @@ export function SettingsPage() {
         </p>
       </Card>
 
-      {/* AI Keys info */}
-      <Card>
-        <h3 className="text-sm font-semibold text-[var(--color-primary)] mb-4">
-          AI Provider Keys
-        </h3>
-        <div className="p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)]">
-          <p className="text-sm text-[var(--color-primary)] font-semibold mb-1">
-            Las API keys se configuran en tu archivo .env local
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Edita .env y reinicia la app para aplicar cambios.
-            <br />
-            GROQ_API_KEY, GEMINI_API_KEY, etc.
-          </p>
-        </div>
-      </Card>
+      {/* Alvora AI Advisor Configuration */}
+      <AlvoraSettingsSection />
 
       {/* Plan limits */}
       <Card>

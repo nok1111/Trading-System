@@ -244,9 +244,16 @@ def alvora_chat(user_id: int, message: str, conversation_id: int | None = None) 
                 "error": "no_provider",
             }
 
+        # Load persona settings from AlvoraConfig
+        persona = get_alvora_persona_settings(user_id)
+
         # Call the provider
         try:
-            chat_resp = provider.chat(system_prompt, history, max_tokens=1800, temperature=0.5)
+            chat_resp = provider.chat(
+                system_prompt, history,
+                max_tokens=persona["max_tokens"],
+                temperature=persona["temperature"],
+            )
         except Exception as exc:
             logger.error("Alvora chat provider error: %s", exc)
             chat_resp = None
@@ -417,3 +424,81 @@ def alvora_status(user_id: int) -> dict:
         return {"available": available, "provider": name}
     except Exception as exc:
         return {"available": False, "provider": None, "error": str(exc)}
+
+
+def _apply_alvora_config(user_id: int, cfg) -> None:
+    """Apply AlvoraConfig from DB to the agent singleton.
+
+    Called after saving config so the next chat uses the new settings.
+    """
+    from app.services.crypto import decrypt
+    import app.api.state as state
+    from app.api.helpers import get_or_create_agent
+    agent = get_or_create_agent()
+
+    # Apply primary provider
+    agent.provider = cfg.provider
+    if cfg.api_key_enc:
+        try:
+            key = decrypt(cfg.api_key_enc)
+            if cfg.provider == "groq":
+                agent.groq_api_key = key
+            elif cfg.provider == "gemini":
+                agent.gemini_api_key = key
+            elif cfg.provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+                agent.openai_api_key = key
+            elif cfg.provider == "omniroute":
+                agent.omniroute_api_key = key
+        except Exception:
+            pass
+    if cfg.model:
+        if cfg.provider == "groq":
+            agent.groq_model = cfg.model
+        elif cfg.provider == "gemini":
+            agent.gemini_model = cfg.model
+        elif cfg.provider in ("openai", "deepseek", "mistral", "together", "perplexity", "grok"):
+            agent.openai_model = cfg.model
+
+    # Also load .env keys as fallback if no user key
+    from app.config import get_settings
+    settings = get_settings()
+    if not cfg.api_key_enc:
+        agent.groq_api_key = getattr(settings, "GROQ_API_KEY", None) or agent.groq_api_key
+        agent.gemini_api_key = getattr(settings, "GEMINI_API_KEY", None) or agent.gemini_api_key
+
+    agent._rebuild_provider()
+
+
+def get_alvora_persona_settings(user_id: int) -> dict:
+    """Load persona/behavior settings from AlvoraConfig for the chat call."""
+    from app.database.models.alvora_config import AlvoraConfig
+    db = SessionLocal()
+    try:
+        cfg = db.query(AlvoraConfig).filter(AlvoraConfig.user_id == user_id).first()
+        if not cfg:
+            return {
+                "max_tokens": 1800,
+                "temperature": 0.5,
+                "auto_suggest_actions": True,
+                "language": "es",
+                "response_style": "detailed",
+                "risk_advice_level": "balanced",
+                "include_positions": True,
+                "include_market_data": True,
+                "include_profile": True,
+                "include_recommendations": True,
+            }
+        return {
+            "max_tokens": cfg.max_tokens,
+            "temperature": cfg.temperature,
+            "auto_suggest_actions": cfg.auto_suggest_actions,
+            "language": cfg.language,
+            "response_style": cfg.response_style,
+            "risk_advice_level": cfg.risk_advice_level,
+            "include_positions": cfg.include_positions,
+            "include_market_data": cfg.include_market_data,
+            "include_profile": cfg.include_profile,
+            "include_recommendations": cfg.include_recommendations,
+        }
+    finally:
+        db.close()
