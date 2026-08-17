@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { X, Settings, Plus, Trash2, ChevronUp, ChevronDown, Check, AlertTriangle, Loader2, Zap } from "lucide-react";
+import { X, Settings, Plus, Trash2, ChevronUp, ChevronDown, Check, AlertTriangle, Loader2, Zap, ExternalLink } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import { toast } from "../ui/Toast";
@@ -16,16 +16,16 @@ import {
 const ALVORA_CONFIG_CACHE_KEY = "alvora_config_cache";
 
 const PROVIDERS = [
-  { value: "gemini", label: "Gemini (Google) — Gratis", needsKey: true, defaultModel: "gemini-flash-latest" },
-  { value: "groq", label: "Groq (Cloud) — Gratis", needsKey: true, defaultModel: "openai/gpt-oss-120b" },
-  { value: "omniroute", label: "OmniRoute (Gateway) — Gratis", needsKey: false, defaultModel: "default" },
-  { value: "ollama", label: "Ollama (Local) — Gratis", needsKey: false, defaultModel: "qwen2.5:14b" },
-  { value: "openai", label: "OpenAI (GPT-4o) — Premium", needsKey: true, defaultModel: "gpt-4o-mini" },
-  { value: "deepseek", label: "DeepSeek — Premium", needsKey: true, defaultModel: "deepseek-chat" },
-  { value: "mistral", label: "Mistral AI — Premium", needsKey: true, defaultModel: "mistral-small-latest" },
-  { value: "together", label: "Together AI — Premium", needsKey: true, defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
-  { value: "perplexity", label: "Perplexity — Premium", needsKey: true, defaultModel: "llama-3.1-sonar-small-128k-online" },
-  { value: "grok", label: "Grok (xAI) — Premium", needsKey: true, defaultModel: "grok-2-latest" },
+  { value: "gemini", label: "Gemini (Google) — Gratis", needsKey: true, defaultModel: "gemini-flash-latest", keyUrl: "https://aistudio.google.com/apikey", keyLabel: "aistudio.google.com/apikey" },
+  { value: "groq", label: "Groq (Cloud) — Gratis", needsKey: true, defaultModel: "openai/gpt-oss-120b", keyUrl: "https://console.groq.com/keys", keyLabel: "console.groq.com/keys" },
+  { value: "omniroute", label: "OmniRoute (Gateway) — Gratis", needsKey: false, defaultModel: "default", keyUrl: "", keyLabel: "" },
+  { value: "ollama", label: "Ollama (Local) — Gratis", needsKey: false, defaultModel: "qwen2.5:14b", keyUrl: "https://ollama.com/download", keyLabel: "ollama.com/download" },
+  { value: "openai", label: "OpenAI (GPT-4o) — Premium", needsKey: true, defaultModel: "gpt-4o-mini", keyUrl: "https://platform.openai.com/api-keys", keyLabel: "platform.openai.com/api-keys" },
+  { value: "deepseek", label: "DeepSeek — Premium", needsKey: true, defaultModel: "deepseek-chat", keyUrl: "https://platform.deepseek.com/api_keys", keyLabel: "platform.deepseek.com/api_keys" },
+  { value: "mistral", label: "Mistral AI — Premium", needsKey: true, defaultModel: "mistral-small-latest", keyUrl: "https://console.mistral.ai/api-keys", keyLabel: "console.mistral.ai/api-keys" },
+  { value: "together", label: "Together AI — Premium", needsKey: true, defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo", keyUrl: "https://api.together.xyz/settings/api-keys", keyLabel: "api.together.xyz/settings/api-keys" },
+  { value: "perplexity", label: "Perplexity — Premium", needsKey: true, defaultModel: "llama-3.1-sonar-small-128k-online", keyUrl: "https://www.perplexity.ai/settings/api", keyLabel: "perplexity.ai/settings/api" },
+  { value: "grok", label: "Grok (xAI) — Premium", needsKey: true, defaultModel: "grok-2-latest", keyUrl: "https://console.x.ai", keyLabel: "console.x.ai" },
 ];
 
 function getProviderMeta(value: string) {
@@ -124,7 +124,29 @@ function ProviderRow({
             placeholder={apiKeySet ? "•••••••• (dejar vacio para mantener)" : "Pega tu API key"}
             className="w-full h-8 rounded-[6px] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
           />
+          {meta.keyUrl && (
+            <a
+              href={meta.keyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-[var(--color-primary)] hover:underline"
+            >
+              <ExternalLink size={10} />
+              Obtener API key: {meta.keyLabel}
+            </a>
+          )}
         </div>
+      )}
+      {!meta.needsKey && meta.keyUrl && (
+        <a
+          href={meta.keyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--color-primary)] hover:underline"
+        >
+          <ExternalLink size={10} />
+          {meta.keyLabel}
+        </a>
       )}
       <div className="flex items-center gap-2">
         <Button size="sm" variant="default" onClick={onTest} disabled={testing} className="!text-[11px]">
