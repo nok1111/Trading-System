@@ -478,19 +478,28 @@ def _execute_open_trade(user: LocalUser, params: dict) -> dict:
 
 
 def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
-    """Update stop_loss or take_profit on an open position."""
+    """Update stop_loss or take_profit on an open position.
+
+    Accepts both absolute values (stop_loss=1836.80) and percentages
+    (stop_loss_pct=3.0). When a percentage is given, the absolute value
+    is calculated from the position's entry price.
+    """
     position_id = params.get("position_id")
     if not position_id:
         return {"status": "error", "reason": "Falta position_id"}
-    value_key = field  # stop_loss | take_profit
-    value = params.get(value_key)
-    if value is None:
-        return {"status": "error", "reason": f"Falta {value_key}"}
+
+    # Accept both absolute (stop_loss=1836.80) and percentage (stop_loss_pct=3.0)
+    pct_key = f"{field}_pct"  # stop_loss_pct | take_profit_pct
+    value = params.get(field)
+    pct_value = params.get(pct_key)
+
+    if value is None and pct_value is None:
+        return {"status": "error", "reason": f"Falta {field} o {pct_key}"}
+
     try:
         position_id = int(position_id)
-        value = float(value)
     except (TypeError, ValueError):
-        return {"status": "error", "reason": "Parametros invalidos"}
+        return {"status": "error", "reason": "position_id invalido"}
 
     from app.database.models.position import Position
     db = SessionLocal()
@@ -502,17 +511,36 @@ def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
         ).first()
         if not pos:
             return {"status": "error", "reason": "Posicion no encontrada"}
-        if field == "stop_loss":
-            pos.stop_loss = Dec(str(value))
+
+        # Calculate absolute value from percentage if needed
+        if value is not None:
+            abs_value = float(value)
         else:
-            pos.take_profit = Dec(str(value))
+            # Calculate from entry price
+            pct = float(pct_value)
+            entry_price = float(pos.entry_price or pos.current_price or 0)
+            if entry_price <= 0:
+                return {"status": "error", "reason": f"No se puede calcular {field} sin precio de entrada"}
+            if field == "stop_loss":
+                abs_value = entry_price * (1 - pct / 100)
+            else:  # take_profit
+                abs_value = entry_price * (1 + pct / 100)
+
+        abs_value = round(abs_value, 8)
+
+        if field == "stop_loss":
+            pos.stop_loss = Dec(str(abs_value))
+        else:
+            pos.take_profit = Dec(str(abs_value))
         db.commit()
         return {
             "status": "executed",
             "action": f"set_{field}",
             "position_id": pos.id,
             "symbol": pos.symbol,
-            field: value,
+            field: abs_value,
+            "pct_used": float(pct_value) if pct_value else None,
+            "entry_price": float(pos.entry_price) if pos.entry_price else None,
         }
     except Exception as exc:
         db.rollback()
