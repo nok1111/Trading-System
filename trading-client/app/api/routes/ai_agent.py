@@ -1,5 +1,6 @@
 """AI Agent endpoints (start, stop, execute, stats, binance balance, trading mode, kill switch)."""
 
+import logging
 import os
 import threading
 import time
@@ -8,6 +9,8 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
