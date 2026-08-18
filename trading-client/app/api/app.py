@@ -97,6 +97,14 @@ async def license_check(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
 
+    # WebSocket upgrade requests: skip HTTP middleware auth.
+    # WS handlers authenticate via query parameter ?token=... internally.
+    # The HTTP middleware can't read query params reliably for WS upgrades
+    # and would reject them with 401 before the WS handler runs.
+    upgrade_header = request.headers.get("upgrade", "").lower()
+    if upgrade_header == "websocket":
+        return await call_next(request)
+
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if not token:
         resp = JSONResponse(status_code=401, content={"detail": "No autenticado"})

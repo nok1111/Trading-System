@@ -848,6 +848,79 @@ def get_binance_balance(
     }
 
 
+@router.get("/portfolio-summary")
+def get_portfolio_summary(
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Return a portfolio summary for the dashboard.
+
+    Combines balance data and open positions into a single response
+    that the dashboard can use for the portfolio overview card.
+    """
+    from app.database.models.position import Position
+
+    db = SessionLocal()
+    try:
+        # Get open positions from DB
+        positions_q = db.execute(
+            select(Position)
+            .where(Position.user_id == current_user.id)
+            .where(Position.status == "open")
+            .order_by(Position.opened_at.desc())
+        ).scalars().all()
+
+        positions = []
+        total_pnl = 0.0
+        for p in positions_q:
+            pnl = float(p.unrealized_pnl or 0)
+            pnl_pct = float(p.pnl_pct or 0) if hasattr(p, "pnl_pct") else 0.0
+            total_pnl += pnl
+            positions.append({
+                "symbol": p.symbol,
+                "unrealized_pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+            })
+
+        # Try to get balance from broker
+        balance_usd = 0.0
+        distribution = []
+        try:
+            balance_data = get_binance_balance(current_user)
+            if not balance_data.get("error"):
+                balance_usd = balance_data.get("total_usd", 0.0)
+                for asset in balance_data.get("assets", []):
+                    usd = asset.get("usd_value", 0)
+                    if usd > 0:
+                        distribution.append({
+                            "asset": asset["asset"],
+                            "usd": round(usd, 2),
+                            "pct": round((usd / balance_usd * 100) if balance_usd > 0 else 0, 1),
+                        })
+        except Exception:
+            pass
+
+        return {
+            "balance_usd": round(balance_usd, 2),
+            "total_value": round(balance_usd + total_pnl, 2),
+            "total_pnl": round(total_pnl, 2),
+            "positions_count": len(positions),
+            "positions": positions[:10],  # top 10
+            "distribution": distribution[:10],
+        }
+    except Exception as exc:
+        return {
+            "error": str(exc),
+            "balance_usd": 0,
+            "total_value": 0,
+            "total_pnl": 0,
+            "positions_count": 0,
+            "positions": [],
+            "distribution": [],
+        }
+    finally:
+        db.close()
+
+
 @router.get("/binance/open-orders")
 def get_binance_open_orders(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
