@@ -255,7 +255,7 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
         stream.remove_subscriber(on_price)
 
 
-@router.websocket("/ws/klines/{symbol}")
+@router.websocket("/ws/klines/{symbol:path}")
 async def ws_klines(websocket: WebSocket, symbol: str, interval: str = "1m", token: str = Query(...)):
     """WebSocket que proxya el stream de klines de Binance al cliente.
 

@@ -85,6 +85,7 @@ async def license_check(request: Request, call_next):
         or path.startswith("/api/social/leaderboard")
         or path.startswith("/api/social/signals/feed")
         or path.startswith("/api/social/ws/")
+        or path.startswith("/api/ws/")  # WebSocket endpoints do their own auth via query token
         or (
             path.startswith("/api/broker/")
             and ("/ticker" in path or "/klines" in path or "/movers" in path or "/market-info" in path or "/symbols" in path)
