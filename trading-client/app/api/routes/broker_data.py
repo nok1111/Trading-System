@@ -604,7 +604,7 @@ def get_movers(
                 {
                     "symbol": t["symbol"],
                     "price": float(t["price"]),
-                    "price_change_percent": float(t["change_pct"]),
+                    "price_change_percent": float(t["price_change_percent"]),
                     "volume": float(t["volume"]),
                 }
                 for t in result.get("gainers", [])
@@ -613,7 +613,7 @@ def get_movers(
                 {
                     "symbol": t["symbol"],
                     "price": float(t["price"]),
-                    "price_change_percent": float(t["change_pct"]),
+                    "price_change_percent": float(t["price_change_percent"]),
                     "volume": float(t["volume"]),
                 }
                 for t in result.get("losers", [])

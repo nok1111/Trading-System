@@ -135,7 +135,7 @@ def smart_money_info(encrypted_uid: str) -> dict:
         raise HTTPException(status_code=502, detail="Error al obtener datos de mercado") from exc
 
 
-@router.get("/klines/{symbol}")
+@router.get("/klines/{symbol:path}")
 def get_klines(
     symbol: str,
     interval: str = Query("1m", pattern="^(1m|3m|5m|15m|30m|1h|2h|4h|1d|1w)$"),

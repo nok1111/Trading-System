@@ -2273,7 +2273,8 @@ def ai_agent_execute(
 
     except Exception as exc:
         session.rollback()
-        return {"status": "error", "reason": "Error interno del servidor"}
+        logger.error("ai_agent_execute error: %s", exc, exc_info=True)
+        return {"status": "error", "reason": safe_error(exc)}
     finally:
         session.close()
 

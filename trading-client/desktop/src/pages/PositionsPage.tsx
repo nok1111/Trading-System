@@ -654,6 +654,7 @@ export function PositionsPage() {
                         className="flex-1"
                         title={autoSell ? "Desactivar auto-sell: la IA no venderá esta posición automáticamente" : "Activar auto-sell: la IA venderá automáticamente según SL/TP/indicadores"}
                         onClick={() => handleToggleAutoSell(p.id, !autoSell)}
+                        disabled={!p.id || p.id === 0}
                       >
                         {autoSell ? "Auto-Sell ✓" : "Auto-Sell"}
                       </Button>
