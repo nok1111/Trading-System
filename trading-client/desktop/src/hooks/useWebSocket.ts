@@ -46,14 +46,26 @@ export function useWebSocket(
   onCloseRef.current = onClose;
 
   const connect = useCallback(() => {
-    // Build WebSocket URL from current location
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.hostname || "localhost";
-    const port = window.location.port || "1420";
-    // Append JWT token as query parameter for authentication
+    // Build WebSocket URL — in dev mode (Vite), the proxy doesn't forward
+    // WS connections reliably, so connect directly to the backend VPS.
+    // In production (Tauri), use window.location (same origin).
     const token = localStorage.getItem("jwt") || "";
     const separator = path.includes("?") ? "&" : "?";
-    const url = `${protocol}//${host}:${port}${path}${separator}token=${encodeURIComponent(token)}`;
+
+    let url: string;
+    // Check if we're in dev mode (localhost with Vite port 1420)
+    const isDev = window.location.port === "1420" || window.location.hostname === "localhost";
+    if (isDev) {
+      // Connect directly to the VPS backend for WS
+      // The Vite proxy handles REST fine but not WS upgrades
+      url = `ws://76.13.180.80:8080${path}${separator}token=${encodeURIComponent(token)}`;
+    } else {
+      // Production: use same origin (Tauri or deployed)
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.hostname;
+      const port = window.location.port ? `:${window.location.port}` : "";
+      url = `${protocol}//${host}${port}${path}${separator}token=${encodeURIComponent(token)}`;
+    }
 
     try {
       const ws = new WebSocket(url);
