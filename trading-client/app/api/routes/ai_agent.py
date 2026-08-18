@@ -848,7 +848,7 @@ def get_binance_balance(
     }
 
 
-@router.get("/portfolio-summary")
+@router.get("/ai-agent/portfolio-summary")
 def get_portfolio_summary(
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
