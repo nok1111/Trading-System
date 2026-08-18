@@ -801,7 +801,7 @@ class CCXTAdapter(BrokerAdapter):
                 "volume": t.get("quoteVolume", 0),
             })
 
-        movers.sort(key=lambda x: x["change_pct"], reverse=True)
+        movers.sort(key=lambda x: x["price_change_percent"], reverse=True)
         gainers = movers[:limit]
         losers = list(reversed(movers[-limit:]))
         return {"gainers": gainers, "losers": losers}

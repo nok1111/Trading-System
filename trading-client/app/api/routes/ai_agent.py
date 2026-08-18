@@ -512,8 +512,8 @@ def ai_agent_analyze_positions(
             agent.ollama_model = saved_model
     else:
         # No saved model — reset to safe defaults per provider to avoid cross-provider model mismatches
-        if provider == "groq" and agent.groq_model not in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
-            agent.groq_model = "llama-3.1-8b-instant"
+        if provider == "groq" and agent.groq_model not in ("openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
+            agent.groq_model = "openai/gpt-oss-120b"
         elif provider == "gemini" and not agent.gemini_model.startswith("gemini"):
             agent.gemini_model = "gemini-2.0-flash"
         elif provider in PREMIUM_PROVIDERS and user_keys.get("premium_model"):
@@ -615,7 +615,7 @@ def ai_agent_test_key(
     if not gemini_key:
         gemini_key = getattr(settings, "GEMINI_API_KEY", None)
 
-    model = req.model or getattr(settings, "AI_MODEL", "")
+    model = req.model or getattr(settings, "GROQ_MODEL", "") or getattr(settings, "AI_MODEL", "")
 
     try:
         if provider == "groq":
@@ -624,7 +624,7 @@ def ai_agent_test_key(
             resp = req_lib.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                json={"model": model or "llama-3.1-8b-instant", "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
+                json={"model": model or "openai/gpt-oss-120b", "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5},
                 timeout=15,
             )
             if resp.status_code == 200:

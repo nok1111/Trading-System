@@ -210,7 +210,7 @@ def get_or_create_agent():
             provider = getattr(settings, "AI_PROVIDER", "groq")
             groq_api_key = getattr(settings, "GROQ_API_KEY", None)
             # Don't use AI_MODEL for groq_model — it might be a Gemini model name
-            groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+            groq_model = getattr(settings, "GROQ_MODEL", "openai/gpt-oss-120b")
             gemini_api_key = getattr(settings, "GEMINI_API_KEY", None)
             gemini_model = getattr(settings, "AI_MODEL", "gemini-flash-latest")
             ollama_url = getattr(settings, "OLLAMA_URL", "http://localhost:11434")

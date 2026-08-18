@@ -60,10 +60,14 @@ class Settings(BaseSettings):
     # AI Provider
     AI_PROVIDER: Literal["groq", "ollama", "gemini"] = "groq"
     GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     GEMINI_API_KEY: str | None = None
     AI_MODEL: str = "llama-3.3-70b-versatile"
     OLLAMA_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:14b"
+    OMNIROUTE_URL: str = "http://localhost:20128/v1"
+    OMNIROUTE_API_KEY: str | None = None
+    OMNIROUTE_MODEL: str = "auto"
     AI_INTERVAL_SECONDS: int = Field(default=30, ge=10)
     AI_AUTO_TRADE: bool = True
     AI_ALLOCATED_CAPITAL: float = 0.0
