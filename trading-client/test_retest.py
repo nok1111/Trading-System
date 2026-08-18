@@ -2,7 +2,7 @@
 import time, json, requests
 
 BASE = "http://localhost:8080"
-TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzg3MTgwNjgwfQ.GSNQNqzoO5hZ2nWSahOU0IG3eZH74dCNoWO1As8g48k"
+TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzg3MTgxMDUxfQ.jHIHgjPJ_6yNkpSzqSM8eZ8jILhuaSIcIp6DRPTYmEI"
 H = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
 bugs = []
