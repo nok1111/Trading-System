@@ -483,10 +483,14 @@ def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
     Accepts both absolute values (stop_loss=1836.80) and percentages
     (stop_loss_pct=3.0). When a percentage is given, the absolute value
     is calculated from the position's entry price.
+
+    Can find position by position_id OR by symbol (first open match).
     """
     position_id = params.get("position_id")
-    if not position_id:
-        return {"status": "error", "reason": "Falta position_id"}
+    symbol = (params.get("symbol") or "").upper().replace("/", "").replace("-", "").replace("_", "")
+
+    if not position_id and not symbol:
+        return {"status": "error", "reason": "Falta position_id o symbol"}
 
     # Accept both absolute (stop_loss=1836.80) and percentage (stop_loss_pct=3.0)
     pct_key = f"{field}_pct"  # stop_loss_pct | take_profit_pct
@@ -496,21 +500,37 @@ def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
     if value is None and pct_value is None:
         return {"status": "error", "reason": f"Falta {field} o {pct_key}"}
 
-    try:
-        position_id = int(position_id)
-    except (TypeError, ValueError):
-        return {"status": "error", "reason": "position_id invalido"}
-
     from app.database.models.position import Position
     db = SessionLocal()
     try:
-        pos = db.query(Position).filter(
-            Position.id == position_id,
-            Position.user_id == user.id,
-            Position.status == "open",
-        ).first()
+        # Find position by ID first, then by symbol
+        pos = None
+        if position_id:
+            try:
+                pid = int(position_id)
+                pos = db.query(Position).filter(
+                    Position.id == pid,
+                    Position.user_id == user.id,
+                    Position.status == "open",
+                ).first()
+            except (TypeError, ValueError):
+                pass
+
+        if not pos and symbol:
+            pos = db.query(Position).filter(
+                Position.user_id == user.id,
+                Position.status == "open",
+            ).filter(Position.symbol.ilike(f"%{symbol}%")).first()
+
         if not pos:
-            return {"status": "error", "reason": "Posicion no encontrada"}
+            # Check if there are any positions at all for this symbol
+            if symbol:
+                any_pos = db.query(Position).filter(
+                    Position.user_id == user.id,
+                ).filter(Position.symbol.ilike(f"%{symbol}%")).first()
+                if any_pos:
+                    return {"status": "error", "reason": f"Posicion {symbol} encontrada pero no esta abierta (estado: {any_pos.status})"}
+            return {"status": "error", "reason": "Posicion no encontrada en la base de datos local. Las posiciones spot del broker no soportan SL/TP directo."}
 
         # Calculate absolute value from percentage if needed
         if value is not None:

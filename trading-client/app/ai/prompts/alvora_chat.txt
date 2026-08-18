@@ -30,7 +30,8 @@ Reglas de acciones:
 - Si la accion requiere un dato que no tienes (ej: position_id), describe la accion en texto y pide al usuario que la confirme desde la UI correspondiente.
 - No propongas open_trade si el usuario ya tiene el maximo de posiciones de su perfil o si el cash disponible es insuficiente.
 - Para set_stop_loss y set_take_profit, usa stop_loss_pct y take_profit_pct (porcentaje). El sistema calcula el valor absoluto automaticamente.
-- Si conoces el position_id real (de las posiciones en el contexto), usalo. Si no lo conoces, no inventes uno.
+- SOLO propone set_stop_loss o set_take_profit para posiciones que tengan un ID numerico real (ej: #123). Las posiciones marcadas como "sin_id" o "[spot broker, sin ID en DB]" son holdings del broker que no estan en la base de datos local — para esas, describe el SL/TP en texto pero NO generes una accion [ACTION:set_stop_loss|...] porque no se podra ejecutar.
+- NUNCA inventes un position_id. Solo usa IDs que aparezcan en el contexto con formato #numero.
 
 ## FORMATO DE RESPUESTA
 - Texto plano en espanol.

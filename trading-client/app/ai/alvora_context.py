@@ -217,7 +217,7 @@ def _get_broker_positions(db, user_id: int) -> list[dict]:
                     qty = _safe_float(pos.quantity)
                     pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
                     all_positions.append({
-                        "id": 0,  # broker positions don't have DB id
+                        "id": None,  # broker positions don't have DB id
                         "symbol": pos.symbol,
                         "side": pos.side,
                         "broker_id": acct.broker_id,
@@ -231,6 +231,7 @@ def _get_broker_positions(db, user_id: int) -> list[dict]:
                         "auto_sell_enabled": True,
                         "strategy": pos.strategy_name,
                         "opened_at": "",
+                        "source": "broker",  # not in DB — can't set SL/TP directly
                     })
             except Exception as exc:
                 logger.warning("Alvora context: broker positions for %s failed: %s", acct.broker_id, exc)
@@ -435,11 +436,13 @@ def build_alvora_context(user_id: int) -> str:
             sl = f"SL={p['stop_loss']:.2f}" if p["stop_loss"] else "SL=none"
             tp = f"TP={p['take_profit']:.2f}" if p["take_profit"] else "TP=none"
             pnl_sign = "+" if p["unrealized_pnl"] >= 0 else ""
+            pos_id = p["id"] if p["id"] else "sin_id"
+            source_tag = " [spot broker, sin ID en DB]" if not p["id"] else ""
             lines.append(
-                f"  - #{p['id']} {p['symbol']} {p['side']} qty={p['quantity']:.6f} "
+                f"  - #{pos_id} {p['symbol']} {p['side']} qty={p['quantity']:.6f} "
                 f"entry={p['entry_price']:.4f} current={p['current_price']:.4f} "
                 f"P&L={pnl_sign}{_fmt_usd(p['unrealized_pnl'])} ({p['pnl_pct']:+.1f}%) {sl} {tp} "
-                f"auto_sell={'si' if p['auto_sell_enabled'] else 'no'} [{p['broker_id']}]"
+                f"auto_sell={'si' if p['auto_sell_enabled'] else 'no'} [{p['broker_id']}]{source_tag}"
             )
         if len(positions) > 15:
             lines.append(f"  ... y {len(positions) - 15} mas")
