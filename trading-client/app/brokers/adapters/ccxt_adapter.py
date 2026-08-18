@@ -797,7 +797,7 @@ class CCXTAdapter(BrokerAdapter):
             movers.append({
                 "symbol": sym,
                 "price": t.get("last", 0),
-                "change_pct": pct,
+                "price_change_percent": pct,
                 "volume": t.get("quoteVolume", 0),
             })
 

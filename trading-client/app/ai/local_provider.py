@@ -164,9 +164,9 @@ class LocalAIProvider(AIProvider):
         Usa la misma cadena de fallback que ask() pero sin response_format json.
         """
         start = time.monotonic()
-        timeout = 60.0
-        fallback_timeout = 45.0
-        ollama_timeout = 45.0
+        timeout = 45.0
+        fallback_timeout = 15.0
+        ollama_timeout = 10.0
 
         if self._provider == "groq":
             result = self._chat_groq(system_prompt, messages, max_tokens, temperature, timeout)
