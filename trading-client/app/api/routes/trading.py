@@ -860,6 +860,9 @@ def set_sl_tp(
         except Exception as exc:
             logger.warning("Broker OCO placement failed: %s", exc)
 
+        # Notify WS subscribers (even for broker-managed positions)
+        _notify_position_update(current_user.id)
+
         return {
             "status": "executed",
             "symbol": symbol,

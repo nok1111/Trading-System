@@ -2,7 +2,7 @@
 import time, json, requests, threading, asyncio
 
 BASE = "http://localhost:8080"
-TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzg3MTkzNDU3fQ.d29OGBh-vXvqlycsjXX_I7jWXGPiCajBLl8ycHW-Gks"
+TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzg3MTk0NzA4fQ.AwJ-ju0zAvnkWY7FXPPhWAyDUMOM6k4_Ldosmw6mX7A"
 H = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 bugs = []
 
