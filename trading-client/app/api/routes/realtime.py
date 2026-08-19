@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -23,20 +24,21 @@ POSITIONS_INTERVAL = 5
 ORDERS_INTERVAL = 10
 DB_POSITIONS_INTERVAL = 3
 
-# In-process pub/sub for DB position updates
-_position_subscribers: dict[int, list[asyncio.Queue]] = {}
+# In-process pub/sub for DB position updates (thread-safe)
+_position_subscribers: dict[int, list[threading.Event]] = {}
+_subscribers_lock = threading.Lock()
 
 
 def notify_position_update(user_id: int):
     """Push a position update notification to all WS subscribers for this user.
 
     Called from trading.py when positions change (close, SL/TP, auto-sell).
+    Thread-safe: can be called from sync endpoints.
     """
-    for queue in _position_subscribers.get(user_id, []):
-        try:
-            queue.put_nowait(True)
-        except asyncio.QueueFull:
-            pass
+    with _subscribers_lock:
+        subscribers = list(_position_subscribers.get(user_id, []))
+    for event in subscribers:
+        event.set()
 
 
 async def _validate_ws_token(websocket: WebSocket, token: str) -> bool:
@@ -248,21 +250,20 @@ async def ws_db_positions(websocket: WebSocket, token: str = Query(...)):
     license_info = validate_license(token)
     user_id = license_info.get("user_id", 0) if license_info else 0
 
-    # Register for push notifications
-    notify_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
-    _position_subscribers.setdefault(user_id, []).append(notify_queue)
+    # Register for push notifications (thread-safe Event)
+    notify_event = threading.Event()
+    with _subscribers_lock:
+        _position_subscribers.setdefault(user_id, []).append(notify_event)
 
     last_hash = None
 
     try:
         while True:
             try:
-                # Check for push notification (instant update)
-                try:
-                    await asyncio.wait_for(notify_queue.get(), timeout=0.1)
-                    push_notify = True
-                except asyncio.TimeoutError:
-                    push_notify = False
+                # Check for push notification (instant update, thread-safe)
+                push_notify = notify_event.is_set()
+                if push_notify:
+                    notify_event.clear()
 
                 # Fetch DB positions
                 from app.database.session import SessionLocal
@@ -319,8 +320,9 @@ async def ws_db_positions(websocket: WebSocket, token: str = Query(...)):
         logger.debug("WS db-positions disconnected: %s", exc)
     finally:
         # Unregister subscriber
-        if user_id in _position_subscribers:
-            try:
-                _position_subscribers[user_id].remove(notify_queue)
-            except ValueError:
-                pass
+        with _subscribers_lock:
+            if user_id in _position_subscribers:
+                try:
+                    _position_subscribers[user_id].remove(notify_event)
+                except ValueError:
+                    pass

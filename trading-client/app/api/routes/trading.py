@@ -618,7 +618,12 @@ def close_broker_position(
             creds = resolve_broker_credentials(broker_id, current_user=current_user)
             if creds:
                 adapter = get_adapter(broker_id, creds)
-                positions = adapter.get_positions()
+                # Try get_open_positions (BinanceAdapter) or get_positions (CCXT)
+                positions = []
+                if hasattr(adapter, "get_open_positions"):
+                    positions = adapter.get_open_positions()
+                elif hasattr(adapter, "get_positions"):
+                    positions = adapter.get_positions()
                 for p in positions:
                     psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
                     if psym == symbol:
@@ -780,7 +785,11 @@ def set_sl_tp(
                 creds = resolve_broker_credentials(broker_id, current_user=current_user)
                 if creds:
                     adapter = get_adapter(broker_id, creds)
-                    positions = adapter.get_positions()
+                    positions = []
+                    if hasattr(adapter, "get_open_positions"):
+                        positions = adapter.get_open_positions()
+                    elif hasattr(adapter, "get_positions"):
+                        positions = adapter.get_positions()
                     for p in positions:
                         psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
                         if psym == symbol:
@@ -835,7 +844,12 @@ def set_sl_tp(
                                 creds = resolve_broker_credentials(broker_id, current_user=current_user)
                                 if creds:
                                     ba = get_adapter(broker_id, creds)
-                                    for p in ba.get_positions():
+                                    ba_positions = []
+                                    if hasattr(ba, "get_open_positions"):
+                                        ba_positions = ba.get_open_positions()
+                                    elif hasattr(ba, "get_positions"):
+                                        ba_positions = ba.get_positions()
+                                    for p in ba_positions:
                                         psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
                                         if psym == symbol:
                                             qty = float(p.quantity)
