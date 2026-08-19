@@ -523,13 +523,34 @@ def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
             ).filter(Position.symbol.ilike(f"%{symbol}%")).first()
 
         if not pos:
-            # Check if there are any positions at all for this symbol
+            # No DB position found — try broker-managed position via new endpoint
             if symbol:
-                any_pos = db.query(Position).filter(
-                    Position.user_id == user.id,
-                ).filter(Position.symbol.ilike(f"%{symbol}%")).first()
-                if any_pos:
-                    return {"status": "error", "reason": f"Posicion {symbol} encontrada pero no esta abierta (estado: {any_pos.status})"}
+                db.close()
+                from app.api.routes.trading import set_sl_tp, SetSlTpRequest
+                req = SetSlTpRequest(
+                    symbol=symbol,
+                    stop_loss=float(value) if value is not None else None,
+                    take_profit=float(value) if value is not None else None,
+                    stop_loss_pct=float(pct_value) if pct_value is not None else None,
+                    take_profit_pct=float(pct_value) if pct_value is not None else None,
+                )
+                # Map field to correct request field
+                if field == "stop_loss":
+                    req = SetSlTpRequest(
+                        symbol=symbol,
+                        stop_loss=float(value) if value is not None else None,
+                        stop_loss_pct=float(pct_value) if pct_value is not None else None,
+                    )
+                else:
+                    req = SetSlTpRequest(
+                        symbol=symbol,
+                        take_profit=float(value) if value is not None else None,
+                        take_profit_pct=float(pct_value) if pct_value is not None else None,
+                    )
+                try:
+                    return set_sl_tp(req, user)
+                except Exception as exc:
+                    return {"status": "error", "reason": f"No se pudo setear {field} en broker: {exc}"}
             return {"status": "error", "reason": "Posicion no encontrada en la base de datos local. Las posiciones spot del broker no soportan SL/TP directo."}
 
         # Calculate absolute value from percentage if needed
