@@ -1885,12 +1885,64 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
       }
     }
 
-    if (freeBal <= 0) {
+    if (freeBal <= 0 && lockedBal <= 0) {
       toast(`Sin saldo libre de ${baseAsset} para vender`, false);
       return;
     }
 
+    // If free balance is less than position quantity, try to cancel OCO orders to release it
+    if (freeBal < quantity && lockedBal > 0) {
+      // Check if position has an OCO order and cancel it to free the balance
+      const pos = livePositions.find((p: any) => p.id === positionId);
+      const ocoId = pos?.metadata_json?.oco_order_id;
+      if (ocoId) {
+        if (!confirm(`Hay ${lockedBal} ${baseAsset} bloqueado(s) en una orden OCO (SL/TP).\n\n¿Cancelar la orden OCO y cerrar la posición completa de ${quantity} ${baseAsset}?`)) return;
+        try {
+          await brokerApi.cancelOrder(brokerId, { broker_order_id: ocoId, symbol });
+          await api(`/api/intelligence/positions/${positionId}/clear-oco`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ oco_order_id: ocoId }),
+          }).catch(() => {});
+          // Wait for balance to be released
+          await new Promise(r => setTimeout(r, 2000));
+          // Re-fetch balance
+          try {
+            const refetched = await brokerApi.getBalance(brokerId);
+            const refetchedAsset = refetched?.assets?.find((a: any) => a.asset === baseAsset);
+            freeBal = refetchedAsset?.free || 0;
+          } catch {}
+        } catch (e: any) {
+          toast(`Error al cancelar OCO: ${e?.message || e}`, false);
+          return;
+        }
+      } else {
+        // No OCO but balance is locked — cancel all open orders for this symbol
+        if (!confirm(`Hay ${lockedBal} ${baseAsset} bloqueado(s) en órdenes pendientes.\n\n¿Cancelar las órdenes y cerrar la posición de ${quantity} ${baseAsset}?`)) return;
+        try {
+          const ordersResp = await brokerApi.getOrders(brokerId, { symbol, status: "open" });
+          const activeOrders = ordersResp.active || [];
+          for (const o of activeOrders) {
+            await brokerApi.cancelOrder(brokerId, { broker_order_id: o.orderId, client_order_id: o.clientOrderId, symbol });
+          }
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+            const refetched = await brokerApi.getBalance(brokerId);
+            const refetchedAsset = refetched?.assets?.find((a: any) => a.asset === baseAsset);
+            freeBal = refetchedAsset?.free || 0;
+          } catch {}
+        } catch (e: any) {
+          toast(`Error al cancelar órdenes: ${e?.message || e}`, false);
+          return;
+        }
+      }
+    }
+
     const sellQty = Math.min(quantity, freeBal);
+    if (sellQty <= 0) {
+      toast(`Sin saldo libre de ${baseAsset} para vender`, false);
+      return;
+    }
     if (!confirm(`¿Cerrar posición de ${sellQty} ${baseAsset} a precio de mercado?`)) return;
     try {
       const resp = await brokerApi.placeOrder(brokerId, {
