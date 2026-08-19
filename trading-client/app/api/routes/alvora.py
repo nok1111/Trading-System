@@ -464,21 +464,11 @@ def _execute_open_trade(user: LocalUser, params: dict) -> dict:
         take_profit_pct=float(params["take_profit_pct"]) if params.get("take_profit_pct") else None,
         position_size_usd=float(params["position_size_usd"]) if params.get("position_size_usd") else None,
     )
-    # Build a real Starlette Request for the rate limiter
-    from starlette.requests import Request as StarletteRequest
-    from starlette.datastructures import Headers, Client
-    scope = {
-        "type": "http",
-        "method": "POST",
-        "path": "/api/ai-agent/execute",
-        "headers": Headers({"host": "localhost"}).raw,
-        "query_params": {},
-        "client": ("127.0.0.1", 0),
-        "app": None,
-    }
-    fake_request = StarletteRequest(scope)
+    # Call the unwrapped function (bypass rate limiter decorator)
+    # ai_agent_execute.__wrapped__ is the raw function without @limiter.limit
+    raw_fn = getattr(ai_agent_execute, "__wrapped__", ai_agent_execute)
     try:
-        return ai_agent_execute(fake_request, req, user)  # type: ignore[arg-type]
+        return raw_fn(None, req, user)  # type: ignore[arg-type]
     except HTTPException as exc:
         return {"status": "error", "reason": exc.detail}
     except Exception as exc:
