@@ -159,10 +159,12 @@ export function PositionsPage() {
   const handleClosePosition = async (p: any) => {
     const pid = p.id || 0;
     const sym = p.symbol;
+    const qty = Number(p.quantity || 0);
     setClosingIds(prev => new Set([...prev, pid]));
     try {
       const body: any = { symbol: sym, broker_id: p.broker_id || "binance" };
       if (pid > 0) body.position_id = pid;
+      if (qty > 0) body.quantity = qty;
       const result = await api<any>("/api/positions/close", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

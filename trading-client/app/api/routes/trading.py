@@ -629,6 +629,16 @@ def close_broker_position(
                     if psym == symbol:
                         qty = float(p.quantity)
                         break
+
+                # For Binance spot: positions may be in account balances, not open positions
+                if not qty and hasattr(adapter, "get_account_balances"):
+                    # Extract asset from symbol (BTCUSDT -> BTC)
+                    asset = symbol.replace("USDT", "").replace("USDC", "").replace("BUSD", "")
+                    balances = adapter.get_account_balances()
+                    for b in balances:
+                        if b.asset.upper() == asset.upper() and float(b.free) > 0:
+                            qty = float(b.free)
+                            break
         except Exception as exc:
             return {"status": "error", "reason": f"No se pudo obtener cantidad: {exc}"}
 
