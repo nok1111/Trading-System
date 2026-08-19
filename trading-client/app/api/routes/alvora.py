@@ -336,10 +336,45 @@ def execute_action(
 
 
 def _execute_close_position(user: LocalUser, params: dict) -> dict:
-    """Close an open position at current market price."""
+    """Close an open position at current market price.
+
+    Can close DB-managed positions (by position_id) or broker-managed
+    spot positions (by symbol only, delegates to /api/positions/close).
+    """
     position_id = params.get("position_id")
+    symbol = (params.get("symbol") or "").upper().replace("/", "").replace("-", "").replace("_", "")
+
+    # If no position_id, try broker-managed close via trading endpoint
     if not position_id:
-        return {"status": "error", "reason": "Falta position_id"}
+        if not symbol:
+            return {"status": "error", "reason": "Falta position_id o symbol"}
+        db = SessionLocal()
+        try:
+            # Check if there's a DB position for this symbol first
+            from app.database.models.position import Position
+            pos = db.query(Position).filter(
+                Position.user_id == user.id,
+                Position.status == "open",
+            ).filter(Position.symbol.ilike(f"%{symbol}%")).first()
+            if pos:
+                position_id = pos.id
+            db.close()
+        except Exception:
+            db.close()
+
+        if not position_id:
+            # No DB position — delegate to broker-managed close endpoint
+            from app.api.routes.trading import close_broker_position, ClosePositionRequest
+            broker_id = params.get("broker_id", "binance")
+            req = ClosePositionRequest(symbol=symbol, broker_id=broker_id)
+            try:
+                return close_broker_position(req, user)
+            except HTTPException as exc:
+                return {"status": "error", "reason": exc.detail}
+            except Exception as exc:
+                logger.error("Alvora close_position (broker) error: %s", exc)
+                return {"status": "error", "reason": str(exc)}
+
     try:
         position_id = int(position_id)
     except (TypeError, ValueError):
