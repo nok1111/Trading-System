@@ -447,7 +447,6 @@ def _execute_close_position(user: LocalUser, params: dict) -> dict:
 def _execute_open_trade(user: LocalUser, params: dict) -> dict:
     """Open a new trade — delegates to the AI agent execute logic."""
     from app.api.routes.ai_agent import AIExecuteRequest, ai_agent_execute
-    from fastapi import Request as _Req
 
     symbol = (params.get("symbol") or "").upper()
     if not symbol:
@@ -465,11 +464,21 @@ def _execute_open_trade(user: LocalUser, params: dict) -> dict:
         take_profit_pct=float(params["take_profit_pct"]) if params.get("take_profit_pct") else None,
         position_size_usd=float(params["position_size_usd"]) if params.get("position_size_usd") else None,
     )
-    # Build a lightweight Request stub for the rate limiter (which reads .client)
-    class _StubReq:
-        client = "127.0.0.1"
+    # Build a real Starlette Request for the rate limiter
+    from starlette.requests import Request as StarletteRequest
+    from starlette.datastructures import Headers, Client
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/ai-agent/execute",
+        "headers": Headers({"host": "localhost"}).raw,
+        "query_params": {},
+        "client": ("127.0.0.1", 0),
+        "app": None,
+    }
+    fake_request = StarletteRequest(scope)
     try:
-        return ai_agent_execute(_StubReq(), req, user)  # type: ignore[arg-type]
+        return ai_agent_execute(fake_request, req, user)  # type: ignore[arg-type]
     except HTTPException as exc:
         return {"status": "error", "reason": exc.detail}
     except Exception as exc:
