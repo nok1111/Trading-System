@@ -21,6 +21,22 @@ router = APIRouter(prefix="/api/ws", tags=["realtime"])
 # Poll intervals (seconds)
 POSITIONS_INTERVAL = 5
 ORDERS_INTERVAL = 10
+DB_POSITIONS_INTERVAL = 3
+
+# In-process pub/sub for DB position updates
+_position_subscribers: dict[int, list[asyncio.Queue]] = {}
+
+
+def notify_position_update(user_id: int):
+    """Push a position update notification to all WS subscribers for this user.
+
+    Called from trading.py when positions change (close, SL/TP, auto-sell).
+    """
+    for queue in _position_subscribers.get(user_id, []):
+        try:
+            queue.put_nowait(True)
+        except asyncio.QueueFull:
+            pass
 
 
 async def _validate_ws_token(websocket: WebSocket, token: str) -> bool:
@@ -184,3 +200,127 @@ async def ws_orders(websocket: WebSocket, broker_id: str, token: str = Query(...
         pass
     except Exception as exc:
         logger.debug("WS orders disconnected: %s", exc)
+
+
+def _serialize_db_positions(positions: list) -> list[dict]:
+    """Serialize DB Position ORM objects to dicts for WS."""
+    result = []
+    for p in positions:
+        result.append({
+            "id": p.id,
+            "symbol": p.symbol,
+            "side": p.side,
+            "quantity": str(p.quantity) if p.quantity else "0",
+            "entry_price": str(p.entry_price) if p.entry_price else None,
+            "current_price": str(p.current_price) if p.current_price else None,
+            "stop_loss": str(p.stop_loss) if p.stop_loss else None,
+            "take_profit": str(p.take_profit) if p.take_profit else None,
+            "unrealized_pnl": str(p.unrealized_pnl) if p.unrealized_pnl else None,
+            "realized_pnl": str(p.realized_pnl) if p.realized_pnl else None,
+            "status": p.status,
+            "auto_sell_enabled": p.auto_sell_enabled,
+            "broker_id": getattr(p, "broker_id", None),
+            "opened_at": p.opened_at.isoformat() if p.opened_at else None,
+            "closed_at": p.closed_at.isoformat() if p.closed_at else None,
+            "strategy_name": p.strategy_name,
+            "metadata_json": p.metadata_json if isinstance(p.metadata_json, dict) else {},
+        })
+    return result
+
+
+@router.websocket("/db-positions")
+async def ws_db_positions(websocket: WebSocket, token: str = Query(...)):
+    """WebSocket that pushes DB position updates in real-time.
+
+    Combines periodic polling (every 3s) with instant push notifications
+    when positions change (close, SL/TP, auto-sell toggle).
+
+    Messages:
+    - {"type": "snapshot", "positions": [...]}
+    - {"type": "update", "positions": [...], "changed": true|false}
+    - {"type": "closed", "position_id": 123, "positions": [...]}
+    """
+    if not await _validate_ws_token(websocket, token):
+        return
+
+    await websocket.accept()
+
+    license_info = validate_license(token)
+    user_id = license_info.get("user_id", 0) if license_info else 0
+
+    # Register for push notifications
+    notify_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+    _position_subscribers.setdefault(user_id, []).append(notify_queue)
+
+    last_hash = None
+
+    try:
+        while True:
+            try:
+                # Check for push notification (instant update)
+                try:
+                    await asyncio.wait_for(notify_queue.get(), timeout=0.1)
+                    push_notify = True
+                except asyncio.TimeoutError:
+                    push_notify = False
+
+                # Fetch DB positions
+                from app.database.session import SessionLocal
+                from app.database.models.position import Position
+
+                db = SessionLocal()
+                try:
+                    positions = db.query(Position).filter(
+                        Position.user_id == user_id,
+                    ).order_by(Position.id.desc()).limit(100).all()
+                    positions_data = _serialize_db_positions(positions)
+                finally:
+                    db.close()
+
+                # Detect changes
+                current_hash = hash(tuple(
+                    (p["id"], p["status"], str(p.get("stop_loss")), str(p.get("take_profit")),
+                     str(p.get("unrealized_pnl")), p.get("auto_sell_enabled"))
+                    for p in positions_data
+                ))
+                changed = current_hash != last_hash
+                msg_type = "snapshot" if last_hash is None else "update"
+                last_hash = current_hash
+
+                # Send update if changed or push notification
+                if changed or push_notify:
+                    # Detect closed positions
+                    closed_ids = []
+                    if push_notify:
+                        for p in positions_data:
+                            if p["status"] == "closed" and p.get("closed_at"):
+                                closed_ids.append(p["id"])
+
+                    msg = {
+                        "type": msg_type,
+                        "positions": positions_data,
+                        "changed": changed,
+                    }
+                    if closed_ids:
+                        msg["closed_ids"] = closed_ids
+                    await websocket.send_json(msg)
+
+            except WebSocketDisconnect:
+                break
+            except Exception as exc:
+                logger.debug("WS db-positions error: %s", exc)
+                await websocket.send_json({"type": "error", "message": "Error fetching positions"})
+
+            await asyncio.sleep(DB_POSITIONS_INTERVAL)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.debug("WS db-positions disconnected: %s", exc)
+    finally:
+        # Unregister subscriber
+        if user_id in _position_subscribers:
+            try:
+                _position_subscribers[user_id].remove(notify_queue)
+            except ValueError:
+                pass

@@ -4,6 +4,7 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.api.schemas import (
     AccountSnapshotOut,
     BacktestRunOut,
@@ -32,6 +34,7 @@ from app.database.models import (
 from app.database.session import SessionLocal
 from app.services.auth import LocalUser, get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["trading"])
 
 
@@ -558,7 +561,314 @@ def toggle_auto_sell(
         raise HTTPException(status_code=404, detail="Position not found")
     pos.auto_sell_enabled = enabled
     db.commit()
+    _notify_position_update(current_user.id)
     return {"id": pos.id, "auto_sell_enabled": pos.auto_sell_enabled}
+
+
+class ClosePositionRequest(BaseModel):
+    symbol: str
+    broker_id: str | None = None
+    quantity: float | None = None
+    position_id: int | None = None
+
+
+@router.post("/positions/close")
+def close_broker_position(
+    req: ClosePositionRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Close a broker-managed position at market price.
+
+    Works for both DB positions (with position_id) and broker-managed
+    positions (id=0, live holdings). Places a market SELL order via the
+    broker adapter.
+    """
+    from app.api.helpers import get_shared_broker, resolve_binancekeys, resolve_broker_credentials
+    from app.brokers.registry import get_adapter
+    from app.brokers.models import OrderRequest, OrderSide, OrderType
+    from decimal import Decimal as Dec
+
+    symbol = req.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+    broker_id = req.broker_id or "binance"
+
+    # If we have a DB position_id, close it in DB too
+    db = SessionLocal()
+    db_pos = None
+    try:
+        if req.position_id and req.position_id > 0:
+            db_pos = db.query(Position).filter(
+                Position.id == req.position_id,
+                Position.user_id == current_user.id,
+                Position.status == "open",
+            ).first()
+            if db_pos:
+                symbol = db_pos.symbol.replace("/", "").replace("-", "").replace("_", "")
+                qty = req.quantity or float(db_pos.quantity)
+            else:
+                return {"status": "error", "reason": "Position not found in DB"}
+        else:
+            qty = req.quantity
+    finally:
+        if not db_pos:
+            db.close()
+
+    # Get quantity from broker if not provided
+    if not qty:
+        try:
+            creds = resolve_broker_credentials(broker_id, current_user=current_user)
+            if creds:
+                adapter = get_adapter(broker_id, creds)
+                positions = adapter.get_positions()
+                for p in positions:
+                    psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
+                    if psym == symbol:
+                        qty = float(p.quantity)
+                        break
+        except Exception as exc:
+            return {"status": "error", "reason": f"No se pudo obtener cantidad: {exc}"}
+
+    if not qty or qty <= 0:
+        return {"status": "error", "reason": "Cantidad no disponible o invalida"}
+
+    # Place market SELL order via broker
+    try:
+        if broker_id == "binance":
+            keys = resolve_binancekeys(current_user)
+            if not keys:
+                return {"status": "error", "reason": "No hay credenciales de Binance"}
+            broker = get_shared_broker(keys)
+            if hasattr(broker, "sell"):
+                result = broker.sell(symbol, float(qty))
+            elif hasattr(broker, "place_order"):
+                order_req = OrderRequest(
+                    symbol=symbol,
+                    side=OrderSide.SELL,
+                    order_type=OrderType.MARKET,
+                    quantity=Dec(str(qty)),
+                )
+                adapter = broker
+                if not hasattr(adapter, "place_order"):
+                    from app.brokers.adapters.binance_adapter import BinanceAdapter
+                    adapter = BinanceAdapter(broker)
+                result = adapter.place_order(order_req)
+            else:
+                return {"status": "error", "reason": "Broker no soporta sell"}
+        else:
+            creds = resolve_broker_credentials(broker_id, current_user=current_user)
+            if not creds:
+                return {"status": "error", "reason": f"No hay credenciales para {broker_id}"}
+            adapter = get_adapter(broker_id, creds)
+            order_req = OrderRequest(
+                symbol=symbol,
+                side=OrderSide.SELL,
+                order_type=OrderType.MARKET,
+                quantity=Dec(str(qty)),
+            )
+            result = adapter.place_order(order_req)
+
+        # Update DB position if exists
+        if db_pos:
+            try:
+                sell_price = 0.0
+                if hasattr(result, "order") and result.order:
+                    sell_price = float(result.order.avg_price or result.order.price or 0)
+                if not sell_price:
+                    from app.services.market_data_service import get_market_data_service
+                    mds = get_market_data_service()
+                    ticker = mds.get_ticker(symbol)
+                    sell_price = float(ticker.price) if ticker else 0.0
+
+                entry = float(db_pos.entry_price)
+                realized_pnl = (sell_price - entry) * qty if db_pos.side == "long" else (entry - sell_price) * qty
+                db_pos.status = "closed"
+                db_pos.closed_at = datetime.now(tz=UTC)
+                db_pos.current_price = Dec(str(sell_price))
+                db_pos.realized_pnl = Dec(str(round(realized_pnl, 8)))
+                meta = db_pos.metadata_json or {}
+                meta["closed_by"] = "manual_sell"
+                meta["broker_order"] = True
+                db_pos.metadata_json = meta
+
+                from app.database.models.trade import Trade
+                trade = Trade(
+                    user_id=current_user.id,
+                    timestamp=datetime.now(tz=UTC),
+                    symbol=db_pos.symbol,
+                    side="SELL",
+                    quantity=Dec(str(qty)),
+                    price=Dec(str(sell_price)),
+                    commission=Dec("0"),
+                    slippage=Dec("0"),
+                    realized_pnl=Dec(str(realized_pnl)),
+                    strategy_name=db_pos.strategy_name,
+                    position_id=db_pos.id,
+                    broker_id=broker_id,
+                    metadata_json={"source": "manual_sell"},
+                )
+                db.add(trade)
+                db.commit()
+                _notify_position_update(current_user.id)
+            except Exception as exc:
+                db.rollback()
+                logger.warning("DB position update failed: %s", exc)
+            finally:
+                db.close()
+
+        return {
+            "status": "executed",
+            "symbol": symbol,
+            "quantity": qty,
+            "broker_id": broker_id,
+            "result": str(result) if result else "OK",
+        }
+    except Exception as exc:
+        if db_pos:
+            db.rollback()
+            db.close()
+        logger.error("Close position error: %s", exc)
+        return {"status": "error", "reason": str(exc)}
+
+
+class SetSlTpRequest(BaseModel):
+    position_id: int | None = None
+    symbol: str
+    broker_id: str | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    stop_loss_pct: float | None = None
+    take_profit_pct: float | None = None
+
+
+@router.post("/positions/set-sl-tp")
+def set_sl_tp(
+    req: SetSlTpRequest,
+    current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+) -> dict:
+    """Set stop-loss and/or take-profit on a position.
+
+    For DB positions: updates the DB record and places OCO on broker if live.
+    For broker-managed positions (id=0): places OCO order directly on broker.
+
+    Accepts both absolute values (stop_loss=1836.80) and percentages
+    (stop_loss_pct=3.0).
+    """
+    from app.api.helpers import resolve_binancekeys, resolve_broker_credentials
+    from app.brokers.registry import get_adapter
+    from decimal import Decimal as Dec
+
+    symbol = req.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+    broker_id = req.broker_id or "binance"
+
+    db = SessionLocal()
+    try:
+        # Find DB position
+        db_pos = None
+        if req.position_id and req.position_id > 0:
+            db_pos = db.query(Position).filter(
+                Position.id == req.position_id,
+                Position.user_id == current_user.id,
+                Position.status == "open",
+            ).first()
+
+        # Calculate absolute values from percentage if needed
+        entry_price = 0.0
+        if db_pos:
+            entry_price = float(db_pos.entry_price)
+        else:
+            # Get entry from broker position
+            try:
+                creds = resolve_broker_credentials(broker_id, current_user=current_user)
+                if creds:
+                    adapter = get_adapter(broker_id, creds)
+                    positions = adapter.get_positions()
+                    for p in positions:
+                        psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
+                        if psym == symbol:
+                            entry_price = float(p.entry_price or 0)
+                            break
+            except Exception:
+                pass
+
+        if entry_price <= 0:
+            # Get current market price as fallback
+            try:
+                from app.services.market_data_service import get_market_data_service
+                mds = get_market_data_service()
+                ticker = mds.get_ticker(symbol)
+                entry_price = float(ticker.price) if ticker else 0.0
+            except Exception:
+                pass
+
+        sl = req.stop_loss
+        tp = req.take_profit
+        if sl is None and req.stop_loss_pct is not None and entry_price > 0:
+            sl = round(entry_price * (1 - req.stop_loss_pct / 100), 8)
+        if tp is None and req.take_profit_pct is not None and entry_price > 0:
+            tp = round(entry_price * (1 + req.take_profit_pct / 100), 8)
+
+        # Update DB position if exists
+        if db_pos:
+            if sl is not None:
+                db_pos.stop_loss = Dec(str(sl))
+            if tp is not None:
+                db_pos.take_profit = Dec(str(tp))
+            db.commit()
+            _notify_position_update(current_user.id)
+
+        # Place OCO on broker if live trading
+        broker_placed = False
+        try:
+            settings = get_settings()
+            if settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED:
+                if broker_id == "binance":
+                    keys = resolve_binancekeys(current_user)
+                    if keys:
+                        from app.api.helpers import get_shared_broker
+                        broker = get_shared_broker(keys)
+                        adapter = broker
+                        if not hasattr(adapter, "place_oco_order"):
+                            from app.brokers.adapters.binance_adapter import BinanceAdapter
+                            adapter = BinanceAdapter(broker)
+                        if hasattr(adapter, "place_oco_order") and sl and tp:
+                            qty = float(db_pos.quantity) if db_pos else 0
+                            if not qty:
+                                creds = resolve_broker_credentials(broker_id, current_user=current_user)
+                                if creds:
+                                    ba = get_adapter(broker_id, creds)
+                                    for p in ba.get_positions():
+                                        psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
+                                        if psym == symbol:
+                                            qty = float(p.quantity)
+                                            break
+                            if qty > 0:
+                                adapter.place_oco_order(symbol, qty, Dec(str(sl)), Dec(str(tp)))
+                                broker_placed = True
+        except Exception as exc:
+            logger.warning("Broker OCO placement failed: %s", exc)
+
+        return {
+            "status": "executed",
+            "symbol": symbol,
+            "stop_loss": sl,
+            "take_profit": tp,
+            "broker_oco": broker_placed,
+            "position_id": db_pos.id if db_pos else None,
+        }
+    except Exception as exc:
+        db.rollback()
+        logger.error("Set SL/TP error: %s", exc)
+        return {"status": "error", "reason": str(exc)}
+    finally:
+        db.close()
+
+
+def _notify_position_update(user_id: int):
+    """Notify WebSocket subscribers that positions changed."""
+    try:
+        from app.api.routes.realtime import notify_position_update
+        notify_position_update(user_id)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

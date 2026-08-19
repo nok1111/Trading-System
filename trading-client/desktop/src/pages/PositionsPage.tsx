@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "../lib/api";
 import { useLivePrices } from "../hooks/useLivePrices";
+import { useDbPositions } from "../hooks/useDbPositions";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -16,7 +17,6 @@ import { toast } from "../components/ui/Toast";
 
 export function PositionsPage() {
   const { t } = useI18n();
-  const [positions, setPositions] = useState<any[]>([]);
   const [riskEvents, setRiskEvents] = useState<any[]>([]);
   const [filter, setFilter] = useState("");
   const priceHistoryRef = useRef<Record<string, number[]>>({});
@@ -26,9 +26,75 @@ export function PositionsPage() {
   const [paperInterval, setPaperInterval] = useState("30");
   const [activeTab, setActiveTab] = useState<"live" | "paper">("live");
   const [paperPositions, setPaperPositions] = useState<any[]>([]);
+  const [slTpModal, setSlTpModal] = useState<{ symbol: string; positionId: number | null; entry: number } | null>(null);
+  const [slInput, setSlInput] = useState("");
+  const [tpInput, setTpInput] = useState("");
+  const [closingIds, setClosingIds] = useState<Set<number>>(new Set());
 
   // Real-time prices via WebSocket
   const { prices: wsPrices } = useLivePrices([], 5000);
+
+  // Real-time DB positions via WebSocket (no polling needed)
+  const { positions: wsDbPositions, closedIds: wsClosedIds } = useDbPositions();
+
+  // Merge WS DB positions with broker-live positions
+  // wsDbPositions are from DB (may include broker positions merged by backend)
+  // We also fetch full positions list periodically for broker-live positions
+  const [brokerPositions, setBrokerPositions] = useState<any[]>([]);
+
+  const loadBrokerPositions = useCallback(async () => {
+    try {
+      const p = await api<any[]>("/api/positions" + (filter ? `?status=${filter}` : ""));
+      setBrokerPositions(p);
+    } catch {}
+  }, [filter]);
+
+  useEffect(() => {
+    loadBrokerPositions();
+    const id = setInterval(loadBrokerPositions, 5000);
+    return () => clearInterval(id);
+  }, [loadBrokerPositions]);
+
+  // Use broker positions as primary (they include both DB and broker-live)
+  // but update with WS DB positions for real-time SL/TP/status changes
+  const positions = brokerPositions.map((bp) => {
+    const wsMatch = wsDbPositions.find((wp) => wp.id === bp.id && bp.id > 0);
+    if (wsMatch) {
+      // Merge: WS data takes priority for SL/TP/status
+      return {
+        ...bp,
+        stop_loss: wsMatch.stop_loss !== null ? wsMatch.stop_loss : bp.stop_loss,
+        take_profit: wsMatch.take_profit !== null ? wsMatch.take_profit : bp.take_profit,
+        status: wsMatch.status || bp.status,
+        auto_sell_enabled: wsMatch.auto_sell_enabled !== null ? wsMatch.auto_sell_enabled : bp.auto_sell_enabled,
+        unrealized_pnl: wsMatch.unrealized_pnl !== null ? wsMatch.unrealized_pnl : bp.unrealized_pnl,
+        current_price: wsMatch.current_price !== null ? wsMatch.current_price : bp.current_price,
+        realized_pnl: wsMatch.realized_pnl !== null ? wsMatch.realized_pnl : bp.realized_pnl,
+        closed_at: wsMatch.closed_at || bp.closed_at,
+      };
+    }
+    return bp;
+  });
+
+  // Show toast when positions are closed
+  useEffect(() => {
+    if (wsClosedIds.length > 0) {
+      for (const pid of wsClosedIds) {
+        if (!lastNotifiedClosedRef.current.has(pid)) {
+          lastNotifiedClosedRef.current.add(pid);
+          const pos = positions.find((p) => p.id === pid);
+          if (pos) {
+            const pnl = Number(pos.realized_pnl || 0);
+            toast(`Posición #${pid} ${pos.symbol} cerrada — P&L: ${pnl >= 0 ? "+" : ""}$${fmt(Math.abs(pnl))}`, pnl >= 0);
+          }
+        }
+      }
+      // Refresh broker positions to get the updated state
+      loadBrokerPositions();
+    }
+  }, [wsClosedIds]);
+
+  const lastNotifiedClosedRef = useRef<Set<number>>(new Set());
 
   // Update price history on WS updates
   useEffect(() => {
@@ -42,16 +108,10 @@ export function PositionsPage() {
 
   const load = useCallback(async () => {
     try {
-      const p = await api<any[]>(
-        "/api/positions" + (filter ? `?status=${filter}` : "")
-      );
-      setPositions(p);
-    } catch {}
-    try {
       const r = await api<any[]>("/api/risk-events");
       setRiskEvents(r);
     } catch {}
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -90,9 +150,69 @@ export function PositionsPage() {
     try {
       await api(`/api/positions/${positionId}/auto-sell?enabled=${enabled}`, { method: "PATCH" });
       toast(`Auto-sell ${enabled ? "activado" : "desactivado"} para posición #${positionId}`, enabled);
-      load();
+      // WS will push the update — no manual reload needed
     } catch (e: any) {
       toast(`Error al cambiar auto-sell: ${e.message}`, false);
+    }
+  };
+
+  const handleClosePosition = async (p: any) => {
+    const pid = p.id || 0;
+    const sym = p.symbol;
+    setClosingIds(prev => new Set([...prev, pid]));
+    try {
+      const body: any = { symbol: sym, broker_id: p.broker_id || "binance" };
+      if (pid > 0) body.position_id = pid;
+      const result = await api<any>("/api/positions/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (result.status === "executed") {
+        toast(`Posición ${sym} cerrada en mercado`, true);
+        // WS will push the update — no manual reload needed
+      } else {
+        toast(`Error al cerrar: ${result.reason || "desconocido"}`, false);
+      }
+    } catch (e: any) {
+      toast(`Error al cerrar posición: ${e.message}`, false);
+    } finally {
+      setClosingIds(prev => { const s = new Set(prev); s.delete(pid); return s; });
+    }
+  };
+
+  const handleSetSlTp = async () => {
+    if (!slTpModal) return;
+    const { symbol, positionId } = slTpModal;
+    try {
+      const body: any = { symbol, broker_id: "binance" };
+      if (positionId && positionId > 0) body.position_id = positionId;
+      if (slInput) {
+        const val = parseFloat(slInput);
+        if (val > 0 && val < 1) body.stop_loss_pct = val;
+        else body.stop_loss = val;
+      }
+      if (tpInput) {
+        const val = parseFloat(tpInput);
+        if (val > 0 && val < 1) body.take_profit_pct = val;
+        else body.take_profit = val;
+      }
+      const result = await api<any>("/api/positions/set-sl-tp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (result.status === "executed") {
+        toast(`SL/TP actualizado para ${symbol}`, true);
+        setSlTpModal(null);
+        setSlInput("");
+        setTpInput("");
+        // WS will push the update — no manual reload needed
+      } else {
+        toast(`Error: ${result.reason || "desconocido"}`, false);
+      }
+    } catch (e: any) {
+      toast(`Error al setear SL/TP: ${e.message}`, false);
     }
   };
 
@@ -626,27 +746,30 @@ export function PositionsPage() {
                     </div>
                   </div>
 
-                  {/* Sell & Auto-Sell toggle */}
+                  {/* Sell, SL/TP & Auto-Sell toggle */}
                   <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex gap-2">
                       <Button
                         variant="danger"
                         size="sm"
                         className="flex-1"
                         title="Vende y cierra la posición inmediatamente al precio de mercado"
-                        onClick={async () => {
-                          try {
-                            await api("/api/paper-trading/sell", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ symbol: p.symbol }),
-                            });
-                            load();
-                          } catch (e) {
-                            console.error("Sell failed:", e);
-                          }
+                        disabled={closingIds.has(p.id || 0)}
+                        onClick={() => handleClosePosition(p)}
+                      >
+                        {closingIds.has(p.id || 0) ? "Cerrando..." : "Sell"}
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="flex-1"
+                        title="Configurar Stop Loss y Take Profit"
+                        onClick={() => {
+                          setSlTpModal({ symbol: p.symbol, positionId: p.id > 0 ? p.id : null, entry });
+                          setSlInput(sl > 0 ? String(sl) : "");
+                          setTpInput(tp > 0 ? String(tp) : "");
                         }}
                       >
-                        Sell
+                        SL/TP
                       </Button>
                       <Button
                         variant={autoSell ? "primary" : "default"}
@@ -814,6 +937,56 @@ export function PositionsPage() {
             Sin posiciones. El AI Agent abrirá posiciones automáticamente.
           </p>
         </Card>
+      )}
+
+      {/* SL/TP Modal */}
+      {slTpModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setSlTpModal(null)}
+        >
+          <div
+            className="bg-[var(--color-surface)] rounded-xl p-6 w-96 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-1">Configurar SL/TP</h3>
+            <p className="text-xs text-[var(--color-text-muted)] mb-4">
+              {slTpModal.symbol} — Entry: ${fmt(slTpModal.entry)}
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] uppercase">Stop Loss</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={slInput}
+                  onChange={(e) => setSlInput(e.target.value)}
+                  placeholder="Valor absoluto (ej: 60000) o % (ej: 0.05 = 5%)"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-[var(--color-surface-2)] text-sm border border-[var(--color-border)] focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] uppercase">Take Profit</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={tpInput}
+                  onChange={(e) => setTpInput(e.target.value)}
+                  placeholder="Valor absoluto (ej: 70000) o % (ej: 0.10 = 10%)"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-[var(--color-surface-2)] text-sm border border-[var(--color-border)] focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="default" size="sm" className="flex-1" onClick={() => setSlTpModal(null)}>
+                  Cancelar
+                </Button>
+                <Button variant="primary" size="sm" className="flex-1" onClick={handleSetSlTp}>
+                  Guardar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
       )}
