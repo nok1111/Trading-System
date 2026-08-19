@@ -223,7 +223,11 @@ class ExecutionEngine:
             self.session.commit()
         except Exception:
             self.session.rollback()
-            # Re-add the order so we at least persist it, then commit
+            # Re-add the signal and order so we at least persist them, then commit
+            # The signal must be re-added first so the FK constraint on orders.signal_id is satisfied
+            self.session.add(signal_db)
+            self.session.flush()  # re-assign signal_db.id
+            filled_order.signal_id = signal_db.id  # re-link to the re-persisted signal
             self.session.add(filled_order)
             self.session.commit()
             logger.error(
@@ -292,6 +296,9 @@ class ExecutionEngine:
             self.session.commit()
         except Exception:
             self.session.rollback()
+            self.session.add(signal_db)
+            self.session.flush()
+            filled_order.signal_id = signal_db.id
             self.session.add(filled_order)
             self.session.commit()
             logger.error(
