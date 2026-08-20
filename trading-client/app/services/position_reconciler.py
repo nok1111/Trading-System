@@ -227,6 +227,11 @@ class PositionReconciler:
             sym = normalize_symbol(p.symbol)
             bpos = broker_map.get(sym)
 
+            # Skip short positions — they are simulated in DB and don't
+            # correspond to actual broker holdings (Binance Spot has no shorts)
+            if p.side == "short":
+                continue
+
             if bpos is None:
                 # Position in DB but NOT in broker → closed externally
                 # Fetch current price for PnL calculation
