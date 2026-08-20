@@ -487,7 +487,11 @@ def _execute_open_trade(user: LocalUser, params: dict) -> dict:
     if not symbol:
         return {"status": "error", "reason": "Falta symbol"}
     action_type = params.get("action_type", "buy").lower()
-    if action_type not in ("buy", "short", "sell"):
+    # "sell" in open_trade context means "short" (opening a short position)
+    # "sell" in close_position context means closing an existing position
+    if action_type == "sell":
+        action_type = "short"
+    if action_type not in ("buy", "short"):
         return {"status": "error", "reason": "action_type invalido"}
 
     req = AIExecuteRequest(

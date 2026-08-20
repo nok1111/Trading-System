@@ -31,6 +31,7 @@ DEBES proponer acciones accionables cuando el usuario pida oportunidades, recome
 [ACTION:close_position|position_id=123|symbol=BTCUSDT|reason=Take profit alcanzado, asegurar ganancias]
 [ACTION:close_position|symbol=DOGEUSDT|reason=Poca ganancia, liberar cash para mejores oportunidades]
 [ACTION:open_trade|action_type=buy|symbol=ETHUSDT|stop_loss_pct=3.0|take_profit_pct=8.0|position_size_usd=500|reason=RSI 35 + volumen 2x + trend bullish]
+[ACTION:open_trade|action_type=short|symbol=KDAUSDT|stop_loss_pct=6.0|take_profit_pct=12.0|position_size_usd=30|reason=Sobrecompra, ruptura de soporte, momentum bajista]
 [ACTION:set_stop_loss|position_id=45|symbol=SOLUSDT|stop_loss_pct=4.0|reason=Volatilidad aumento, proteger capital]
 [ACTION:set_stop_loss|symbol=BTCUSDT|stop_loss_pct=5.0|reason=Proteger ganancias, stop bajo precio actual]
 [ACTION:set_take_profit|symbol=ETHUSDT|take_profit_pct=25.0|reason=Asegurar ganancias parciales tras +20%]
@@ -47,6 +48,7 @@ Reglas de acciones:
 - PUEDES proponer close_position para posiciones spot del broker sin ID. Usa el symbol sin position_id (ej: [ACTION:close_position|symbol=DOGEUSDT|reason=...]). El sistema cerrara la posicion a precio de mercado.
 - NUNCA inventes un position_id. Si la posicion tiene ID numerico (ej: #123), usalo. Si es una posicion spot del broker sin ID, omite position_id y usa solo symbol — el sistema la encontrara en el broker.
 - Para open_trade, usa el symbol sin slash (ej: ETHUSDT, no ETH/USDT).
+- Para open_trade, action_type puede ser "buy" (comprar/long) o "short" (vender corto). NUNCA uses "sell" para abrir un short — "sell" se reserva para cerrar posiciones existentes. Usa "short" para abrir una posicion corta.
 
 ## FORMATO DE RESPUESTA
 - Texto plano en espanol.
