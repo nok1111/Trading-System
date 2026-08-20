@@ -99,6 +99,15 @@ function ActionCard({
 }) {
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<{ status: string; [k: string]: any } | null>(null);
+  const [editableSize, setEditableSize] = useState<string>(
+    action.params.position_size_usd ? String(action.params.position_size_usd) : ""
+  );
+  const [editableSL, setEditableSL] = useState<string>(
+    action.params.stop_loss_pct ? String(action.params.stop_loss_pct) : ""
+  );
+  const [editableTP, setEditableTP] = useState<string>(
+    action.params.take_profit_pct ? String(action.params.take_profit_pct) : ""
+  );
 
   const labels: Record<string, string> = {
     close_position: "Cerrar posicion",
@@ -109,8 +118,19 @@ function ActionCard({
 
   const handleExecute = async () => {
     setExecuting(true);
+    // Build params with edited values
+    const finalParams = { ...action.params };
+    if (action.params.position_size_usd !== undefined && editableSize) {
+      finalParams.position_size_usd = parseFloat(editableSize) as any;
+    }
+    if (action.params.stop_loss_pct !== undefined && editableSL) {
+      finalParams.stop_loss_pct = parseFloat(editableSL) as any;
+    }
+    if (action.params.take_profit_pct !== undefined && editableTP) {
+      finalParams.take_profit_pct = parseFloat(editableTP) as any;
+    }
     try {
-      const r = await alvoraExecuteAction(action.type, action.params, conversationId ?? undefined);
+      const r = await alvoraExecuteAction(action.type, finalParams, conversationId ?? undefined);
       setResult(r);
       onExecuted(r);
       if (r.status === "executed") {
@@ -161,12 +181,52 @@ function ActionCard({
       </div>
       <div className="text-[11px] text-[var(--color-text-muted)] space-y-0.5 mb-2">
         {action.params.symbol && <div>Symbol: <span className="font-bold text-[var(--color-text)]">{action.params.symbol}</span></div>}
+        {action.params.broker_id && <div>Broker: <span className="font-bold text-[var(--color-text)]">{action.params.broker_id}</span></div>}
         {action.params.position_id && <div>Posicion #{action.params.position_id}</div>}
         {action.params.action_type && <div>Tipo: {action.params.action_type}</div>}
-        {action.params.stop_loss_pct && <div>SL: {action.params.stop_loss_pct}%</div>}
-        {action.params.take_profit_pct && <div>TP: {action.params.take_profit_pct}%</div>}
-        {action.params.position_size_usd && <div>Tamano: ${action.params.position_size_usd}</div>}
-        {action.reason && <div className="italic">{action.reason}</div>}
+        {action.params.stop_loss_pct !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <span>SL:</span>
+            <input
+              type="number"
+              step="0.1"
+              value={editableSL}
+              onChange={(e) => setEditableSL(e.target.value)}
+              className="w-16 px-1 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-[11px]"
+            />
+            <span>%</span>
+          </div>
+        )}
+        {action.params.take_profit_pct !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <span>TP:</span>
+            <input
+              type="number"
+              step="0.1"
+              value={editableTP}
+              onChange={(e) => setEditableTP(e.target.value)}
+              className="w-16 px-1 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-[11px]"
+            />
+            <span>%</span>
+          </div>
+        )}
+        {action.params.position_size_usd !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <span>Tamano:</span>
+            <div className="flex items-center">
+              <span className="text-[var(--color-text-muted)]">$</span>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={editableSize}
+                onChange={(e) => setEditableSize(e.target.value)}
+                className="w-20 px-1 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-[11px]"
+              />
+            </div>
+          </div>
+        )}
+        {action.reason && <div className="italic mt-1">{action.reason}</div>}
       </div>
       <div className="flex gap-1.5">
         <Button size="sm" variant="primary" onClick={handleExecute} disabled={executing} className="!text-[11px]">
