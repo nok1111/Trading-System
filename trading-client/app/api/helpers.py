@@ -13,10 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 def safe_error(exc: Exception, default: str = "Error en la operación") -> str:
-    """Return a safe error message — full detail in development, generic in production."""
+    """Return a safe error message — full detail in development, generic in production.
+
+    Broker errors (BinanceBrokerError, etc.) are always shown in full
+    because they contain useful info for the user (e.g. 'Market is closed',
+    'Insufficient balance', 'Minimum notional').
+    """
     settings = get_settings()
     if settings.APP_ENV == "development":
         return str(exc)
+    # Always show broker errors — they contain actionable info for the user
+    exc_str = str(exc)
+    if "BinanceBrokerError" in type(exc).__name__ or "Market is closed" in exc_str or "HTTP" in exc_str and "order" in exc_str.lower():
+        return exc_str
+    # Show common Binance error messages
+    lower_msg = exc_str.lower()
+    if any(kw in lower_msg for kw in ["market is closed", "insufficient", "minimum", "notional", "lot size", "precision", "-1013", "-2010", "invalid symbol"]):
+        return exc_str
     return default
 
 
