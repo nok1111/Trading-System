@@ -2091,7 +2091,23 @@ def ai_agent_execute(
             cash = acct.cash
             equity = acct.equity
 
-            allocated = float(equity) if equity > 0 else float(cash)
+            # Get real USDT balance from Binance (same as buy path)
+            usdt_balance = 0.0
+            try:
+                if hasattr(broker, '_signed_request'):
+                    acct_data = broker._signed_request("GET", "/api/v3/account", {})
+                    for bal in acct_data.get("balances", []):
+                        if bal.get("asset") == "USDT":
+                            usdt_balance = float(bal["free"])
+                            break
+            except Exception:
+                pass
+
+            # Use USDT balance if available, otherwise fall back to equity/cash
+            if usdt_balance > 0:
+                allocated = usdt_balance
+            else:
+                allocated = float(equity) if equity > 0 else float(cash)
             if state.ai_allocated_capital > 0:
                 allocated = min(state.ai_allocated_capital, allocated)
 
@@ -2117,7 +2133,8 @@ def ai_agent_execute(
             remaining_slots = max(1, base_max - open_count)
             position_budget = allocated / remaining_slots
             if req.position_size_usd and req.position_size_usd > 0:
-                position_budget = min(req.position_size_usd, allocated)
+                # User specified a size — use it directly if they have enough USDT
+                position_budget = min(req.position_size_usd, usdt_balance if usdt_balance > 0 else allocated)
 
             # Calculate quantity
             leverage = max(1, min(req.leverage, 10))  # Cap at 10x
