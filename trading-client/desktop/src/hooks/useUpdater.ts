@@ -36,14 +36,17 @@ export function useUpdater(autoCheck: boolean = true): UpdateStateReturn {
   });
 
   const checkForUpdates = useCallback(async () => {
-    // Only run in Tauri environment
+    // Only run in Tauri production environment (not dev mode, not browser)
     if (!(window as any).__TAURI_INTERNALS__) return;
+    // Skip in dev mode — updater only works in signed release builds
+    if (import.meta.env.DEV) return;
 
     setState((s) => ({ ...s, checking: true, error: null }));
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
       if (update) {
+        console.info(`[Updater] Update available: v${update.version}`);
         setState((s) => ({
           ...s,
           checking: false,
@@ -59,16 +62,19 @@ export function useUpdater(autoCheck: boolean = true): UpdateStateReturn {
         }));
       }
     } catch (err: any) {
+      // Silently log — don't disrupt the user experience
+      console.warn("[Updater] Check failed:", err?.message || err);
       setState((s) => ({
         ...s,
         checking: false,
-        error: err?.message || String(err),
+        error: null, // Don't surface updater errors to UI
       }));
     }
   }, []);
 
   const downloadAndInstall = useCallback(async () => {
     if (!(window as any).__TAURI_INTERNALS__) return;
+    if (import.meta.env.DEV) return;
 
     setState((s) => ({ ...s, downloading: true, error: null }));
     try {
@@ -78,16 +84,19 @@ export function useUpdater(autoCheck: boolean = true): UpdateStateReturn {
         setState((s) => ({ ...s, downloading: false }));
         return;
       }
+      console.info(`[Updater] Downloading v${update.version}...`);
       await update.downloadAndInstall();
+      console.info("[Updater] Installed — relaunching...");
       setState((s) => ({ ...s, downloading: false, downloaded: true }));
       // Relaunch the app after install
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     } catch (err: any) {
+      console.warn("[Updater] Download/install failed:", err?.message || err);
       setState((s) => ({
         ...s,
         downloading: false,
-        error: err?.message || String(err),
+        error: null, // Don't surface updater errors to UI
       }));
     }
   }, []);
