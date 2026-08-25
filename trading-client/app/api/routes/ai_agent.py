@@ -3475,7 +3475,7 @@ def mark_all_notifications_read() -> dict:
 
 
 class TradeRecordRequest(BaseModel):
-    """Client sends Binance order result to record in DB."""
+    """Client sends broker order result to record in DB."""
     symbol: str
     side: str  # BUY or SELL
     order_type: str  # MARKET or LIMIT
@@ -3487,7 +3487,8 @@ class TradeRecordRequest(BaseModel):
     oco_order_id: str | None = None
     stop_loss: float | None = None
     take_profit: float | None = None
-    strategy_name: str = "manual_binance"
+    strategy_name: str = "manual"
+    broker_id: str | None = None
 
 
 @router.post("/trades/record")
@@ -3495,12 +3496,14 @@ def record_trade(
     req: TradeRecordRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
-    """Record a Binance trade in DB after client placed it via proxy."""
+    """Record a broker trade in DB after client placed it via proxy."""
     from app.database.session import SessionLocal
     from app.database.models.position import Position as PositionModel
     from app.database.models.trade import Trade
+    from app.api.helpers import resolve_user_broker_id
     from decimal import Decimal as Dec
 
+    broker_id = req.broker_id or resolve_user_broker_id(current_user) or "binance"
     db = SessionLocal()
     try:
         user_id = current_user.id if current_user else 1
@@ -3541,7 +3544,7 @@ def record_trade(
             else:
                 pos = PositionModel(
                     user_id=user_id,
-                    broker_id="binance",
+                    broker_id=broker_id,
                     symbol=symbol,
                     opened_at=datetime.now(tz=UTC),
                     side="long",
@@ -3598,8 +3601,9 @@ def record_trade(
 
 
 class BulkImportRequest(BaseModel):
-    """Client sends Binance balances to import as positions."""
+    """Client sends broker balances to import as positions."""
     positions: list[dict]
+    broker_id: str | None = None
 
 
 @router.post("/positions/bulk-import")
@@ -3607,11 +3611,13 @@ def bulk_import_positions(
     req: BulkImportRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
 ) -> dict:
-    """Import positions from client-fetched Binance data into DB."""
+    """Import positions from client-fetched broker data into DB."""
     from app.database.session import SessionLocal
     from app.database.models.position import Position as PositionModel
+    from app.api.helpers import resolve_user_broker_id
     from decimal import Decimal as Dec
 
+    broker_id = req.broker_id or resolve_user_broker_id(current_user) or "binance"
     db = SessionLocal()
     try:
         user_id = current_user.id if current_user else 1
@@ -3640,7 +3646,7 @@ def bulk_import_positions(
 
             pos = PositionModel(
                 user_id=user_id,
-                broker_id="binance",
+                broker_id=broker_id,
                 symbol=symbol,
                 opened_at=datetime.now(tz=UTC),
                 side=side,
@@ -3649,8 +3655,8 @@ def bulk_import_positions(
                 current_price=Dec(str(entry_price)),
                 unrealized_pnl=Dec("0"),
                 status="open",
-                strategy_name="imported_binance",
-                metadata_json={"source": "binance_proxy_import"},
+                strategy_name=f"imported_{broker_id}",
+                metadata_json={"source": f"{broker_id}_proxy_import"},
             )
             db.add(pos)
             imported.append({"symbol": symbol, "quantity": quantity, "entry_price": entry_price})

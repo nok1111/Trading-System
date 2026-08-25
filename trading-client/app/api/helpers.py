@@ -66,6 +66,33 @@ def resolve_binancekeys(current_user=None) -> tuple[str, str] | None:
     return None
 
 
+def resolve_user_broker_id(current_user=None) -> str | None:
+    """Resolve the first connected broker_id for a user.
+
+    Returns the broker_id of the first active broker account, or None
+    if the user has no connected brokers. This enables multi-broker
+    support — callers don't need to hardcode 'binance'.
+    """
+    user_id = None
+    if current_user:
+        user_id = getattr(current_user, "id", None)
+    if user_id is None:
+        return None
+    try:
+        session = SessionLocal()
+        from app.database.models.broker_account import BrokerAccount as BA
+        row = session.query(BA).filter(
+            BA.user_id == user_id,
+            BA.status.notin_(["pending_validation", "revoked", "error", "disconnected", ""]),
+        ).first()
+        session.close()
+        if row:
+            return row.broker_id
+    except Exception as exc:
+        logger.warning("resolve_user_broker_id failed for user_id=%s: %s", user_id, exc)
+    return None
+
+
 def resolve_broker_credentials(
     broker_id: str = "binance",
     current_user=None,

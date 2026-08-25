@@ -583,13 +583,13 @@ def close_broker_position(
     positions (id=0, live holdings). Places a market SELL order via the
     broker adapter.
     """
-    from app.api.helpers import get_shared_broker, resolve_binancekeys, resolve_broker_credentials
+    from app.api.helpers import get_shared_broker, resolve_binancekeys, resolve_broker_credentials, resolve_user_broker_id
     from app.brokers.registry import get_adapter
     from app.brokers.models import OrderRequest, OrderSide, OrderType
     from decimal import Decimal as Dec
 
     symbol = req.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
-    broker_id = req.broker_id or "binance"
+    broker_id = req.broker_id or resolve_user_broker_id(current_user) or "binance"
 
     # If we have a DB position_id, close it in DB too
     db = SessionLocal()
@@ -645,33 +645,31 @@ def close_broker_position(
     if not qty or qty <= 0:
         return {"status": "error", "reason": "Cantidad no disponible o invalida"}
 
-    # Place market SELL order via broker
+    # Place market SELL order via broker adapter (multi-broker)
     try:
-        if broker_id == "binance":
-            keys = resolve_binancekeys(current_user)
-            if not keys:
-                return {"status": "error", "reason": "No hay credenciales de Binance"}
-            broker = get_shared_broker(keys)
-            if hasattr(broker, "sell"):
-                result = broker.sell(symbol, float(qty))
-            elif hasattr(broker, "place_order"):
-                order_req = OrderRequest(
-                    symbol=symbol,
-                    side=OrderSide.SELL,
-                    order_type=OrderType.MARKET,
-                    quantity=Dec(str(qty)),
-                )
-                adapter = broker
-                if not hasattr(adapter, "place_order"):
-                    from app.brokers.adapters.binance_adapter import BinanceAdapter
-                    adapter = BinanceAdapter(broker)
-                result = adapter.place_order(order_req)
+        creds = resolve_broker_credentials(broker_id, current_user=current_user)
+        if not creds:
+            # Fallback: try binance keys for backward compat
+            if broker_id == "binance":
+                keys = resolve_binancekeys(current_user)
+                if not keys:
+                    return {"status": "error", "reason": f"No hay credenciales para {broker_id}"}
+                broker = get_shared_broker(keys)
+                if hasattr(broker, "sell"):
+                    result = broker.sell(symbol, float(qty))
+                elif hasattr(broker, "place_order"):
+                    order_req = OrderRequest(
+                        symbol=symbol,
+                        side=OrderSide.SELL,
+                        order_type=OrderType.MARKET,
+                        quantity=Dec(str(qty)),
+                    )
+                    result = broker.place_order(order_req)
+                else:
+                    return {"status": "error", "reason": "Broker no soporta sell"}
             else:
-                return {"status": "error", "reason": "Broker no soporta sell"}
-        else:
-            creds = resolve_broker_credentials(broker_id, current_user=current_user)
-            if not creds:
                 return {"status": "error", "reason": f"No hay credenciales para {broker_id}"}
+        else:
             adapter = get_adapter(broker_id, creds)
             order_req = OrderRequest(
                 symbol=symbol,
@@ -767,12 +765,12 @@ def set_sl_tp(
     Accepts both absolute values (stop_loss=1836.80) and percentages
     (stop_loss_pct=3.0).
     """
-    from app.api.helpers import resolve_binancekeys, resolve_broker_credentials
+    from app.api.helpers import resolve_binancekeys, resolve_broker_credentials, resolve_user_broker_id
     from app.brokers.registry import get_adapter
     from decimal import Decimal as Dec
 
     symbol = req.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
-    broker_id = req.broker_id or "binance"
+    broker_id = req.broker_id or resolve_user_broker_id(current_user) or "binance"
 
     db = SessionLocal()
     try:

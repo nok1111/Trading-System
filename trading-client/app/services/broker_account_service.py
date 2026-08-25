@@ -89,20 +89,28 @@ def _requires_passphrase(broker_id: str) -> bool:
     """Check if a broker requires a passphrase (e.g. OKX, KuCoin)."""
     from app.brokers.adapters.ccxt_adapter import get_exchange_meta
 
+    # Binance native adapter doesn't use passphrase
     if broker_id == "binance":
         return False
-    meta = get_exchange_meta(broker_id)
-    return meta.get("passphrase", False)
+    try:
+        meta = get_exchange_meta(broker_id)
+        return meta.get("passphrase", False)
+    except Exception:
+        return False
 
 
 def _get_environments(broker_id: str) -> list[str]:
     from app.brokers.adapters.ccxt_adapter import get_exchange_meta
 
+    # Binance has a dedicated testnet
     if broker_id == "binance":
         return ["testnet", "live"]
-    meta = get_exchange_meta(broker_id)
-    if meta.get("sandbox"):
-        return ["sandbox", "live"]
+    try:
+        meta = get_exchange_meta(broker_id)
+        if meta.get("sandbox"):
+            return ["sandbox", "live"]
+    except Exception:
+        pass
     return ["live"]
 
 

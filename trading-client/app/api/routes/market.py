@@ -52,19 +52,20 @@ def market_movers(
     limit: int = Query(20, ge=1, le=100),
     quote: str = Query("USDT"),
 ) -> dict:
-    """Top gainers y losers de Binance (spot o futuros USD) en 24h."""
-    from app.brokers.adapters.binance_adapter import BinanceAdapter
+    """Top gainers y losers del broker (spot o futuros USD) en 24h."""
+    from app.brokers.registry import get_adapter
     from app.brokers.models import BrokerCredentials
     from app.config import get_settings
 
     settings = get_settings()
+    broker_id = getattr(settings, "MARKET_DATA_BROKER", "binance")
     creds = BrokerCredentials(
-        broker_id="binance",
+        broker_id=broker_id,
         api_key=getattr(settings, "BROKER_API_KEY", "") or "",
         api_secret=getattr(settings, "BROKER_API_SECRET", "") or "",
         testnet=getattr(settings, "BINANCE_TESTNET", False),
     )
-    adapter = BinanceAdapter(creds)
+    adapter = get_adapter(broker_id, creds)
     try:
         result = adapter.get_market_movers(market=market, limit=limit, quote=quote)
         return {

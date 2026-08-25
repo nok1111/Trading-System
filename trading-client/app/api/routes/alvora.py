@@ -365,7 +365,8 @@ def _execute_close_position(user: LocalUser, params: dict) -> dict:
         if not position_id:
             # No DB position — delegate to broker-managed close endpoint
             from app.api.routes.trading import close_broker_position, ClosePositionRequest
-            broker_id = params.get("broker_id", "binance")
+            from app.api.helpers import resolve_user_broker_id
+            broker_id = params.get("broker_id") or resolve_user_broker_id(user) or "binance"
             req = ClosePositionRequest(symbol=symbol, broker_id=broker_id)
             try:
                 return close_broker_position(req, user)

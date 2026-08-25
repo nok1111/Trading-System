@@ -1904,9 +1904,11 @@ def accept_recommendation(
         quantity = paper_budget / live_price
 
         # Create Position
+        from app.api.helpers import resolve_user_broker_id
+        broker_id = resolve_user_broker_id(current_user) or "binance"
         pos = Position(
             user_id=0,
-            broker_id="binance",
+            broker_id=broker_id,
             symbol=symbol,
             opened_at=datetime.now(tz=UTC),
             side="long",
@@ -2446,14 +2448,16 @@ def update_oco_on_position(
         if not pos and req.symbol:
             # Still no DB position — create one from the OCO data
             from datetime import datetime, UTC
+            from app.api.helpers import resolve_user_broker_id
             sym = req.symbol.upper()
             if "/" not in sym:
                 sym = sym.replace("USDT", "/USDT")
             entry = req.entry_price or req.stop_loss  # fallback
             qty = req.quantity or 0
+            broker_id = resolve_user_broker_id(current_user) or "binance"
             pos = Position(
                 user_id=current_user.id,
-                broker_id="binance",
+                broker_id=broker_id,
                 symbol=sym,
                 opened_at=datetime.now(tz=UTC),
                 side="long",

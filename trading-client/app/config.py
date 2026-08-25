@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     LIVE_KILL_SWITCH: bool = False
     LIVE_CONFIRMATION_REQUIRED: bool = True
     # Multi-broker feature flag
-    ENABLE_MULTI_BROKER: bool = False
+    ENABLE_MULTI_BROKER: bool = True
     # AI provider feature flags
     USE_REMOTE_AI: bool = False
     REMOTE_AI_URL: str | None = None
