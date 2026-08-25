@@ -20,6 +20,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -41,6 +42,8 @@ from app.brokers.registry import get_adapter
 from app.services.auth import LocalUser, get_current_user, get_optional_user
 
 router = APIRouter(prefix="/api/broker", tags=["broker-data"])
+
+logger = logging.getLogger(__name__)
 
 
 def _get_adapter(broker_id: str, current_user: LocalUser) -> BrokerAdapter:
@@ -951,12 +954,16 @@ def place_oco_order(
             open_orders = adapter._broker._signed_request("GET", "/api/v3/openOrders", {"symbol": binance_symbol})
             if open_orders:
                 for o in open_orders:
-                    adapter._broker._signed_request("DELETE", "/api/v3/order", {
-                        "symbol": binance_symbol,
-                        "orderId": o.get("orderId"),
-                    })
+                    try:
+                        adapter._broker._signed_request("DELETE", "/api/v3/order", {
+                            "symbol": binance_symbol,
+                            "orderId": o.get("orderId"),
+                        })
+                    except Exception:
+                        pass  # Order may already be cancelled or filled — ignore
                 import time as _time
                 _time.sleep(0.5)
+                logger.info("Cancelled %d existing orders for %s before OCO", len(open_orders), binance_symbol)
     except Exception as cancel_exc:
         logger.warning("Failed to cancel existing orders for %s: %s", binance_symbol, cancel_exc)
 
