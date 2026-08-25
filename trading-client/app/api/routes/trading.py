@@ -825,7 +825,7 @@ def set_sl_tp(
         if tp is None and req.take_profit_pct is not None and entry_price > 0:
             tp = round(entry_price * (1 + req.take_profit_pct / 100), 8)
 
-        # Update DB position if exists
+        # Update DB position if exists, or create one if broker-managed
         if db_pos:
             if sl is not None:
                 db_pos.stop_loss = Dec(str(sl))
@@ -833,6 +833,58 @@ def set_sl_tp(
                 db_pos.take_profit = Dec(str(tp))
             db.commit()
             _notify_position_update(current_user.id)
+        else:
+            # No DB position — create one from broker data so SL/TP are tracked
+            try:
+                creds2 = resolve_broker_credentials(broker_id, current_user=current_user)
+                if creds2:
+                    adapter2 = get_adapter(broker_id, creds2)
+                    # Get quantity from broker
+                    broker_qty = 0.0
+                    broker_positions = []
+                    if hasattr(adapter2, "get_open_positions"):
+                        broker_positions = adapter2.get_open_positions()
+                    elif hasattr(adapter2, "get_positions"):
+                        broker_positions = adapter2.get_positions()
+                    for p in broker_positions:
+                        psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
+                        if psym == symbol:
+                            broker_qty = float(p.quantity or 0)
+                            break
+                    # If no position found via get_positions, check account balances
+                    if broker_qty <= 0:
+                        try:
+                            balances = adapter2.get_account_balances()
+                            base_asset = symbol.replace("USDT", "").replace("/", "")
+                            for b in balances:
+                                if b.asset == base_asset and float(b.free) > 0:
+                                    broker_qty = float(b.free)
+                                    break
+                        except Exception:
+                            pass
+                    if broker_qty > 0 and entry_price > 0:
+                        from datetime import datetime, UTC
+                        new_pos = Position(
+                            user_id=current_user.id,
+                            broker_id=broker_id,
+                            symbol=symbol,
+                            opened_at=datetime.now(tz=UTC),
+                            side="long",
+                            quantity=Dec(str(broker_qty)),
+                            entry_price=Dec(str(entry_price)),
+                            current_price=Dec(str(entry_price)),
+                            stop_loss=Dec(str(sl)) if sl is not None else None,
+                            take_profit=Dec(str(tp)) if tp is not None else None,
+                            status="open",
+                            strategy_name="manual",
+                            metadata_json={"source": "set_sl_tp", "broker_managed": True},
+                        )
+                        db.add(new_pos)
+                        db.commit()
+                        db_pos = new_pos
+                        _notify_position_update(current_user.id)
+            except Exception as exc:
+                logger.warning("Failed to create DB position for SL/TP: %s", exc)
 
         # Place OCO on broker if live trading
         broker_placed = False
