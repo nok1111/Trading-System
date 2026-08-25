@@ -932,41 +932,44 @@ def place_oco_order(
 
     quantity = _round_to_step(req.quantity, step_size)
 
+    # Extract base asset correctly: LINKUSDT -> LINK, LINK/USDT -> LINK
+    if "/" in symbol:
+        base_asset = symbol.split("/")[0]
+    else:
+        # Remove common quote currencies from the end
+        for quote in ("USDT", "BUSD", "BTC", "ETH", "BNB"):
+            if symbol.endswith(quote):
+                base_asset = symbol[:-len(quote)]
+                break
+        else:
+            base_asset = symbol
+    binance_symbol = base_asset + "USDT"
+
+    # Always cancel existing OCO/SL/TP orders for this symbol before placing a new one
+    try:
+        if hasattr(adapter, "_broker"):
+            open_orders = adapter._broker._signed_request("GET", "/api/v3/openOrders", {"symbol": binance_symbol})
+            if open_orders:
+                for o in open_orders:
+                    adapter._broker._signed_request("DELETE", "/api/v3/order", {
+                        "symbol": binance_symbol,
+                        "orderId": o.get("orderId"),
+                    })
+                import time as _time
+                _time.sleep(0.5)
+    except Exception as cancel_exc:
+        logger.warning("Failed to cancel existing orders for %s: %s", binance_symbol, cancel_exc)
+
     # Pre-check: verify the user has enough balance of the base asset
-    base_asset = symbol.split("/")[0] if "/" in symbol else symbol
     try:
         balances = adapter.get_account_balances()
         balance_map_free = {b.asset: float(b.free) for b in balances}
-        balance_map_locked = {b.asset: float(b.locked) for b in balances}
         available = balance_map_free.get(base_asset, 0)
-        locked = balance_map_locked.get(base_asset, 0)
         if available < quantity:
-            if locked >= quantity:
-                # Asset is locked by existing OCO/SL/TP orders — cancel them first
-                try:
-                    # Fetch open orders for this symbol and cancel them
-                    if hasattr(adapter, "_broker"):
-                        open_orders = adapter._broker._signed_request("GET", "/api/v3/openOrders", {"symbol": base_asset + "USDT"})
-                        for o in open_orders:
-                            adapter._broker._signed_request("DELETE", "/api/v3/order", {
-                                "symbol": base_asset + "USDT",
-                                "orderId": o.get("orderId"),
-                            })
-                        # Re-check balance after cancellation
-                        import time as _time
-                        _time.sleep(0.5)
-                        balances = adapter.get_account_balances()
-                        available = next((float(b.free) for b in balances if b.asset == base_asset), 0)
-                except Exception as cancel_exc:
-                    return {
-                        "status": "error",
-                        "error": f"{base_asset} está bloqueado por órdenes OCO/SL/TP existentes. Cancela esas órdenes primero en Binance. Error: {cancel_exc}",
-                    }
-            if available < quantity:
-                return {
-                    "status": "error",
-                    "error": f"Saldo insuficiente de {base_asset}: tienes {available} libre pero necesitas {quantity}.",
-                }
+            return {
+                "status": "error",
+                "error": f"Saldo insuficiente de {base_asset}: tienes {available} libre pero necesitas {quantity}.",
+            }
     except Exception:
         pass  # If balance check fails, let the broker return its own error
 
