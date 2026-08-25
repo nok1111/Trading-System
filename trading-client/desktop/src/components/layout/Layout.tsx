@@ -350,7 +350,7 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
             collapsed && !isMobile ? "justify-center px-2" : "gap-2.5 px-4"
           )}
         >
-          <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] flex items-center justify-center shadow-lg shadow-[var(--color-primary)]/25 flex-shrink-0 overflow-hidden">
+          <div className="w-9 h-9 rounded-[11px] bg-[var(--color-surface-2)] flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
             <img src={alvoraLogo} alt="Alvora" className="w-full h-full object-contain" />
           </div>
           {(!collapsed || isMobile) && (

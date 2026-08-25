@@ -52,7 +52,7 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
     <div className="flex items-center justify-center min-h-screen bg-[var(--color-bg)]">
       <div className="w-[460px] max-w-[90vw] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-10 shadow-2xl">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] flex items-center justify-center overflow-hidden">
+          <div className="w-12 h-12 rounded-xl bg-[var(--color-surface-2)] flex items-center justify-center overflow-hidden">
             <img src={alvoraLogo} alt="Alvora" className="w-full h-full object-contain" />
           </div>
           <div>

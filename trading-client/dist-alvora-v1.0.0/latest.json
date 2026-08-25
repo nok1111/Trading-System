@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSWV6NFV6MUZoajdVUzFlUUpKcVoxamZ3WFJqVzFJNCtNZGhrdS9nYVo5NEI1bUUrZTNuelZURjNjMXRsSmc2OGV4R29FQ3gxaHBHZExqbEppSFU1Z21Rd3dFQUVMS1FzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Njk3OTk4CWZpbGU6QWx2b3JhXzEuMC4wX3g2NC1zZXR1cC5leGUKUUMyU0VJQVZQcDRpQmJzVGR2N1M3RFZjaXR6TmFwRTdSUXdGVW5lNFk1bnRYMHBLM21ieUwxY2xRbUpVeTVnSmxNM05NUndWcGlBNEd0bHJBejZqRGc9PQo=",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSWV6NFV6MUZoajJaVGJ6ZHladGV5T20xdlBWaHY3ZFAzRE1YcG9lZmIwQzFPQ1VuUGpZZExHdkRNMW9paEg5N0xrNHZTOVpIcUJUTGkyRzdQWmV4bGt5OXBwUS9NY2cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Njk5MzkzCWZpbGU6QWx2b3JhXzEuMC4wX3g2NC1zZXR1cC5leGUKWGlvalB4QWl6b2h6OHhCSVRzamE5aUx3Vit6V3h2LzlDbXlyY1Y2NWRiNzBLM2NFTnRHOW5ocjA3eURmZmZmc1BXTWx4MXBKak56aGtYMWJiRkc1QWc9PQo=",
                                              "url":  "https://github.com/nok1111/Trading-System/releases/download/v1.0.0/Alvora_1.0.0_x64-setup.exe"
                                          }
                   },
-    "pub_date":  "2026-08-25T16:00:00Z",
+    "pub_date":  "2026-08-25T16:30:00Z",
     "version":  "1.0.0",
-    "notes":  "Alvora v1.0.0 — Alvora logo in sidebar + login, VPS backend, auto-updater"
+    "notes":  "Alvora v1.0.0 — Logo with neutral background, VPS backend, auto-updater"
 }
