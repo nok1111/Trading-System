@@ -912,6 +912,26 @@ def set_sl_tp(
                                         qty = float(p.quantity)
                                         break
                             if qty > 0:
+                                # Cancel existing OCO/SL/TP orders for this symbol first
+                                try:
+                                    if hasattr(adapter, "_broker"):
+                                        base_asset = symbol.replace("USDT", "").replace("/", "")
+                                        open_orders = adapter._broker._signed_request(
+                                            "GET", "/api/v3/openOrders",
+                                            {"symbol": base_asset + "USDT"},
+                                        )
+                                        for o in open_orders:
+                                            adapter._broker._signed_request(
+                                                "DELETE", "/api/v3/order",
+                                                {"symbol": base_asset + "USDT", "orderId": o.get("orderId")},
+                                            )
+                                        if open_orders:
+                                            import time as _time
+                                            _time.sleep(0.5)
+                                            logger.info("Cancelled %d existing orders for %s before OCO", len(open_orders), symbol)
+                                except Exception as cancel_exc:
+                                    logger.warning("Failed to cancel existing orders for %s: %s", symbol, cancel_exc)
+
                                 result = adapter.place_oco_order(
                                     symbol=symbol,
                                     side="sell",
