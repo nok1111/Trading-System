@@ -1896,6 +1896,28 @@ def ai_agent_execute(
     if is_live and settings.LIVE_KILL_SWITCH and action == "buy":
         return {"status": "rejected", "action": action, "symbol": symbol, "reason": "KILL SWITCH activado. Compras bloqueadas. Sells permitidos para cerrar posiciones."}
 
+    # Check if symbol is tradable on Binance (market not closed)
+    if is_binance_broker and action in ("buy", "short"):
+        try:
+            import httpx
+            sym_clean = symbol.replace("/", "").replace("-", "").replace("_", "")
+            resp = httpx.get(
+                f"https://api.binance.com/api/v3/exchangeInfo",
+                params={"symbol": sym_clean},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                symbols = data.get("symbols", [])
+                if symbols:
+                    status = symbols[0].get("status", "")
+                    if status != "TRADING":
+                        return {"status": "rejected", "action": action, "symbol": symbol, "reason": f"Market is closed para {symbol}. El mercado no está disponible para trading."}
+            else:
+                return {"status": "rejected", "action": action, "symbol": symbol, "reason": f"{symbol} no existe en Binance o el mercado está cerrado."}
+        except Exception:
+            pass  # If check fails, let the order attempt proceed
+
     # Obtener o crear broker compartido
     broker = get_shared_broker(keys)
 

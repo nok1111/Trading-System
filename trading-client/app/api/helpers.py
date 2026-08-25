@@ -19,12 +19,17 @@ def safe_error(exc: Exception, default: str = "Error en la operación") -> str:
     because they contain useful info for the user (e.g. 'Market is closed',
     'Insufficient balance', 'Minimum notional').
     """
+    import json as _json
+    import re as _re
     settings = get_settings()
-    if settings.APP_ENV == "development":
-        return str(exc)
-    # Always show broker errors — they contain actionable info for the user
     exc_str = str(exc)
-    if "BinanceBrokerError" in type(exc).__name__ or "Market is closed" in exc_str or "HTTP" in exc_str and "order" in exc_str.lower():
+
+    # Extract clean message from Binance error JSON: {"code":-1013,"msg":"Market is closed."}
+    msg_match = _re.search(r'"msg"\s*:\s*"([^"]+)"', exc_str)
+    if msg_match:
+        return msg_match.group(1)
+
+    if settings.APP_ENV == "development":
         return exc_str
     # Show common Binance error messages
     lower_msg = exc_str.lower()
