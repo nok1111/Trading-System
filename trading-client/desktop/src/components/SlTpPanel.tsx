@@ -232,7 +232,14 @@ export function SlTpPanel({
         const res = await api<any>(`/api/intelligence/positions/${positionId}/update-oco`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ oco_order_id: ocoId, stop_loss: sl, take_profit: tp }),
+          body: JSON.stringify({
+            oco_order_id: ocoId,
+            stop_loss: sl,
+            take_profit: tp,
+            symbol,
+            quantity: formattedQty,
+            entry_price: entryPrice,
+          }),
         });
 
         if (res?.status === "placed" || res?.status === "ok") {

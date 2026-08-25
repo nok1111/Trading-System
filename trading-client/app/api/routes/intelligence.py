@@ -2381,6 +2381,9 @@ class OcoResultRequest(_BM):
     oco_order_id: int | str
     stop_loss: float
     take_profit: float
+    symbol: str | None = None
+    quantity: float | None = None
+    entry_price: float | None = None
 
 
 class OcoCancelResultRequest(_BM):
@@ -2433,6 +2436,36 @@ def update_oco_on_position(
     db = SessionLocal()
     try:
         pos = db.query(Position).filter(Position.id == position_id).first()
+        if not pos and req.symbol:
+            # position_id=0 means broker-managed — try to find by symbol
+            sym = req.symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+            pos = db.query(Position).filter(
+                Position.user_id == current_user.id,
+                Position.status == "open",
+            ).filter(Position.symbol.ilike(f"%{sym}%")).first()
+        if not pos and req.symbol:
+            # Still no DB position — create one from the OCO data
+            from datetime import datetime, UTC
+            sym = req.symbol.upper()
+            if "/" not in sym:
+                sym = sym.replace("USDT", "/USDT")
+            entry = req.entry_price or req.stop_loss  # fallback
+            qty = req.quantity or 0
+            pos = Position(
+                user_id=current_user.id,
+                broker_id="binance",
+                symbol=sym,
+                opened_at=datetime.now(tz=UTC),
+                side="long",
+                quantity=Dec(str(qty)),
+                entry_price=Dec(str(entry)),
+                current_price=Dec(str(entry)),
+                status="open",
+                strategy_name="manual",
+                metadata_json={"source": "oco_update", "broker_managed": True},
+            )
+            db.add(pos)
+            db.commit()
         if not pos:
             return {"status": "error", "error": f"Posición {position_id} no encontrada"}
         if pos.status != "open":
@@ -2448,6 +2481,13 @@ def update_oco_on_position(
         meta["monitoring_active"] = False
         pos.metadata_json = meta
         db.commit()
+
+        # Notify WS subscribers
+        try:
+            from app.api.routes.realtime import notify_position_update
+            notify_position_update(current_user.id if current_user else 0)
+        except Exception:
+            pass
 
         _create_notification(
             type="trade_executed",
