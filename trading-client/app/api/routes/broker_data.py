@@ -936,13 +936,37 @@ def place_oco_order(
     base_asset = symbol.split("/")[0] if "/" in symbol else symbol
     try:
         balances = adapter.get_account_balances()
-        balance_map = {b.asset: float(b.free) for b in balances}
-        available = balance_map.get(base_asset, 0)
+        balance_map_free = {b.asset: float(b.free) for b in balances}
+        balance_map_locked = {b.asset: float(b.locked) for b in balances}
+        available = balance_map_free.get(base_asset, 0)
+        locked = balance_map_locked.get(base_asset, 0)
         if available < quantity:
-            return {
-                "status": "error",
-                "error": f"Saldo insuficiente de {base_asset}: tienes {available} pero necesitas {quantity}. La posición en la DB no coincide con tu balance real del broker.",
-            }
+            if locked >= quantity:
+                # Asset is locked by existing OCO/SL/TP orders — cancel them first
+                try:
+                    # Fetch open orders for this symbol and cancel them
+                    if hasattr(adapter, "_broker"):
+                        open_orders = adapter._broker._signed_request("GET", "/api/v3/openOrders", {"symbol": base_asset + "USDT"})
+                        for o in open_orders:
+                            adapter._broker._signed_request("DELETE", "/api/v3/order", {
+                                "symbol": base_asset + "USDT",
+                                "orderId": o.get("orderId"),
+                            })
+                        # Re-check balance after cancellation
+                        import time as _time
+                        _time.sleep(0.5)
+                        balances = adapter.get_account_balances()
+                        available = next((float(b.free) for b in balances if b.asset == base_asset), 0)
+                except Exception as cancel_exc:
+                    return {
+                        "status": "error",
+                        "error": f"{base_asset} está bloqueado por órdenes OCO/SL/TP existentes. Cancela esas órdenes primero en Binance. Error: {cancel_exc}",
+                    }
+            if available < quantity:
+                return {
+                    "status": "error",
+                    "error": f"Saldo insuficiente de {base_asset}: tienes {available} libre pero necesitas {quantity}.",
+                }
     except Exception:
         pass  # If balance check fails, let the broker return its own error
 

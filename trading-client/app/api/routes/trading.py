@@ -839,34 +839,38 @@ def set_sl_tp(
         try:
             settings = get_settings()
             if settings.TRADING_MODE == "live" and settings.LIVE_TRADING_ENABLED:
-                if broker_id == "binance":
-                    keys = resolve_binancekeys(current_user)
-                    if keys:
-                        from app.api.helpers import get_shared_broker
-                        broker = get_shared_broker(keys)
-                        adapter = broker
-                        if not hasattr(adapter, "place_oco_order"):
-                            from app.brokers.adapters.binance_adapter import BinanceAdapter
-                            adapter = BinanceAdapter(broker)
+                # Only place OCO for long positions — shorts are simulated
+                # and don't have actual asset holdings on the broker
+                is_short = db_pos and db_pos.side == "short" if db_pos else False
+                if not is_short:
+                    creds = resolve_broker_credentials(broker_id, current_user=current_user)
+                    if creds:
+                        adapter = get_adapter(broker_id, creds)
                         if hasattr(adapter, "place_oco_order") and sl and tp:
                             qty = float(db_pos.quantity) if db_pos else 0
                             if not qty:
-                                creds = resolve_broker_credentials(broker_id, current_user=current_user)
-                                if creds:
-                                    ba = get_adapter(broker_id, creds)
-                                    ba_positions = []
-                                    if hasattr(ba, "get_open_positions"):
-                                        ba_positions = ba.get_open_positions()
-                                    elif hasattr(ba, "get_positions"):
-                                        ba_positions = ba.get_positions()
-                                    for p in ba_positions:
-                                        psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
-                                        if psym == symbol:
-                                            qty = float(p.quantity)
-                                            break
+                                ba_positions = []
+                                if hasattr(adapter, "get_open_positions"):
+                                    ba_positions = adapter.get_open_positions()
+                                elif hasattr(adapter, "get_positions"):
+                                    ba_positions = adapter.get_positions()
+                                for p in ba_positions:
+                                    psym = p.symbol.replace("/", "").replace("-", "").replace("_", "").upper()
+                                    if psym == symbol:
+                                        qty = float(p.quantity)
+                                        break
                             if qty > 0:
-                                adapter.place_oco_order(symbol, qty, Dec(str(sl)), Dec(str(tp)))
-                                broker_placed = True
+                                result = adapter.place_oco_order(
+                                    symbol=symbol,
+                                    side="sell",
+                                    quantity=Dec(str(qty)),
+                                    take_profit_price=Dec(str(tp)),
+                                    stop_loss_price=Dec(str(sl)),
+                                )
+                                if result.get("success", False):
+                                    broker_placed = True
+                                else:
+                                    logger.warning("OCO order failed: %s", result.get("error", "unknown"))
         except Exception as exc:
             logger.warning("Broker OCO placement failed: %s", exc)
 
