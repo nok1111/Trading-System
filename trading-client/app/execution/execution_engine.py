@@ -181,12 +181,16 @@ class ExecutionEngine:
                 return order
             if order.internal_status == "FILLED" and order.filled_quantity > 0:
                 self._record_trade_and_position(order, signal_db)
+                self.session.commit()
                 self._place_exchange_sl_tp(order, signal_db)
+                self.session.commit()
             elif order.internal_status == "PARTIALLY_FILLED" and order.filled_quantity > 0:
                 self._record_trade_and_position(order, signal_db)
+                self.session.commit()
                 self._place_exchange_sl_tp(order, signal_db)
+                self.session.commit()
             self._notify_trade(order, signal_db)
-            self.session.commit()
+            self._notify_position_update()
             return order
 
         # Fallback: legacy path without OrderManager
@@ -217,10 +221,13 @@ class ExecutionEngine:
         try:
             if filled_order.status in ("filled", "partially_filled") and filled_order.filled_quantity > 0:
                 self._record_trade_and_position(filled_order, signal_db)
+                self.session.commit()
+                # Place SL/TP separately so failure doesn't rollback the position
                 self._place_exchange_sl_tp(filled_order, signal_db)
+                self.session.commit()
 
             self._notify_trade(filled_order, signal_db)
-            self.session.commit()
+            self._notify_position_update()
         except Exception:
             self.session.rollback()
             # Re-add the signal and order so we at least persist them, then commit
@@ -428,26 +435,46 @@ class ExecutionEngine:
         return uuid4().hex[:36]
 
     def _place_exchange_sl_tp(self, order: Order, signal_db: Signal) -> None:
-        """Place real stop-loss and take-profit orders on the exchange if broker supports it."""
+        """Place real stop-loss and take-profit orders on the exchange if broker supports it.
+        Each order is placed independently — failure of one doesn't affect the other
+        or the already-committed position.
+        """
         sl_price = signal_db.suggested_stop_loss
         tp_price = signal_db.suggested_take_profit
         if not sl_price or not tp_price:
             return
+        # Place SL independently
         try:
             if hasattr(self.broker, "place_stop_loss"):
                 sl_order = self.broker.place_stop_loss(
                     order.symbol, order.filled_quantity, sl_price,
                 )
                 self.session.add(sl_order)
+                self.session.commit()
                 logger.info("Exchange SL placed: %s @ %s (id=%s)", order.symbol, sl_price, sl_order.broker_order_id)
+        except Exception as exc:
+            self.session.rollback()
+            logger.warning("Failed to place exchange SL for %s: %s", order.symbol, exc)
+        # Place TP independently
+        try:
             if hasattr(self.broker, "place_take_profit"):
                 tp_order = self.broker.place_take_profit(
                     order.symbol, order.filled_quantity, tp_price,
                 )
                 self.session.add(tp_order)
+                self.session.commit()
                 logger.info("Exchange TP placed: %s @ %s (id=%s)", order.symbol, tp_price, tp_order.broker_order_id)
         except Exception as exc:
-            logger.warning("Failed to place exchange SL/TP for %s: %s", order.symbol, exc)
+            self.session.rollback()
+            logger.warning("Failed to place exchange TP for %s: %s", order.symbol, exc)
+
+    def _notify_position_update(self) -> None:
+        """Notify WebSocket subscribers that positions changed."""
+        try:
+            from app.api.routes.realtime import notify_position_update
+            notify_position_update(self.user_id)
+        except Exception:
+            pass
 
     def _notify_trade(self, order: Order, signal_db: Signal) -> None:
         """Send WhatsApp notification for executed trade if configured."""

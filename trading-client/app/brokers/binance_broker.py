@@ -186,6 +186,7 @@ class BinanceBroker(Broker):
         resp = self._signed_request("POST", "/api/v3/order", params)
         return Order(
             client_order_id=f"sl-{symbol.lower()}-{int(time.time())}",
+            idempotency_key=f"sl-{symbol.lower()}-{resp['orderId']}",
             broker_order_id=str(resp["orderId"]),
             timestamp=datetime.now(tz=UTC),
             symbol=symbol.upper(),
@@ -224,6 +225,7 @@ class BinanceBroker(Broker):
         resp = self._signed_request("POST", "/api/v3/order", params)
         return Order(
             client_order_id=f"tp-{symbol.lower()}-{int(time.time())}",
+            idempotency_key=f"tp-{symbol.lower()}-{resp['orderId']}",
             broker_order_id=str(resp["orderId"]),
             timestamp=datetime.now(tz=UTC),
             symbol=symbol.upper(),

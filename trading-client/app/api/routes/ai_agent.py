@@ -2087,6 +2087,8 @@ def ai_agent_execute(
                     "quantity": str(order.filled_quantity),
                     "price": str(order.price) if order.price else None,
                     "order_status": order.status,
+                    "stop_loss": str(stop_loss),
+                    "take_profit": str(take_profit),
                 }
             else:
                 return {
@@ -2220,6 +2222,12 @@ def ai_agent_execute(
             except Exception as exc:
                 session.rollback()
                 return {"status": "error", "action": "short", "symbol": symbol, "reason": f"Error ejecutando short: {exc}"}
+            finally:
+                try:
+                    from app.api.routes.realtime import notify_position_update
+                    notify_position_update(current_user.id if current_user else 0)
+                except Exception:
+                    pass
 
         elif action == "sell":
             # Buscar posición abierta (include user_id=0 for AI Agent positions)
