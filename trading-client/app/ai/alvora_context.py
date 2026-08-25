@@ -354,6 +354,34 @@ def _get_market_state() -> dict:
     return result
 
 
+def _get_tradable_symbols() -> set[str]:
+    """Fetch the set of USDT symbols that are TRADING on Binance Spot.
+    Caches for 5 minutes to avoid repeated API calls.
+    """
+    import time
+    cache_key = "_tradable_symbols_cache"
+    cache_ts_key = "_tradable_symbols_cache_ts"
+    cache = _get_tradable_symbols.__dict__
+    now = time.time()
+    if cache_key in cache and cache_ts_key in cache and now - cache[cache_ts_key] < 300:
+        return cache[cache_key]
+    try:
+        import httpx
+        resp = httpx.get("https://api.binance.com/api/v3/exchangeInfo", timeout=10,
+                         params={"permissions": "SPOT"})
+        data = resp.json()
+        tradable = set()
+        for s in data.get("symbols", []):
+            if s.get("status") == "TRADING" and s.get("quoteAsset") == "USDT":
+                tradable.add(s["baseAsset"])
+        cache[cache_key] = tradable
+        cache[cache_ts_key] = now
+        return tradable
+    except Exception as exc:
+        logger.warning("Alvora context: failed to fetch tradable symbols: %s", exc)
+        return set()
+
+
 def _get_recent_recommendations(db, user_id: int, limit: int = 5) -> list[dict]:
     try:
         from app.database.models.ai_recommendation import AIRecommendation
@@ -364,17 +392,22 @@ def _get_recent_recommendations(db, user_id: int, limit: int = 5) -> list[dict]:
             .limit(limit)
             .all()
         )
-        return [
-            {
+        # Filter out recommendations for symbols with closed markets
+        tradable = _get_tradable_symbols()
+        result = []
+        for r in rows:
+            asset = (r.asset or "").upper().replace("/", "").replace("USDT", "").replace("-", "")
+            if tradable and asset not in tradable:
+                continue  # Skip non-tradable symbols
+            result.append({
                 "asset": r.asset,
                 "action_type": r.action_type,
                 "confidence": _safe_float(r.confidence),
                 "reason": r.reason or "",
                 "status": r.status,
                 "timestamp": r.timestamp.isoformat() if r.timestamp else "",
-            }
-            for r in rows
-        ]
+            })
+        return result[:limit]
     except Exception:
         return []
 
