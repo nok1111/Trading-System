@@ -234,6 +234,7 @@ class PositionReconciler:
 
             if bpos is None:
                 # Position in DB but NOT in broker → closed externally
+                # (SL/TP hit, manual close on Binance, etc.)
                 # Fetch current price for PnL calculation
                 try:
                     ticker = adapter.get_ticker(sym)
@@ -248,18 +249,79 @@ class PositionReconciler:
                 else:
                     realized = (entry - close_price) * qty
 
+                # Determine close reason: SL, TP, or external
+                close_reason = "external"
+                sl = float(p.stop_loss) if p.stop_loss else None
+                tp = float(p.take_profit) if p.take_profit else None
+                if sl and close_price <= sl:
+                    close_reason = "stop_loss"
+                elif tp and close_price >= tp:
+                    close_reason = "take_profit"
+
                 p.realized_pnl = Decimal(str(round(realized, 8)))
                 p.current_price = Decimal(str(close_price))
                 p.status = "closed"
                 p.closed_at = datetime.now(tz=UTC)
                 meta = p.metadata_json or {}
                 meta["closed_by"] = "auto_reconcile"
-                meta["close_reason"] = "not in broker"
+                meta["close_reason"] = close_reason
                 meta["reconciled_at"] = datetime.now(tz=UTC).isoformat()
                 p.metadata_json = meta
 
+                # Create Order record for the sell
+                from app.database.models.order import Order
+                import uuid as _uuid
+                order_id = str(_uuid.uuid4())
+                sell_order = Order(
+                    user_id=acct.user_id,
+                    broker_id=acct.broker_id,
+                    client_order_id=f"reconcile-sell-{order_id}",
+                    idempotency_key=f"reconcile-sell-{order_id}",
+                    timestamp=datetime.now(tz=UTC),
+                    symbol=p.symbol,
+                    side="SELL",
+                    order_type="market",
+                    quantity=Decimal(str(qty)),
+                    filled_quantity=Decimal(str(qty)),
+                    price=Decimal(str(close_price)),
+                    status="filled",
+                    internal_status="FILLED",
+                    metadata_json={
+                        "source": "auto_reconcile",
+                        "close_reason": close_reason,
+                        "position_id": p.id,
+                    },
+                )
+                session.add(sell_order)
+                session.flush()
+
+                # Create Trade record for the sell
+                from app.database.models.trade import Trade
+                sell_trade = Trade(
+                    user_id=acct.user_id,
+                    broker_id=acct.broker_id,
+                    timestamp=datetime.now(tz=UTC),
+                    symbol=p.symbol,
+                    side="SELL",
+                    quantity=Decimal(str(qty)),
+                    price=Decimal(str(close_price)),
+                    commission=Decimal("0"),
+                    slippage=Decimal("0"),
+                    realized_pnl=Decimal(str(round(realized, 8))),
+                    strategy_name=p.strategy_name,
+                    order_id=sell_order.id,
+                    position_id=p.id,
+                    metadata_json={
+                        "source": "auto_reconcile",
+                        "close_reason": close_reason,
+                        "entry_price": entry,
+                        "exit_price": close_price,
+                    },
+                )
+                session.add(sell_trade)
+
                 closed_count += 1
-                details.append(f"Closed {sym}: not in broker (PnL={realized:.4f})")
+                details.append(f"Closed {sym}: not in broker (PnL={realized:.4f}, reason={close_reason})")
             else:
                 # Position exists in both → update with broker data
                 changed = False
