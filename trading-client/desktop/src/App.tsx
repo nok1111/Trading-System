@@ -10,6 +10,7 @@ import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { BrokerProvider, useBrokerContext } from "./context/BrokerContext";
 import { BrokerOnboarding } from "./components/brokers/BrokerOnboarding";
+import { AutoUpdater } from "./components/AutoUpdater";
 
 const IntelligencePage = lazy(() => import("./pages/IntelligencePage").then(m => ({ default: m.IntelligencePage })));
 const RisksPage = lazy(() => import("./pages/RisksPage").then(m => ({ default: m.RisksPage })));
@@ -149,6 +150,7 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
+          <AutoUpdater />
           <AppContent />
           <Toast />
         </AuthProvider>
