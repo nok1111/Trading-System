@@ -440,16 +440,14 @@ class BinanceAdapter(BrokerAdapter):
         broker_symbol = denormalize_symbol(symbol, "binance")
         bin_side = "SELL" if side.lower() == "sell" else "BUY"
 
-        def _fmt(v: Decimal) -> str:
-            return f"{float(v):.8f}".rstrip("0").rstrip(".")
-
+        # Use the broker's _format_price which respects PRICE_FILTER tickSize
         params: dict[str, Any] = {
             "symbol": broker_symbol,
             "side": bin_side,
             "quantity": self._broker._format_quantity(quantity),
-            "price": _fmt(take_profit_price),
-            "stopPrice": _fmt(stop_loss_price),
-            "stopLimitPrice": _fmt(stop_loss_price),
+            "price": self._broker._format_price(broker_symbol, take_profit_price),
+            "stopPrice": self._broker._format_price(broker_symbol, stop_loss_price),
+            "stopLimitPrice": self._broker._format_price(broker_symbol, stop_loss_price),
             "stopLimitTimeInForce": "GTC",
         }
 
