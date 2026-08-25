@@ -53,14 +53,14 @@ export function useWebSocket(
     const separator = path.includes("?") ? "&" : "?";
 
     let url: string;
-    // Check if we're in dev mode (localhost with Vite port 1420)
+    // In production (Tauri), connect directly to the VPS backend
+    // In dev mode (Vite), also connect directly (Vite proxy doesn't handle WS well)
     const isDev = window.location.port === "1420" || window.location.hostname === "localhost";
-    if (isDev) {
+    if (isDev || import.meta.env.PROD) {
       // Connect directly to the VPS backend for WS
-      // The Vite proxy handles REST fine but not WS upgrades
       url = `ws://76.13.180.80:8080${path}${separator}token=${encodeURIComponent(token)}`;
     } else {
-      // Production: use same origin (Tauri or deployed)
+      // Browser deployment: use same origin
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.hostname;
       const port = window.location.port ? `:${window.location.port}` : "";

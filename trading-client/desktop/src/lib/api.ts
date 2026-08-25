@@ -1,4 +1,6 @@
-const API_BASE = "";
+// In dev mode (Vite), the proxy handles /api -> VPS, so API_BASE = ""
+// In production (Tauri), there's no proxy, so point directly to the VPS
+const API_BASE = import.meta.env.PROD ? "http://76.13.180.80:8080" : "";
 
 // In-memory cache for GET requests with TTL
 const _cache = new Map<string, { data: any; expires: number }>();

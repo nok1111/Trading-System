@@ -16,7 +16,8 @@ export function log(level: LogLevel, message: string, data?: any) {
 
   // Send to backend for file logging
   try {
-    fetch("/api/log", {
+    const baseUrl = import.meta.env.PROD ? "http://76.13.180.80:8080" : "";
+    fetch(`${baseUrl}/api/log`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ level, message, data: data ? String(data) : undefined, timestamp }),

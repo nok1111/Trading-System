@@ -5,30 +5,23 @@ use tauri::Manager;
 static PYTHON_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
 fn spawn_python_backend(app: &tauri::App) {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .expect("failed to get resource dir");
+    // In production, the app connects to the remote VPS backend directly.
+    // No local Python backend is needed.
+    if !cfg!(debug_assertions) {
+        println!("Production mode: using remote VPS backend (no local Python)");
+        return;
+    }
 
-    // In dev mode, use the trading-client python from the project
-    // In production, use the bundled python
-    let (python_exe, working_dir) = if cfg!(debug_assertions) {
-        // Dev: current_dir is src-tauri, parent=desktop, parent=trading-client
-        let working_dir = std::env::current_dir()
-            .expect("failed to get cwd")
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf();
-        ("python".to_string(), working_dir)
-    } else {
-        // Production: use bundled python
-        (
-            resource_path.join("python").join("python.exe").to_string_lossy().to_string(),
-            resource_path.join("app"),
-        )
-    };
+    // Dev mode: start local Python backend for development
+    let working_dir = std::env::current_dir()
+        .expect("failed to get cwd")
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
+    let python_exe = "python".to_string();
 
     let child = Command::new(&python_exe)
         .arg("-m")
