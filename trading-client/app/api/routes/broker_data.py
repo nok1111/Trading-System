@@ -1064,6 +1064,12 @@ def sync_positions(
         details = []
 
         for p in positions:
+            # Skip short positions — they are simulated in DB and don't
+            # correspond to actual broker holdings (Binance Spot has no shorts)
+            if p.side == "short":
+                unchanged_count += 1
+                continue
+
             base = p.symbol.split("/")[0] if "/" in p.symbol else p.symbol.replace("USDT", "")
             actual_balance = balance_map.get(base, 0)
             db_qty = float(p.quantity)
