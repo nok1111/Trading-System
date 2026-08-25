@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import alvoraLogo from "../../assets/alvora-logo.png";
 import {
   LayoutDashboard,
   Brain,
@@ -349,8 +350,8 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
             collapsed && !isMobile ? "justify-center px-2" : "gap-2.5 px-4"
           )}
         >
-          <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] flex items-center justify-center shadow-lg shadow-[var(--color-primary)]/25 flex-shrink-0">
-            <span className="text-white font-extrabold text-[15px]">A</span>
+          <div className="w-9 h-9 rounded-[11px] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] flex items-center justify-center shadow-lg shadow-[var(--color-primary)]/25 flex-shrink-0 overflow-hidden">
+            <img src={alvoraLogo} alt="Alvora" className="w-full h-full object-contain" />
           </div>
           {(!collapsed || isMobile) && (
             <div className="leading-none min-w-0 flex-1">
