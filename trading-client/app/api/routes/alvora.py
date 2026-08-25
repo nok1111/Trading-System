@@ -600,10 +600,18 @@ def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
             entry_price = float(pos.entry_price or pos.current_price or 0)
             if entry_price <= 0:
                 return {"status": "error", "reason": f"No se puede calcular {field} sin precio de entrada"}
-            if field == "stop_loss":
-                abs_value = entry_price * (1 - pct / 100)
-            else:  # take_profit
-                abs_value = entry_price * (1 + pct / 100)
+            # For longs: SL below entry, TP above entry
+            # For shorts: SL above entry, TP below entry
+            if pos.side == "short":
+                if field == "stop_loss":
+                    abs_value = entry_price * (1 + pct / 100)  # SL above for short
+                else:  # take_profit
+                    abs_value = entry_price * (1 - pct / 100)  # TP below for short
+            else:
+                if field == "stop_loss":
+                    abs_value = entry_price * (1 - pct / 100)  # SL below for long
+                else:  # take_profit
+                    abs_value = entry_price * (1 + pct / 100)  # TP above for long
 
         abs_value = round(abs_value, 8)
 
@@ -612,6 +620,12 @@ def _execute_set_sl_tp(user: LocalUser, params: dict, field: str) -> dict:
         else:
             pos.take_profit = Dec(str(abs_value))
         db.commit()
+        # Notify WS subscribers so frontend updates in real-time
+        try:
+            from app.api.routes.realtime import notify_position_update
+            notify_position_update(user.id)
+        except Exception:
+            pass
         return {
             "status": "executed",
             "action": f"set_{field}",
