@@ -547,6 +547,9 @@ def compare_strategies_endpoint(req: CompareStrategiesRequest) -> dict:
     except Exception as exc:
         logger.warning("Strategy comparison failed: %s", exc)
         return {"error": safe_error(exc)}
+
+
+class AutoAssignRequest(_BaseModel):
     symbols: list[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "DOGE/USDT", "PEPE/USDT"]
     interval: str = "1h"
     limit: int = 500
