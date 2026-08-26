@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     BINANCE_PAY_MERCHANT_ID: str | None = None
 
     # CORS — Trading Client origins
-    CORS_ORIGINS: str = "http://localhost:1420,http://127.0.0.1:1420"
+    CORS_ORIGINS: str = "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost"
 
     # Service URLs for monitoring (used by admin panel)
     TRADING_CLIENT_URL: str = "http://localhost:8080"
