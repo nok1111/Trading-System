@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = Field(default="change-me-in-production", description="Must be overridden in production via env var")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
+    ENCRYPTION_KEY: str | None = Field(default=None, description="Used to encrypt TOTP secrets at rest. Falls back to JWT_SECRET if not set.")
 
     # Binance Pay (merchant)
     BINANCE_PAY_API_KEY: str | None = None

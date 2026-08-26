@@ -33,4 +33,22 @@ export default defineConfig(async () => ({
       interval: 500,
     },
   },
+
+  // Build optimization — manual chunks for better caching
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core — rarely changes, cacheable
+          "react-vendor": ["react", "react-dom"],
+          // Icons — large library, separate chunk
+          "icons": ["lucide-react"],
+          // Charts — heavy dependency
+          "charts": ["recharts"],
+        },
+      },
+    },
+    // Increase chunk size warning limit (Tauri apps can have larger chunks)
+    chunkSizeWarningLimit: 600,
+  },
 }));

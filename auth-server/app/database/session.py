@@ -29,6 +29,6 @@ def get_db() -> Session:
 def init_db() -> None:
     """Create all tables (for development / first run)."""
     from app.database.base import Base
-    from app.database.models import user, payment, ai_usage  # noqa: F401
+    from app.database.models import user, payment, ai_usage, user_session  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

@@ -1,0 +1,45 @@
+# Alvora Trading Platform — Docker Compose
+# Runs: trading-client backend + auth-server + desktop (Tauri builds natively)
+
+version: "3.9"
+
+services:
+  trading-client:
+    build:
+      context: ./trading-client
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AUTH_SERVER_URL=http://auth-server:8001
+      - DATABASE_URL=sqlite:///./alvora.db
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DEFAULT_BROKER_ID=binance
+      - LOG_LEVEL=info
+    volumes:
+      - trading-data:/app/data
+    depends_on:
+      auth-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  auth-server:
+    build:
+      context: ./auth-server
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=sqlite:///./auth.db
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=60
+      - TOTP_ISSUER=Alvora
+    volumes:
+      - auth-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  trading-data:
+  auth-data:

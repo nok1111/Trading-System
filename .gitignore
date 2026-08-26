@@ -29,6 +29,9 @@ alvora_auth.db
 alvora_auth.db-shm
 alvora_auth.db-wal
 migrations.db
+test_auth_2fa.db
+test_auth_2fa.db-shm
+test_auth_2fa.db-wal
 
 # IDEs
 .idea/

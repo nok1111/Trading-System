@@ -33,11 +33,19 @@ def _register_adapters() -> None:
     if _ADAPTER_CLASSES:
         return
     from app.brokers.adapters.binance_adapter import BinanceAdapter
+    from app.brokers.adapters.okx_adapter import OKXAdapter
+    from app.brokers.adapters.bybit_adapter import BybitAdapter
 
     _ADAPTER_CLASSES[_BINANCE_ID] = BinanceAdapter
 
+    # OKX and Bybit have dedicated adapters with exchange-specific enhancements
+    _ADAPTER_CLASSES["okx"] = OKXAdapter
+    _ADAPTER_CLASSES["bybit"] = BybitAdapter
+
+    # All other CCXT exchanges use the generic adapter
     for exchange_id in get_curated_exchange_ids():
-        _ADAPTER_CLASSES[exchange_id] = CCXTAdapter
+        if exchange_id not in _ADAPTER_CLASSES:
+            _ADAPTER_CLASSES[exchange_id] = CCXTAdapter
 
 
 def list_brokers() -> list[BrokerInfo]:
@@ -126,6 +134,9 @@ def get_adapter(broker_id: str, credentials: BrokerCredentials, market_type: str
 
     if broker_id == _BINANCE_ID:
         return cls(credentials)
+    # OKXAdapter and BybitAdapter have exchange_id hardcoded, only need market_type
+    if broker_id in ("okx", "bybit"):
+        return cls(credentials, market_type=market_type)
     # CCXTAdapter requiere exchange_id extra + market_type opcional
     return cls(credentials, exchange_id=broker_id, market_type=market_type)
 

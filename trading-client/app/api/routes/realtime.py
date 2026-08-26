@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ws", tags=["realtime"])
 
 # Poll intervals (seconds)
+# When user-data stream is active, polling is used as a safety net at longer intervals
 POSITIONS_INTERVAL = 5
+POSITIONS_SAFETY_INTERVAL = 30  # when user-data stream is active
 ORDERS_INTERVAL = 10
+ORDERS_SAFETY_INTERVAL = 30  # when user-data stream is active
 DB_POSITIONS_INTERVAL = 3
 
 # In-process pub/sub for DB position updates (thread-safe)
@@ -63,12 +66,16 @@ def _get_adapter_for_user(broker_id: str, user_id: int):
 
 @router.websocket("/positions/{broker_id}")
 async def ws_positions(websocket: WebSocket, broker_id: str, token: str = Query(...)):
-    """WebSocket that pushes position updates every 5 seconds.
+    """WebSocket that pushes position updates.
+
+    Uses Binance user-data stream for real-time updates when available,
+    with REST polling as a safety net (30s interval).
 
     Messages:
     - {"type": "snapshot", "positions": [...]}
     - {"type": "update", "positions": [...], "changed": true|false}
     - {"type": "error", "message": "..."}
+    - {"type": "user_data_event", "event": "account_update", "positions": [...]}
     """
     if not await _validate_ws_token(websocket, token):
         return
@@ -81,13 +88,26 @@ async def ws_positions(websocket: WebSocket, broker_id: str, token: str = Query(
 
     last_positions_hash = None
 
+    # Check if user-data stream is available for this broker
+    user_data_stream_active = False
+    if broker_id == "binance":
+        try:
+            from app.data.user_data_stream import get_user_data_stream
+            stream = get_user_data_stream(user_id)
+            if stream and stream.is_connected:
+                user_data_stream_active = True
+        except Exception:
+            pass
+
+    poll_interval = POSITIONS_SAFETY_INTERVAL if user_data_stream_active else POSITIONS_INTERVAL
+
     try:
         while True:
             try:
                 adapter = _get_adapter_for_user(broker_id, user_id)
                 if not adapter:
                     await websocket.send_json({"type": "error", "message": "No broker credentials"})
-                    await asyncio.sleep(POSITIONS_INTERVAL)
+                    await asyncio.sleep(poll_interval)
                     continue
 
                 positions = adapter.get_positions()
@@ -118,6 +138,7 @@ async def ws_positions(websocket: WebSocket, broker_id: str, token: str = Query(
                     "type": msg_type,
                     "positions": positions_data,
                     "changed": changed,
+                    "source": "user_data_stream" if user_data_stream_active else "polling",
                 })
 
             except WebSocketDisconnect:
@@ -126,7 +147,7 @@ async def ws_positions(websocket: WebSocket, broker_id: str, token: str = Query(
                 logger.debug("WS positions error: %s", exc)
                 await websocket.send_json({"type": "error", "message": "Error fetching positions"})
 
-            await asyncio.sleep(POSITIONS_INTERVAL)
+            await asyncio.sleep(poll_interval)
 
     except WebSocketDisconnect:
         pass
@@ -136,12 +157,16 @@ async def ws_positions(websocket: WebSocket, broker_id: str, token: str = Query(
 
 @router.websocket("/orders/{broker_id}")
 async def ws_orders(websocket: WebSocket, broker_id: str, token: str = Query(...)):
-    """WebSocket that pushes open orders updates every 10 seconds.
+    """WebSocket that pushes open orders updates.
+
+    Uses Binance user-data stream for real-time updates when available,
+    with REST polling as a safety net (30s interval).
 
     Messages:
     - {"type": "snapshot", "orders": [...]}
     - {"type": "update", "orders": [...], "changed": true|false}
     - {"type": "error", "message": "..."}
+    - {"type": "user_data_event", "event": "order_update", "order": {...}}
     """
     if not await _validate_ws_token(websocket, token):
         return
@@ -153,13 +178,26 @@ async def ws_orders(websocket: WebSocket, broker_id: str, token: str = Query(...
 
     last_orders_hash = None
 
+    # Check if user-data stream is available
+    user_data_stream_active = False
+    if broker_id == "binance":
+        try:
+            from app.data.user_data_stream import get_user_data_stream
+            stream = get_user_data_stream(user_id)
+            if stream and stream.is_connected:
+                user_data_stream_active = True
+        except Exception:
+            pass
+
+    poll_interval = ORDERS_SAFETY_INTERVAL if user_data_stream_active else ORDERS_INTERVAL
+
     try:
         while True:
             try:
                 adapter = _get_adapter_for_user(broker_id, user_id)
                 if not adapter:
                     await websocket.send_json({"type": "error", "message": "No broker credentials"})
-                    await asyncio.sleep(ORDERS_INTERVAL)
+                    await asyncio.sleep(poll_interval)
                     continue
 
                 orders = adapter.get_open_orders()
@@ -188,6 +226,7 @@ async def ws_orders(websocket: WebSocket, broker_id: str, token: str = Query(...
                     "type": msg_type,
                     "orders": orders_data,
                     "changed": changed,
+                    "source": "user_data_stream" if user_data_stream_active else "polling",
                 })
 
             except WebSocketDisconnect:
@@ -196,7 +235,7 @@ async def ws_orders(websocket: WebSocket, broker_id: str, token: str = Query(...
                 logger.debug("WS orders error: %s", exc)
                 await websocket.send_json({"type": "error", "message": "Error fetching orders"})
 
-            await asyncio.sleep(ORDERS_INTERVAL)
+            await asyncio.sleep(poll_interval)
 
     except WebSocketDisconnect:
         pass

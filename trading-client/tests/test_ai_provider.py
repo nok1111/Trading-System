@@ -15,7 +15,7 @@ class TestAIProviderConfig:
     def test_defaults(self):
         config = AIProviderConfig()
         assert config.provider == "groq"
-        assert config.groq_model == "llama-3.3-70b-versatile"
+        assert config.groq_model == "openai/gpt-oss-120b"
         assert config.ollama_url == "http://localhost:11434"
 
     def test_custom(self):

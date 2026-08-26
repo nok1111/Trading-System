@@ -1132,3 +1132,100 @@ def verify_trade_public(
     """
     from app.services.trade_verification_service import TradeVerificationService
     return TradeVerificationService().public_verify(data)
+
+
+# ---------------------------------------------------------------------------
+# Auto-Copy Trading — automatic signal execution
+# ---------------------------------------------------------------------------
+
+class AutoCopyConfigRequest(BaseModel):
+    leader_id: int
+    enabled: bool = True
+    max_pct: float = 10.0  # max % of portfolio per signal
+    daily_limit_pct: float = 5.0  # stop if daily loss exceeds this
+
+
+@router.post("/auto-copy/configure")
+def configure_auto_copy(
+    req: AutoCopyConfigRequest,
+    user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Enable or disable auto-copy for a followed leader."""
+    follow = (
+        db.query(SocialFollow)
+        .filter(
+            SocialFollow.user_id == user.id,
+            SocialFollow.leader_id == req.leader_id,
+            SocialFollow.status == "active",
+        )
+        .first()
+    )
+
+    if not follow:
+        raise HTTPException(status_code=404, detail="No sigues a este líder")
+
+    follow.auto_copy = req.enabled
+    follow.auto_copy_max_pct = req.max_pct
+    follow.auto_copy_daily_limit = req.daily_limit_pct
+    db.commit()
+
+    # Log the change
+    try:
+        from app.services.audit_log import log_audit
+        log_audit(
+            user_id=user.id,
+            source="trading",
+            message=f"Auto-copy {'enabled' if req.enabled else 'disabled'} for leader {req.leader_id}",
+            details={
+                "leader_id": req.leader_id,
+                "max_pct": req.max_pct,
+                "daily_limit": req.daily_limit_pct,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "leader_id": req.leader_id,
+        "auto_copy": req.enabled,
+        "max_pct": req.max_pct,
+        "daily_limit_pct": req.daily_limit_pct,
+    }
+
+
+@router.get("/auto-copy/stats")
+def auto_copy_stats(
+    user: Annotated[LocalUser, Depends(get_current_user)],
+) -> dict:
+    """Get auto-copy statistics for the current user."""
+    from app.services.auto_copy import get_auto_copy_stats
+    return get_auto_copy_stats(user.id)
+
+
+@router.get("/auto-copy/follows")
+def auto_copy_follows(
+    user: Annotated[LocalUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict]:
+    """Get all leaders the user is auto-copying."""
+    follows = (
+        db.query(SocialFollow)
+        .filter(
+            SocialFollow.user_id == user.id,
+            SocialFollow.auto_copy == True,  # noqa: E712
+            SocialFollow.status == "active",
+        )
+        .all()
+    )
+
+    return [
+        {
+            "leader_id": f.leader_id,
+            "auto_copy": f.auto_copy,
+            "max_pct": f.auto_copy_max_pct,
+            "daily_limit_pct": f.auto_copy_daily_limit,
+        }
+        for f in follows
+    ]

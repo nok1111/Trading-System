@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   LineChart,
+  Activity,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
@@ -38,6 +39,7 @@ import { BrokerPage } from "../../pages/BrokerPage";
 import { NotificationDropdown } from "./NotificationDropdown";
 import { NotificationToasts } from "./NotificationToasts";
 import { AlvoraFloatingWidget } from "../alvora/AlvoraFloatingWidget";
+import { CommandPalette } from "../copilot/CommandPalette";
 import { getUnreadNotificationCount } from "../../lib/intelligenceApi";
 import { api } from "../../lib/api";
 import {
@@ -58,6 +60,7 @@ export type TabId =
   | "connections"
   | "security"
   | "preferences"
+  | "observability"
   | "broker"
   | "ai-agent"
   | "agent-transparency"
@@ -92,6 +95,7 @@ const sistemaItems: NavItem[] = [
   { id: "alerts", labelKey: "nav.alerts", icon: <Bell size={17} />, group: "sistema" },
   { id: "security", labelKey: "nav.security", icon: <Shield size={17} />, group: "sistema" },
   { id: "preferences", labelKey: "nav.preferences", icon: <SettingsIcon size={17} />, group: "sistema" },
+  { id: "observability", labelKey: "nav.observability", icon: <Activity size={17} />, group: "sistema" },
 ];
 
 const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
@@ -105,6 +109,7 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   connections: { title: "Conexiones", subtitle: "Gestión de brokers" },
   security: { title: "Seguridad", subtitle: "Configuración de seguridad" },
   preferences: { title: "Preferencias", subtitle: "Ajustes de la aplicación" },
+  observability: { title: "Observabilidad", subtitle: "Health checks, audit logs y métricas del sistema" },
   broker: { title: "Broker", subtitle: "Vista de broker" },
   "ai-agent": { title: "AI Trading Agent", subtitle: "Agente de IA autónomo — razonamiento y estadísticas" },
   "agent-transparency": { title: "Agent Performance", subtitle: "Transparencia y performance attribution del AI Agent" },
@@ -138,8 +143,21 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
   const [presetTakeProfit, setPresetTakeProfit] = useState<number | undefined>(undefined);
   const [presetReason, setPresetReason] = useState<string | undefined>(undefined);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+
+  // Cmd+K / Ctrl+K to open Command Palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Detect mobile viewport
   const [isMobile, setIsMobile] = useState(false);
@@ -599,9 +617,13 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar sección..."
-              className="w-full h-9 pl-9 pr-3 rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15 placeholder:text-[var(--color-text-muted)] transition-all"
+              onFocus={() => setCommandPaletteOpen(true)}
+              placeholder="Buscar sección o acción... (Cmd+K)"
+              className="w-full h-9 pl-9 pr-16 rounded-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15 placeholder:text-[var(--color-text-muted)] transition-all"
             />
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--color-text-muted)] px-1.5 py-0.5 rounded border border-[var(--color-border)] pointer-events-none">
+              ⌘K
+            </kbd>
             {results.length > 0 && (
               <div className="absolute z-30 top-11 left-0 right-0 panel p-1.5">
                 {results.map((r) => (
@@ -757,6 +779,13 @@ export function Layout({ activeTab, onTabChange, children }: LayoutProps) {
 
       {/* Alvora floating advisor — available on all pages */}
       <AlvoraFloatingWidget />
+
+      {/* Command Palette — Cmd+K / Ctrl+K */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNavigate={handleTabChange}
+      />
     </div>
   );
 }

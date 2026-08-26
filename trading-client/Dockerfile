@@ -1,16 +1,29 @@
-FROM python:3.12-slim
+# Alvora Trading Client — Backend Dockerfile
+# Multi-stage build: Python 3.12 slim
+
+FROM python:3.12-slim AS base
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
+# Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Application code
+COPY app/ ./app/
 
-RUN mkdir -p /app/data
+# Expose port
+EXPOSE 8000
 
-EXPOSE 8080
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health/live || exit 1
 
-CMD ["uvicorn", "app.api.app:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run
+CMD ["uvicorn", "app.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

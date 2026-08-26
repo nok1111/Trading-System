@@ -40,7 +40,7 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Security headers middleware
+# Security headers middleware (enhanced)
 # ---------------------------------------------------------------------------
 
 @app.middleware("http")
@@ -51,7 +51,35 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["X-XSS-Protection"] = "1; mode=block"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+    resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # CSP based on request type
+    path = request.url.path
+    if path.startswith("/api/"):
+        resp.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    else:
+        resp.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self' https: wss: ws:; "
+            "font-src 'self' data:; "
+            "frame-ancestors 'none'"
+        )
+    # Remove server header
+    if "server" in resp.headers:
+        del resp.headers["server"]
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting middleware (custom sliding window)
+# ---------------------------------------------------------------------------
+
+from app.middleware.rate_limit import RateLimitMiddleware
+
+app.add_middleware(RateLimitMiddleware, enabled=True)
 
 
 # Serve static files (images, etc.) from project root /images
@@ -140,13 +168,21 @@ from app.api.routes import (
     broker_accounts,
     broker_data,
     brokers,
+    cache,
+    copilot,
+    audit,
+    attribution,
+    dca_bots,
+    health,
     intelligence,
     market,
     ml,
     paper_trading,
+    portfolio,
     push,
     realtime,
     settings,
+    smart_alerts,
     social,
     stats,
     trading,
@@ -163,11 +199,19 @@ app.include_router(settings.router)
 app.include_router(brokers.router)
 app.include_router(broker_accounts.router)
 app.include_router(broker_data.router)
+app.include_router(cache.router)
+app.include_router(audit.router)
+app.include_router(attribution.router)
+app.include_router(dca_bots.router)
+app.include_router(health.router)
+app.include_router(portfolio.router)
+app.include_router(copilot.router)
 app.include_router(intelligence.router)
 app.include_router(bots.router)
 app.include_router(social.router)
 app.include_router(realtime.router)
 app.include_router(push.router)
+app.include_router(smart_alerts.router)
 
 # ---------------------------------------------------------------------------
 # Startup / Shutdown events
@@ -285,6 +329,13 @@ def _startup_services() -> None:
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Failed to start intelligence scheduler: %s", exc)
+    # Start cache cleanup task
+    try:
+        from app.services.cache import start_cleanup_task
+        start_cleanup_task(interval=300)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to start cache cleanup: %s", exc)
     # Start social trading scheduler (auto-copy + stats)
     try:
         start_social_scheduler()

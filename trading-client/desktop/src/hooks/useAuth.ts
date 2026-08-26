@@ -35,14 +35,23 @@ export function useAuth() {
     }
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const data = await authApi<{ token: string; user: User }>(
+  const login = useCallback(async (email: string, password: string, totpCode?: string) => {
+    const body: Record<string, string> = { email, password };
+    if (totpCode) body.totp_code = totpCode;
+
+    const data = await authApi<{ token: string; user: User; totp_required?: boolean }>(
       "/api/auth/login",
       {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(body),
       }
     );
+
+    // If 2FA is required, throw a special error so LoginScreen can show the 2FA input
+    if (data.totp_required && !data.token) {
+      throw new Error("2FA: Ingresa el código de tu autenticador");
+    }
+
     console.log("LOGIN RESPONSE:", JSON.stringify(data));
     setAuthToken(data.token);
     setUser(data.user ?? { id: 0, email, username: "", subscription: "free" });

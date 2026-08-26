@@ -5,7 +5,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   authServerOk: boolean | null;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string, totpCode?: string) => Promise<User>;
   register: (email: string, username: string, password: string) => Promise<User>;
   logout: () => void;
   checkAuth: () => Promise<void>;

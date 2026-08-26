@@ -24,7 +24,7 @@ import logging
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.helpers import resolve_broker_credentials, safe_error
@@ -673,8 +673,14 @@ def place_order(
     broker_id: str,
     req: PlaceOrderRequest,
     current_user: Annotated[LocalUser, Depends(get_current_user)] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> dict:
-    """Place an order on the broker (buy/sell, market/limit)."""
+    """Place an order on the broker (buy/sell, market/limit).
+
+    Supports idempotency: if the Idempotency-Key header is provided,
+    the same key will return the previous result instead of placing
+    a duplicate order.
+    """
     adapter = _get_adapter(broker_id, current_user)
 
     symbol = normalize_symbol(req.symbol)
@@ -749,23 +755,62 @@ def place_order(
             quantity=Decimal(str(quantity)),
             price=Decimal(str(req.price)) if req.price else None,
         )
-        result = adapter.place_order(order_req)
 
-        if not result.success:
-            return {"status": "error", "error": result.error or "Error desconocido"}
+        # Use idempotency service for reliable order placement
+        from app.services.order_execution import place_order_with_idempotency
 
-        order = result.order
+        order_result = place_order_with_idempotency(
+            user_id=current_user.id,
+            broker_id=broker_id,
+            adapter=adapter,
+            order_request=order_req,
+            idempotency_key=idempotency_key,
+        )
+
+        if order_result.get("status") not in ("ok", "duplicate"):
+            return order_result
+
+        # For duplicate orders, return the cached result
+        if order_result.get("status") == "duplicate":
+            return order_result
+
+        # Build response from the idempotency service result
         resp = {
             "status": "ok",
-            "orderId": order.broker_order_id or "",
-            "symbol": order.symbol,
-            "side": order.side.value,
-            "type": order.order_type.value,
-            "quantity": float(order.quantity),
-            "price": float(order.price) if order.price else None,
-            "executedQty": float(order.filled_quantity),
-            "orderStatus": order.status.value,
+            "orderId": order_result.get("orderId", ""),
+            "symbol": order_result.get("symbol", symbol),
+            "side": order_result.get("side", side_str),
+            "type": order_result.get("type", order_type_str),
+            "quantity": order_result.get("quantity", float(quantity)),
+            "price": order_result.get("price"),
+            "executedQty": order_result.get("executedQty", 0),
+            "orderStatus": order_result.get("orderStatus", "filled"),
+            "idempotency_key": order_result.get("idempotency_key"),
         }
+
+        # Fetch the full order from the result for DB tracking
+        # We need to re-fetch the order result for DB operations
+        # Since place_order_with_idempotency returns a dict, we construct
+        # a minimal result object for the DB tracking code below
+        class _MinimalOrder:
+            def __init__(self, data: dict):
+                self.broker_order_id = data.get("orderId", "")
+                self.symbol = data.get("symbol", symbol)
+                self.side = type("Side", (), {"value": data.get("side", side_str)})()
+                self.order_type = type("OrderType", (), {"value": data.get("type", order_type_str)})()
+                self.quantity = Decimal(str(data.get("quantity", float(quantity))))
+                self.price = Decimal(str(data["price"])) if data.get("price") else None
+                self.filled_quantity = Decimal(str(data.get("executedQty", 0)))
+                self.status = type("Status", (), {"value": data.get("orderStatus", "filled")})()
+
+        class _MinimalResult:
+            def __init__(self, data: dict):
+                self.success = data.get("status") == "ok"
+                self.order = _MinimalOrder(data) if self.success else None
+                self.error = data.get("error")
+
+        result = _MinimalResult(order_result)
+        order = result.order
 
         # Note: OCO orders are Binance-specific. For CCXT brokers,
         # stop-loss and take-profit would be placed as separate orders.

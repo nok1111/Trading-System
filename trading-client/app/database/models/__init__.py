@@ -17,6 +17,7 @@ from app.database.models.intelligence_event import IntelligenceEvent
 from app.database.models.intelligence_news import IntelligenceNews
 from app.database.models.notification import Notification
 from app.database.models.order import Order
+from app.database.models.order_idempotency import OrderIdempotencyRecord
 from app.database.models.order_reconciliation import OrderReconciliation
 from app.database.models.portfolio_guard_config import PortfolioGuardConfig
 from app.database.models.position import Position
@@ -56,6 +57,7 @@ __all__ = [
     "IntelligenceNews",
     "Notification",
     "Order",
+    "OrderIdempotencyRecord",
     "OrderReconciliation",
     "PortfolioGuardConfig",
     "Position",

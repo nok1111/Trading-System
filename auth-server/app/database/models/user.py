@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Boolean, Enum as SAEnum
 from sqlalchemy import String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,3 +43,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         nullable=False, default=func.now(), server_default=func.now(), onupdate=func.now()
     )
+    # 2FA (TOTP)
+    totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)  # encrypted
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    backup_codes_json: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # JSON of hashed codes

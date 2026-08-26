@@ -7,6 +7,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { logger } from "./lib/logger";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
+import { PageLoadingSkeleton } from "./components/common/PageLoadingSkeleton";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { BrokerProvider, useBrokerContext } from "./context/BrokerContext";
 import { BrokerOnboarding } from "./components/brokers/BrokerOnboarding";
@@ -25,6 +26,7 @@ const NotificationsPage = lazy(() => import("./pages/NotificationsPage").then(m 
 const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then(m => ({ default: m.ConnectionsPage })));
 const SecurityPage = lazy(() => import("./pages/SecurityPage").then(m => ({ default: m.SecurityPage })));
 const PreferencesPage = lazy(() => import("./pages/PreferencesPage").then(m => ({ default: m.PreferencesPage })));
+const ObservabilityPage = lazy(() => import("./pages/ObservabilityPage").then(m => ({ default: m.ObservabilityPage })));
 
 window.addEventListener("error", (e) => {
   logger.error("Uncaught error", e.message + " | " + (e.filename || "") + ":" + (e.lineno || ""));
@@ -108,7 +110,7 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} onSkip={onBrokerSkip} />;
   }
 
-  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "agent-transparency", "bots", "social", "alerts", "connections", "security", "preferences"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "agent-transparency", "bots", "social", "alerts", "connections", "security", "preferences", "observability"];
 
   const pages: Record<TabId, React.ReactNode> = {
     dashboard: <DashboardPage />,
@@ -125,6 +127,7 @@ function BrokerAwareContent({
     connections: <ConnectionsPage />,
     security: <SecurityPage />,
     preferences: <PreferencesPage />,
+    observability: <ObservabilityPage />,
     broker: null,
   };
 
@@ -134,7 +137,7 @@ function BrokerAwareContent({
         <div key={tab} style={{ display: tab === activeTab ? "block" : "none" }}>
           {visitedTabs.has(tab) ? (
             <PageErrorBoundary pageName={tab}>
-              <Suspense fallback={<div className="flex items-center justify-center py-20 text-[var(--color-text-muted)] text-[13px]">Cargando...</div>}>
+              <Suspense fallback={<PageLoadingSkeleton />}>
                 {pages[tab]}
               </Suspense>
             </PageErrorBoundary>

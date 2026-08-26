@@ -474,7 +474,79 @@ def optimize_endpoint(req: OptimizeRequest) -> dict:
         return {"error": safe_error(exc)}
 
 
-class AutoAssignRequest(_BaseModel):
+class MonteCarloRequest(_BaseModel):
+    symbol: str
+    strategy: str = "trend_momentum"
+    interval: str = "1h"
+    limit: int = 500
+    initial_cash: float = 10000.0
+    num_simulations: int = 1000
+    ruin_threshold_pct: float = 0.5
+    seed: int | None = None
+
+
+@router.post("/backtest/monte-carlo")
+def monte_carlo_endpoint(req: MonteCarloRequest) -> dict:
+    """Run Monte Carlo simulation on a backtest to test robustness."""
+    from app.services.backtest_service import run_backtest
+    from app.services.monte_carlo import run_monte_carlo
+
+    try:
+        # First run the backtest
+        result = run_backtest(
+            symbol=req.symbol,
+            strategy=req.strategy,
+            interval=req.interval,
+            limit=req.limit,
+            initial_cash=req.initial_cash,
+        )
+        # Then run Monte Carlo on the trades
+        mc_result = run_monte_carlo(
+            backtest_result=result,
+            num_simulations=req.num_simulations,
+            ruin_threshold_pct=req.ruin_threshold_pct,
+            seed=req.seed,
+        )
+        return {
+            "backtest": result.to_dict(),
+            "monte_carlo": mc_result.to_dict(),
+        }
+    except Exception as exc:
+        logger.warning("Monte Carlo failed: %s", exc)
+        return {"error": safe_error(exc)}
+
+
+class CompareStrategiesRequest(_BaseModel):
+    symbol: str
+    strategies: list[str] = ["trend_momentum", "mean_reversion", "breakout", "macd_momentum"]
+    interval: str = "1h"
+    limit: int = 500
+    initial_cash: float = 10000.0
+
+
+@router.post("/backtest/compare")
+def compare_strategies_endpoint(req: CompareStrategiesRequest) -> dict:
+    """Compare multiple strategies on the same symbol and identify the best."""
+    from app.services.backtest_service import run_backtest
+    from app.services.monte_carlo import compare_strategies
+
+    try:
+        results = []
+        for strategy_name in req.strategies:
+            result = run_backtest(
+                symbol=req.symbol,
+                strategy=strategy_name,
+                interval=req.interval,
+                limit=req.limit,
+                initial_cash=req.initial_cash,
+            )
+            results.append((strategy_name, result))
+
+        comparison = compare_strategies(results)
+        return comparison.to_dict()
+    except Exception as exc:
+        logger.warning("Strategy comparison failed: %s", exc)
+        return {"error": safe_error(exc)}
     symbols: list[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "DOGE/USDT", "PEPE/USDT"]
     interval: str = "1h"
     limit: int = 500

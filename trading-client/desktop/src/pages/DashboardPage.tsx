@@ -12,6 +12,11 @@ import { OnboardingModal } from "../components/dashboard/OnboardingModal";
 import { AutoPilotWidget } from "../components/dashboard/AutoPilotWidget";
 import { AlvoraSection } from "../components/dashboard/AlvoraSection";
 import { Watchlist } from "../components/watchlist/Watchlist";
+import { UnifiedPortfolioHero } from "../components/dashboard/UnifiedPortfolioHero";
+import { PortfolioHeatmap } from "../components/dashboard/PortfolioHeatmap";
+import { NetExposurePanel } from "../components/dashboard/NetExposurePanel";
+import { CopilotSuggestionsPanel } from "../components/copilot/CopilotSuggestionsPanel";
+import { SmartAlertsPanel } from "../components/copilot/SmartAlertsPanel";
 import { useI18n } from "../i18n/I18nContext";
 import { useAuthContext } from "../context/AuthContext";
 import { api } from "../lib/api";
@@ -225,6 +230,17 @@ export function DashboardPage() {
         <WelcomePortal data={sinceLastVisit} profile={userProfile} loading={loading} username={user?.username} />
       )}
 
+      {/* Unified Multi-Broker Portfolio — aggregated view across all connected brokers */}
+      {hasPortfolio && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <UnifiedPortfolioHero />
+          <div className="space-y-4">
+            <PortfolioHeatmap />
+            <NetExposurePanel />
+          </div>
+        </div>
+      )}
+
       {/* Auto-Pilot — one-click personalized trading plan */}
       <AutoPilotWidget profile={userProfile} />
 
@@ -265,6 +281,12 @@ export function DashboardPage() {
 
         {/* Sidebar column */}
         <div className="space-y-4">
+          {/* Smart Alerts — AI-powered proactive alerts */}
+          <SmartAlertsPanel />
+
+          {/* Copilot Suggestions — proactive portfolio suggestions */}
+          <CopilotSuggestionsPanel />
+
           <div className="panel p-4 card-hover">
             <Watchlist />
           </div>

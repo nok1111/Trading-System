@@ -6,6 +6,7 @@ interface UseWebSocketOptions {
   onMessage?: MessageHandler;
   onOpen?: () => void;
   onClose?: () => void;
+  onAuthError?: () => void;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
 }
@@ -19,6 +20,11 @@ interface UseWebSocketReturn {
 /**
  * Hook para conectar a un WebSocket del backend.
  * Auto-reconecta con backoff exponencial.
+ *
+ * Token handling: reads JWT from localStorage on every connect/reconnect,
+ * so refreshed tokens are picked up automatically. If the server closes
+ * the connection with an auth error code (4001), the onAuthError callback
+ * is invoked and a `ws-auth-error` event is dispatched.
  */
 export function useWebSocket(
   path: string,
@@ -28,6 +34,7 @@ export function useWebSocket(
     onMessage,
     onOpen,
     onClose,
+    onAuthError,
     reconnectInterval = 2000,
     maxReconnectAttempts = 10,
   } = options;
@@ -41,14 +48,15 @@ export function useWebSocket(
   const onMessageRef = useRef(onMessage);
   const onOpenRef = useRef(onOpen);
   const onCloseRef = useRef(onClose);
+  const onAuthErrorRef = useRef(onAuthError);
   onMessageRef.current = onMessage;
   onOpenRef.current = onOpen;
   onCloseRef.current = onClose;
+  onAuthErrorRef.current = onAuthError;
 
   const connect = useCallback(() => {
-    // Build WebSocket URL — in dev mode (Vite), the proxy doesn't forward
-    // WS connections reliably, so connect directly to the backend VPS.
-    // In production (Tauri), use window.location (same origin).
+    // Read token FRESH from localStorage on every connect/reconnect
+    // This ensures we pick up refreshed tokens after re-login
     const token = localStorage.getItem("jwt") || "";
     const separator = path.includes("?") ? "&" : "?";
 
@@ -86,9 +94,19 @@ export function useWebSocket(
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setConnected(false);
         onCloseRef.current?.();
+
+        // Check for auth error close code (4001 = Unauthorized)
+        if (event.code === 4001) {
+          onAuthErrorRef.current?.();
+          window.dispatchEvent(new CustomEvent("ws-auth-error", {
+            detail: { code: event.code, reason: event.reason }
+          }));
+          // Don't auto-reconnect on auth errors — the app should handle re-login
+          return;
+        }
 
         // Auto-reconnect with backoff
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
@@ -137,6 +155,7 @@ export function useWebSocket(
 
   const reconnect = useCallback(() => {
     reconnectAttemptsRef.current = 0;
+    // Re-read token on manual reconnect
     connect();
   }, [connect]);
 

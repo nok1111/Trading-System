@@ -5,7 +5,7 @@ import { toast } from "../ui/Toast";
 import alvoraLogo from "../../assets/alvora-logo.png";
 
 interface LoginScreenProps {
-  onLogin: (email: string, password: string) => Promise<any>;
+  onLogin: (email: string, password: string, totpCode?: string) => Promise<any>;
   onRegister: (email: string, username: string, password: string) => Promise<any>;
 }
 
@@ -14,6 +14,8 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [totpRequired, setTotpRequired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -32,20 +34,38 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
       setError("Password mínimo 6 caracteres");
       return;
     }
+    if (totpRequired && !totpCode) {
+      setError("Código 2FA requerido");
+      return;
+    }
     setLoading(true);
     try {
       if (mode === "login") {
-        await onLogin(email, password);
+        await onLogin(email, password, totpCode || undefined);
         toast("Sesión iniciada");
       } else {
         await onRegister(email, username, password);
         toast("Cuenta creada");
       }
     } catch (e: any) {
-      setError(e.message);
+      // Check if the error indicates 2FA is required
+      const msg = e.message || "";
+      if (msg.includes("2FA") || msg.includes("totp") || msg.includes("código 2FA")) {
+        setTotpRequired(true);
+        setError("Esta cuenta tiene 2FA activado. Ingresa tu código.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchMode = (newMode: "login" | "register") => {
+    setMode(newMode);
+    setError("");
+    setTotpRequired(false);
+    setTotpCode("");
   };
 
   return (
@@ -78,6 +98,7 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="tu@email.com"
               className="w-full"
+              disabled={totpRequired}
             />
           </div>
 
@@ -105,8 +126,29 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
               className="w-full"
+              disabled={totpRequired}
             />
           </div>
+
+          {totpRequired && (
+            <div>
+              <label className="block text-sm font-semibold text-[var(--color-text-muted)] mb-2">
+                Código 2FA (Google Authenticator / Authy)
+              </label>
+              <Input
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                className="w-full text-center text-2xl tracking-[0.5em] font-mono"
+                autoFocus
+                inputMode="numeric"
+                maxLength={6}
+              />
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                Ingresa el código de 6 dígitos de tu app autenticadora
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="text-base text-[var(--color-danger)] bg-[var(--color-danger)]/10 rounded-lg px-4 py-3">
@@ -133,10 +175,7 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
             <>
               No tienes cuenta?{" "}
               <button
-                onClick={() => {
-                  setMode("register");
-                  setError("");
-                }}
+                onClick={() => switchMode("register")}
                 className="text-[var(--color-primary)] font-semibold hover:underline"
               >
                 Registrarse
@@ -146,10 +185,7 @@ export function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
             <>
               Ya tienes cuenta?{" "}
               <button
-                onClick={() => {
-                  setMode("login");
-                  setError("");
-                }}
+                onClick={() => switchMode("login")}
                 className="text-[var(--color-primary)] font-semibold hover:underline"
               >
                 Iniciar Sesión
