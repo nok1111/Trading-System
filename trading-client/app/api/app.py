@@ -92,7 +92,7 @@ if _static_path.exists():
 # ---------------------------------------------------------------------------
 
 # Paths that don't require license validation (public market data only)
-_PUBLIC_PATHS = {"/", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/brokers"}
+_PUBLIC_PATHS = {"/", "/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/api/log", "/api/binance/price", "/api/brokers", "/metrics"}
 
 
 @app.middleware("http")
@@ -172,10 +172,15 @@ from app.api.routes import (
     copilot,
     audit,
     attribution,
+    academy,
     dca_bots,
+    defi,
     health,
     intelligence,
     market,
+    marketplace,
+    mcp,
+    metrics,
     ml,
     paper_trading,
     portfolio,
@@ -185,6 +190,7 @@ from app.api.routes import (
     smart_alerts,
     social,
     stats,
+    tax,
     trading,
 )
 
@@ -212,6 +218,12 @@ app.include_router(social.router)
 app.include_router(realtime.router)
 app.include_router(push.router)
 app.include_router(smart_alerts.router)
+app.include_router(marketplace.router)
+app.include_router(tax.router)
+app.include_router(mcp.router)
+app.include_router(defi.router)
+app.include_router(academy.router)
+app.include_router(metrics.router)
 
 # ---------------------------------------------------------------------------
 # Startup / Shutdown events

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWebSocket } from "./useWebSocket";
+import { fetch as tauriFetch } from "../lib/api";
 
 interface LiveOrder {
   broker_order_id: string;
@@ -64,11 +65,11 @@ export function useLiveOrders(brokerId: string | null): UseLiveOrdersReturn {
 
     const poll = async () => {
       try {
-        const resp = await fetch(`/api/broker/${brokerId}/orders`, {
+        const resp = await tauriFetch(`/api/broker/${brokerId}/orders`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("jwt") || ""}`,
           },
-        });
+        } as any);
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.active) {

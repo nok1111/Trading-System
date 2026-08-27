@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState, useCallback, useMemo } from "react";
 import { Wallet, TrendingUp, TrendingDown, Settings as SettingsIcon, BarChart3, History, LineChart, Layers, ChevronUp, ChevronDown, RefreshCw, Download, PieChart as PieChartIcon, AlertTriangle } from "lucide-react";
-import { api } from "../lib/api";
+import { api, fetch as tauriFetch } from "../lib/api";
 import { useBrokerContext } from "../context/BrokerContext";
 import { LoadingSkeleton } from "../components/common/LoadingSkeleton";
 import { toast } from "../components/ui/Toast";
@@ -723,7 +723,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
         // Place trailing stop if enabled
         if (trailingStopEnabled && computedQty > 0) {
           try {
-            const tsResp = await fetch(`/api/broker/${brokerId}/trailing-stop`, {
+            const tsResp = await tauriFetch(`${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/broker/${brokerId}/trailing-stop`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -736,7 +736,7 @@ function TradeModule({ brokerId, presetSymbol, presetStopLoss, presetTakeProfit,
                 callback_rate: parseFloat(trailingCallbackRate) || 1.0,
                 activate_price: trailingActivatePrice ? parseFloat(trailingActivatePrice) : null,
               }),
-            });
+            } as any);
             const tsResult = await tsResp.json();
             if (tsResult.status === "ok") {
               toast(`Trailing stop colocado (${trailingCallbackRate}%)`, true);
@@ -1596,9 +1596,9 @@ function HistoryModule({ trades }: { trades: any[] }) {
   const handleExportCSV = async () => {
     try {
       const token = localStorage.getItem("jwt") || "";
-      const resp = await fetch("/api/trades/export", {
+      const resp = await tauriFetch(`${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/trades/export`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      } as any);
       if (!resp.ok) throw new Error("Error al exportar");
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);

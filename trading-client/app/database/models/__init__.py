@@ -31,6 +31,14 @@ from app.database.models.social_leader import SocialLeader
 from app.database.models.social_signal import SocialSignal
 from app.database.models.strategy_run import StrategyRun
 from app.database.models.system_event import SystemEvent
+from app.database.models.tax_report import TaxReport
+from app.database.models.strategy_marketplace import (
+    StrategyBacktestVerification,
+    StrategyListing,
+    StrategyReview,
+    StrategySubscription,
+)
+from app.database.models.academy_progress import AcademyProgress
 from app.database.models.trade import Trade
 from app.database.models.trade_verification import TradeVerification
 from app.database.models.user_settings import UserSettings
@@ -72,6 +80,12 @@ __all__ = [
     "SocialSignal",
     "StrategyRun",
     "SystemEvent",
+    "TaxReport",
+    "StrategyBacktestVerification",
+    "StrategyListing",
+    "StrategyReview",
+    "StrategySubscription",
+    "AcademyProgress",
     "Trade",
     "TradeVerification",
     "UserSettings",

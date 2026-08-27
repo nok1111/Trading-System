@@ -27,6 +27,12 @@ const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then(m => (
 const SecurityPage = lazy(() => import("./pages/SecurityPage").then(m => ({ default: m.SecurityPage })));
 const PreferencesPage = lazy(() => import("./pages/PreferencesPage").then(m => ({ default: m.PreferencesPage })));
 const ObservabilityPage = lazy(() => import("./pages/ObservabilityPage").then(m => ({ default: m.ObservabilityPage })));
+const MarketplacePage = lazy(() => import("./pages/MarketplacePage").then(m => ({ default: m.MarketplacePage })));
+const TaxStudioPage = lazy(() => import("./pages/TaxStudioPage").then(m => ({ default: m.TaxStudioPage })));
+const DeFiPage = lazy(() => import("./pages/DeFiPage").then(m => ({ default: m.DeFiPage })));
+const AcademyPage = lazy(() => import("./pages/AcademyPage").then(m => ({ default: m.AcademyPage })));
+const StrategyBuilderPage = lazy(() => import("./pages/StrategyBuilderPage").then(m => ({ default: m.StrategyBuilderPage })));
+const ChartStudioPage = lazy(() => import("./pages/ChartStudioPage").then(m => ({ default: m.ChartStudioPage })));
 
 window.addEventListener("error", (e) => {
   logger.error("Uncaught error", e.message + " | " + (e.filename || "") + ":" + (e.lineno || ""));
@@ -110,7 +116,7 @@ function BrokerAwareContent({
     return <BrokerOnboarding onConnected={onOnboardingDone} onSkip={onBrokerSkip} />;
   }
 
-  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "agent-transparency", "bots", "social", "alerts", "connections", "security", "preferences", "observability"];
+  const tabs: TabId[] = ["dashboard", "intelligence", "risks", "news", "reports", "backtest", "ai-agent", "agent-transparency", "bots", "social", "marketplace", "tax", "defi", "academy", "strategy-builder", "chart-studio", "alerts", "connections", "security", "preferences", "observability"];
 
   const pages: Record<TabId, React.ReactNode> = {
     dashboard: <DashboardPage />,
@@ -123,6 +129,12 @@ function BrokerAwareContent({
     "agent-transparency": <AgentTransparencyPage />,
     "bots": <BotsPage />,
     social: <SocialPage />,
+    marketplace: <MarketplacePage />,
+    tax: <TaxStudioPage />,
+    defi: <DeFiPage />,
+    academy: <AcademyPage />,
+    "strategy-builder": <StrategyBuilderPage />,
+    "chart-studio": <ChartStudioPage />,
     alerts: <NotificationsPage onNavigate={(page) => onTabChange(page as TabId)} />,
     connections: <ConnectionsPage />,
     security: <SecurityPage />,

@@ -8,6 +8,17 @@
     "opener:default",
     "shell:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://76.13.180.80:*" },
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "https://76.13.180.80:*" },
+        { "url": "ws://76.13.180.80:*" },
+        { "url": "wss://76.13.180.80:*" }
+      ]
+    }
   ]
 }

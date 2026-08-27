@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, authApi, getAuthServerUrl } from "../lib/api";
+import { api, authApi, getAuthServerUrl, fetch as tauriFetch } from "../lib/api";
 import { useAuthContext } from "../context/AuthContext";
 import { Card, CardLabel, CardValue } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -57,7 +57,7 @@ export function SettingsPage() {
 
   const checkAuthServer = useCallback(async () => {
     try {
-      const resp = await fetch(`${getAuthServerUrl()}/health`, { timeout: 5000 } as any);
+      const resp = await tauriFetch(`${getAuthServerUrl()}/health`, { timeout: 5000 } as any);
       setAuthServerConnected(resp.ok);
     } catch {
       setAuthServerConnected(false);

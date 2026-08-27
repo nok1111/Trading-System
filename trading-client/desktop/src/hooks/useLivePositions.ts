@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWebSocket } from "./useWebSocket";
+import { fetch as tauriFetch } from "../lib/api";
 
 interface LivePosition {
   symbol: string;
@@ -68,11 +69,11 @@ export function useLivePositions(brokerId: string | null): UseLivePositionsRetur
     // WS not connected, start REST polling fallback
     const poll = async () => {
       try {
-        const resp = await fetch(`/api/broker/${brokerId}/positions`, {
+        const resp = await tauriFetch(`/api/broker/${brokerId}/positions`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("jwt") || ""}`,
           },
-        });
+        } as any);
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.positions) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./useWebSocket";
+import { fetch as tauriFetch } from "../lib/api";
 
 interface LivePricesState {
   prices: Record<string, number>;
@@ -47,7 +48,7 @@ export function useLivePrices(
 
     const poll = async () => {
       try {
-        const resp = await fetch("/api/prices/live");
+        const resp = await tauriFetch("/api/prices/live" as any);
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.prices) {

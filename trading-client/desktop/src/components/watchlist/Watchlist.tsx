@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Star, X, Plus, Search } from "lucide-react";
+import { fetch as tauriFetch } from "../../lib/api";
 import { watchlistApi, type WatchlistItem } from "../../lib/watchlistApi";
 import { toast } from "../ui/Toast";
 import { useI18n } from "../../i18n/I18nContext";
@@ -42,9 +43,9 @@ export function Watchlist({ onSymbolClick }: WatchlistProps) {
         items.map(async (item) => {
           try {
             const token = localStorage.getItem("jwt") || "";
-            const resp = await fetch(
-              `/api/binance/price?symbol=${encodeURIComponent(item.symbol)}`,
-              { headers: { Authorization: `Bearer ${token}` } }
+            const resp = await tauriFetch(
+              `${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/binance/price?symbol=${encodeURIComponent(item.symbol)}`,
+              { headers: { Authorization: `Bearer ${token}` } } as any
             );
             if (resp.ok) {
               const data = await resp.json();
@@ -71,9 +72,9 @@ export function Watchlist({ onSymbolClick }: WatchlistProps) {
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("jwt") || "";
-        const resp = await fetch(
-          `/api/binance/price?search=${encodeURIComponent(searchQuery)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const resp = await tauriFetch(
+          `${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/binance/price?search=${encodeURIComponent(searchQuery)}`,
+          { headers: { Authorization: `Bearer ${token}` } } as any
         );
         if (resp.ok) {
           const data = await resp.json();

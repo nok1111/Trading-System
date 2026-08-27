@@ -25,6 +25,12 @@ import {
   X,
   LineChart,
   Activity,
+  Store,
+  Calculator,
+  Wallet,
+  GraduationCap,
+  Blocks,
+  CandlestickChart,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/ThemeContext";
@@ -65,7 +71,13 @@ export type TabId =
   | "ai-agent"
   | "agent-transparency"
   | "bots"
-  | "social";
+  | "social"
+  | "marketplace"
+  | "tax"
+  | "defi"
+  | "academy"
+  | "strategy-builder"
+  | "chart-studio";
 
 interface NavItem {
   id: TabId;
@@ -89,6 +101,12 @@ const analyticsItems: NavItem[] = [
   { id: "reports", labelKey: "nav.reports", icon: <FileText size={17} />, group: "analytics" },
   { id: "backtest", labelKey: "nav.backtest", icon: <FlaskConical size={17} />, group: "analytics" },
   { id: "social", labelKey: "nav.social", icon: <Users size={17} />, group: "analytics" },
+  { id: "marketplace", labelKey: "nav.marketplace", icon: <Store size={17} />, group: "analytics" },
+  { id: "tax", labelKey: "nav.tax", icon: <Calculator size={17} />, group: "analytics" },
+  { id: "strategy-builder", labelKey: "nav.strategyBuilder", icon: <Blocks size={17} />, group: "analytics" },
+  { id: "chart-studio", labelKey: "nav.chartStudio", icon: <CandlestickChart size={17} />, group: "analytics" },
+  { id: "defi", labelKey: "nav.defi", icon: <Wallet size={17} />, group: "analytics" },
+  { id: "academy", labelKey: "nav.academy", icon: <GraduationCap size={17} />, group: "analytics" },
 ];
 
 const sistemaItems: NavItem[] = [
@@ -115,6 +133,12 @@ const pageMeta: Record<TabId, { title: string; subtitle: string }> = {
   "agent-transparency": { title: "Agent Performance", subtitle: "Transparencia y performance attribution del AI Agent" },
   bots: { title: "Trading Bots", subtitle: "Grid y DCA bots automatizados" },
   social: { title: "Social Trading", subtitle: "Copia señales de traders top en tu broker" },
+  marketplace: { title: "Strategy Marketplace", subtitle: "Estrategias free y premium con quality gate" },
+  tax: { title: "Tax Studio", subtitle: "Reportes fiscales para 8+ países" },
+  defi: { title: "DeFi", subtitle: "Wallet connection, DEX trading y on-chain analytics" },
+  academy: { title: "Alvora Academy", subtitle: "Tutoriales interactivos + AI tutor" },
+  "strategy-builder": { title: "Visual Strategy Builder", subtitle: "Crea estrategias sin código" },
+  "chart-studio": { title: "Chart Studio", subtitle: "Charting avanzado con drawing tools y multi-chart" },
 };
 
 interface LayoutProps {

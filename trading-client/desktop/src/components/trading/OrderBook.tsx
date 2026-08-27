@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { fetch as tauriFetch } from "../../lib/api";
 import { useI18n } from "../../i18n/I18nContext";
 
 interface OrderBookProps {
@@ -24,9 +25,9 @@ export function OrderBook({ brokerId, symbol }: OrderBookProps) {
   const fetchOrderBook = useCallback(async () => {
     try {
       const token = localStorage.getItem("jwt") || "";
-      const resp = await fetch(
-        `/api/broker/${brokerId}/orderbook?symbol=${encodeURIComponent(symbol)}&depth=20`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const resp = await tauriFetch(
+        `${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/broker/${brokerId}/orderbook?symbol=${encodeURIComponent(symbol)}&depth=20`,
+        { headers: { Authorization: `Bearer ${token}` } } as any
       );
       if (!resp.ok) throw new Error("Error fetching order book");
       const json = await resp.json();

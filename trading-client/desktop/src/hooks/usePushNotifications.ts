@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { fetch as tauriFetch } from "../lib/api";
 
 interface PushSubscriptionData {
   endpoint: string;
@@ -53,9 +54,9 @@ export function usePushNotifications(): UsePushReturn {
 
     // Get VAPID public key from server
     const token = localStorage.getItem("jwt") || "";
-    const keyResp = await fetch("/api/push/vapid-public-key", {
+    const keyResp = await tauriFetch(`${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/push/vapid-public-key`, {
       headers: { Authorization: `Bearer ${token}` },
-    });
+    } as any);
     if (!keyResp.ok) throw new Error("Failed to get VAPID key");
     const { publicKey } = await keyResp.json();
 
@@ -78,14 +79,14 @@ export function usePushNotifications(): UsePushReturn {
       },
     };
 
-    const resp = await fetch("/api/push/subscribe", {
+    const resp = await tauriFetch(`${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/push/subscribe`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(subData),
-    });
+    } as any);
 
     if (!resp.ok) throw new Error("Failed to subscribe on server");
     setSubscribed(true);
@@ -103,7 +104,7 @@ export function usePushNotifications(): UsePushReturn {
     // Notify server
     const token = localStorage.getItem("jwt") || "";
     const subKeys = (subscription as any).keys || {};
-    await fetch("/api/push/unsubscribe", {
+    await tauriFetch(`${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/push/unsubscribe`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -116,17 +117,17 @@ export function usePushNotifications(): UsePushReturn {
           auth: subKeys.auth || "",
         },
       }),
-    });
+    } as any);
 
     setSubscribed(false);
   }, [supported]);
 
   const sendTest = useCallback(async () => {
     const token = localStorage.getItem("jwt") || "";
-    const resp = await fetch("/api/push/test", {
+    const resp = await tauriFetch(`${import.meta.env.PROD ? "http://76.13.180.80:8080" : ""}/api/push/test`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-    });
+    } as any);
     if (!resp.ok) throw new Error("Failed to send test");
   }, []);
 

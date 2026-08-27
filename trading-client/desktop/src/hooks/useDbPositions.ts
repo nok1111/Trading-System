@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWebSocket } from "./useWebSocket";
+import { fetch as tauriFetch } from "../lib/api";
 
 interface DbPosition {
   id: number;
@@ -77,12 +78,10 @@ export function useDbPositions(): UseDbPositionsReturn {
   const refresh = useCallback(async () => {
     try {
       const jwt = localStorage.getItem("jwt") || "";
-      const base = import.meta.env.DEV
-        ? "http://76.13.180.80:8080"
-        : "";
-      const resp = await fetch(`${base}/api/positions`, {
+      const base = import.meta.env.PROD ? "http://76.13.180.80:8080" : "";
+      const resp = await tauriFetch(`${base}/api/positions`, {
         headers: { Authorization: `Bearer ${jwt}` },
-      });
+      } as any);
       if (!resp.ok) return;
       const data = await resp.json();
       if (Array.isArray(data)) {

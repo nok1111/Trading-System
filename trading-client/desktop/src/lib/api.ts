@@ -2,6 +2,15 @@
 // In production (Tauri), there's no proxy, so point directly to the VPS
 const API_BASE = import.meta.env.PROD ? "http://76.13.180.80:8080" : "";
 
+// In production (Tauri webview), use the Tauri HTTP plugin's fetch to bypass
+// webview security restrictions. In dev (browser), use the native fetch.
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+
+const _fetch: typeof fetch = import.meta.env.PROD ? tauriFetch : fetch;
+
+// Export for use in other files that call fetch directly
+export { _fetch as fetch };
+
 // In-memory cache for GET requests with TTL
 const _cache = new Map<string, { data: any; expires: number }>();
 
@@ -101,7 +110,7 @@ export async function api<T = any>(
   if (authToken) headers["Authorization"] = "Bearer " + authToken;
   if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
-  const r = await fetch(API_BASE + path, { ...opts, headers });
+  const r = await _fetch(API_BASE + path, { ...opts, headers } as any);
 
   if (r.status === 401) {
     console.log("API 401 on", path, "token:", authToken ? "yes" : "no");
@@ -112,9 +121,9 @@ export async function api<T = any>(
       // Verify if token is actually invalid by checking with auth server
       // Only logout if token is truly invalid, not on transient failures
       try {
-        const verifyResp = await fetch(
+        const verifyResp = await _fetch(
           (localStorage.getItem("authServerUrl") || "http://76.13.180.80:8000") + "/api/auth/me",
-          { headers: { Authorization: "Bearer " + authToken } }
+          { headers: { Authorization: "Bearer " + authToken } } as any
         );
         if (verifyResp.status === 401 || verifyResp.status === 403) {
           setAuthToken(null);
@@ -161,7 +170,7 @@ export async function authApi<T = any>(
   };
   if (authToken) headers["Authorization"] = "Bearer " + authToken;
 
-  const r = await fetch(authServerUrl + path, { ...opts, headers });
+  const r = await _fetch(authServerUrl + path, { ...opts, headers } as any);
   if (!r.ok) {
     const e = await r.json().catch(() => ({ detail: "Error" }));
     throw new Error(e.detail || "Error");
