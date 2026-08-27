@@ -74,7 +74,7 @@ class SlidingWindowCounter:
             # Weight of previous window decreases as current window fills
             prev_weight = max(0, 1 - elapsed / window)
             weighted_count = int(
-                self._previous[key] * prev_weight + self._current[key]
+                self._previous.get(key, 0) * prev_weight + self._current[key]
             )
 
             if weighted_count >= limit:
