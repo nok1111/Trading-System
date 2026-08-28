@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -24,6 +24,9 @@ class AcademyProgress(Base):
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    xp_earned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    quiz_scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    perfect_quiz: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, default=func.now(), server_default=func.now()
