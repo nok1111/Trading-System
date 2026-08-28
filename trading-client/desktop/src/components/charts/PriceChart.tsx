@@ -10,9 +10,52 @@ import {
   type ISeriesApi,
   type IPriceLine,
 } from "lightweight-charts";
-import { EMA, RSI, MACD, BollingerBands } from "technicalindicators";
+import {
+  DrawingManager,
+  TrendLine,
+  FibRetracement,
+  Rectangle,
+  Brush,
+  HorizontalLine,
+  Ray,
+  ExtendedLine,
+  AnchoredText,
+  type IDrawing,
+  type SerializedDrawing,
+} from "lightweight-charts-drawing";
+import { EMA, RSI, MACD, BollingerBands, VWAP, Stochastic, ADX, ATR, OBV } from "technicalindicators";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/utils";
+import { saveDrawings, loadDrawings, type DrawingObject } from "../../lib/chartStorage";
+
+// ─── Drawing tool type mapping ────────────────────────────────────────────────
+// Maps our DrawingToolbar tool names to lightweight-charts-drawing tool types
+const TOOL_TYPE_MAP: Record<string, string> = {
+  trendline: "trend-line",
+  fibonacci: "fib-retracement",
+  rectangle: "rectangle",
+  brush: "brush",
+  ray: "ray",
+  extended: "extended-line",
+  horizontal: "horizontal-line",
+  text: "anchored-text",
+};
+
+// Factory for importing drawings from JSON
+function drawingFactory(type: string, data: SerializedDrawing): IDrawing | null {
+  const style = data.style || {};
+  switch (type) {
+    case "trend-line": return new TrendLine(data.id, data.anchors, style);
+    case "fib-retracement": return new FibRetracement(data.id, data.anchors, style);
+    case "rectangle": return new Rectangle(data.id, data.anchors, style);
+    case "brush": return new Brush(data.id, data.anchors, style);
+    case "horizontal-line": return new HorizontalLine(data.id, data.anchors, style);
+    case "ray": return new Ray(data.id, data.anchors, style);
+    case "extended-line": return new ExtendedLine(data.id, data.anchors, style);
+    case "anchored-text": return new AnchoredText(data.id, data.anchors, style);
+    default: return null;
+  }
+}
 
 interface PriceChartProps {
   symbol: string;
@@ -22,6 +65,15 @@ interface PriceChartProps {
   takeProfit?: number | null;
   entryPrice?: number | null;
   brokerId?: string;
+  // Drawing tool integration
+  activeTool?: string;
+  drawColor?: string;
+  onDrawingsChange?: (drawings: DrawingObject[]) => void;
+  // Indicator integration (from IndicatorPicker)
+  externalIndicators?: Record<string, { enabled: boolean; params: Record<string, number | string>; color?: string }>;
+  // Crosshair sync (for multi-chart layout)
+  syncCrosshair?: boolean;
+  syncId?: string;
 }
 
 const INTERVALS = [
@@ -110,10 +162,26 @@ const DEFAULT_INDICATORS: IndicatorState = {
   macd: false,
 };
 
-export function PriceChart({ symbol, interval: initialInterval = "1h", height = 400, stopLoss, takeProfit, entryPrice, brokerId }: PriceChartProps) {
+export function PriceChart({
+  symbol,
+  interval: initialInterval = "1h",
+  height = 400,
+  stopLoss,
+  takeProfit,
+  entryPrice,
+  brokerId,
+  activeTool,
+  drawColor = "#7c3aed",
+  onDrawingsChange,
+  externalIndicators,
+  syncCrosshair: syncEnabled = false,
+  syncId = "default",
+}: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rsiContainerRef = useRef<HTMLDivElement>(null);
   const macdContainerRef = useRef<HTMLDivElement>(null);
+  const stochContainerRef = useRef<HTMLDivElement>(null);
+  const adxContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -128,6 +196,18 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
   const macdSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  // Drawing manager ref
+  const drawingManagerRef = useRef<DrawingManager | null>(null);
+  // External indicator series refs (VWAP, Ichimoku, Stochastic, ADX, ATR, OBV)
+  const vwapRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ichimokuRefs = useRef<{ tenkan: ISeriesApi<"Line"> | null; kijun: ISeriesApi<"Line"> | null; senkouA: ISeriesApi<"Line"> | null; senkouB: ISeriesApi<"Line"> | null }>({ tenkan: null, kijun: null, senkouA: null, senkouB: null });
+  const stochChartRef = useRef<IChartApi | null>(null);
+  const stochKRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochDRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const adxChartRef = useRef<IChartApi | null>(null);
+  const adxRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const atrRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const obvRef = useRef<ISeriesApi<"Histogram"> | null>(null);
 
   const [interval, setIntervalState] = useState(initialInterval);
   const [loading, setLoading] = useState(true);
@@ -318,6 +398,98 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     });
     bbLowerRef.current = bbLower;
 
+    // ─── External indicator series (from IndicatorPicker) ─────────────────────
+    const vwapSeries = chart.addSeries(LineSeries, {
+      color: "#3b82f6",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      visible: false,
+      priceScaleId: "vwap",
+    });
+    chart.priceScale("vwap").applyOptions({ scaleMargins: { top: 0.05, bottom: 0.25 } });
+    vwapRef.current = vwapSeries;
+
+    // Ichimoku
+    const tenkanSeries = chart.addSeries(LineSeries, { color: "#22d39a", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: false });
+    const kijunSeries = chart.addSeries(LineSeries, { color: "#ff5f6d", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: false });
+    const senkouASeries = chart.addSeries(LineSeries, { color: "rgba(34,211,154,0.3)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: false });
+    const senkouBSeries = chart.addSeries(LineSeries, { color: "rgba(255,95,109,0.3)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: false });
+    ichimokuRefs.current = { tenkan: tenkanSeries, kijun: kijunSeries, senkouA: senkouASeries, senkouB: senkouBSeries };
+
+    // ATR (overlay, secondary scale)
+    const atrSeries = chart.addSeries(LineSeries, { color: "#ff5f6d", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: false, priceScaleId: "atr" });
+    chart.priceScale("atr").applyOptions({ scaleMargins: { top: 0.05, bottom: 0.25 } });
+    atrRef.current = atrSeries;
+
+    // OBV (histogram, secondary scale)
+    const obvSeries = chart.addSeries(HistogramSeries, { color: "#3b82f6", priceFormat: { type: "volume" }, priceScaleId: "obv", visible: false });
+    chart.priceScale("obv").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    obvRef.current = obvSeries;
+
+    // ─── Drawing Manager (lightweight-charts-drawing) ────────────────────────
+    const dm = new DrawingManager();
+    dm.attach(chart, candleSeries, containerRef.current);
+    drawingManagerRef.current = dm;
+
+    // Load saved drawings for this symbol
+    const savedDrawings = loadDrawings(symbol);
+    if (savedDrawings.length > 0) {
+      const serialized: SerializedDrawing[] = savedDrawings.map((d) => ({
+        id: d.id,
+        type: d.type === "trendline" ? "trend-line" : d.type === "fibonacci" ? "fib-retracement" : d.type,
+        anchors: d.points.map((p) => ({ time: p.time as any, price: p.price || 0 })),
+        style: { lineColor: d.color, lineWidth: 2 },
+        options: {},
+      }));
+      dm.importDrawings(serialized, drawingFactory);
+    }
+
+    // Subscribe to drawing changes for persistence
+    dm.on("drawing:added", () => {
+      const exported = dm.exportDrawings();
+      const drawings: DrawingObject[] = exported.map((s) => ({
+        id: s.id,
+        type: s.type === "trend-line" ? "trendline" : s.type === "fib-retracement" ? "fibonacci" : s.type as any,
+        points: (s.anchors || []).map((a) => ({ x: 0, y: 0, time: a.time as number, price: a.price })),
+        color: s.style?.lineColor || drawColor,
+        symbol,
+        createdAt: Date.now(),
+      }));
+      saveDrawings(symbol, drawings);
+      onDrawingsChange?.(drawings);
+    });
+    dm.on("drawing:updated", () => {
+      const exported = dm.exportDrawings();
+      const drawings: DrawingObject[] = exported.map((s) => ({
+        id: s.id,
+        type: s.type === "trend-line" ? "trendline" : s.type === "fib-retracement" ? "fibonacci" : s.type as any,
+        points: (s.anchors || []).map((a) => ({ x: 0, y: 0, time: a.time as number, price: a.price })),
+        color: s.style?.lineColor || drawColor,
+        symbol,
+        createdAt: Date.now(),
+      }));
+      saveDrawings(symbol, drawings);
+      onDrawingsChange?.(drawings);
+    });
+    dm.on("drawing:removed", () => {
+      const exported = dm.exportDrawings();
+      if (exported.length === 0) {
+        saveDrawings(symbol, []);
+      } else {
+        const drawings: DrawingObject[] = exported.map((s) => ({
+          id: s.id,
+          type: s.type === "trend-line" ? "trendline" : s.type === "fib-retracement" ? "fibonacci" : s.type as any,
+          points: (s.anchors || []).map((a) => ({ x: 0, y: 0, time: a.time as number, price: a.price })),
+          color: s.style?.lineColor || drawColor,
+          symbol,
+          createdAt: Date.now(),
+        }));
+        saveDrawings(symbol, drawings);
+      }
+      onDrawingsChange?.([]);
+    });
+
     const handleResize = () => {
       if (containerRef.current && chartRef.current) {
         chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
@@ -327,6 +499,8 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      dm.detach();
+      drawingManagerRef.current = null;
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -336,6 +510,12 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
       bbUpperRef.current = null;
       bbMidRef.current = null;
       bbLowerRef.current = null;
+      vwapRef.current = null;
+      ichimokuRefs.current = { tenkan: null, kijun: null, senkouA: null, senkouB: null };
+      atrRef.current = null;
+      obvRef.current = null;
+      if (stochChartRef.current) { stochChartRef.current.remove(); stochChartRef.current = null; stochKRef.current = null; stochDRef.current = null; }
+      if (adxChartRef.current) { adxChartRef.current.remove(); adxChartRef.current = null; adxRef.current = null; }
     };
   }, [height]);
 
@@ -346,6 +526,76 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
       tickMarkFormatter: makeTickFormatter(interval),
     });
   }, [interval]);
+
+  // ─── Drawing tool: connect activeTool → DrawingManager ─────────────────────
+  useEffect(() => {
+    const dm = drawingManagerRef.current;
+    if (!dm) return;
+    if (!activeTool || activeTool === "none" || activeTool === "eraser") {
+      dm.setActiveTool(null);
+    } else {
+      const toolType = TOOL_TYPE_MAP[activeTool] || activeTool;
+      dm.setActiveTool(toolType);
+    }
+  }, [activeTool]);
+
+  // ─── Drawing tool: clear all ────────────────────────────────────────────────
+  const clearAllDrawings = useCallback(() => {
+    const dm = drawingManagerRef.current;
+    if (dm) {
+      dm.clearAll();
+      saveDrawings(symbol, []);
+      onDrawingsChange?.([]);
+    }
+    setUserLines([]);
+  }, [symbol, onDrawingsChange]);
+
+  // Expose clearAllDrawings to parent via ref or callback
+  useEffect(() => {
+    if (onDrawingsChange) {
+      // Also expose clearAll via a custom event for the toolbar
+      const handler = () => clearAllDrawings();
+      window.addEventListener("chart-clear-drawings", handler);
+      return () => window.removeEventListener("chart-clear-drawings", handler);
+    }
+  }, [clearAllDrawings, onDrawingsChange]);
+
+  // ─── Crosshair sync (multi-chart) ──────────────────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    if (!syncEnabled) return;
+
+    // Broadcast crosshair movement to other charts
+    const handleCrosshairMove = (param: any) => {
+      if (!param.time) return;
+      const event = new CustomEvent(`chart-sync-${syncId}`, {
+        detail: { time: param.time, point: param.point },
+      });
+      window.dispatchEvent(event);
+    };
+
+    // Listen for crosshair sync from other charts
+    const handleSync = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.time && chartRef.current) {
+        try {
+          chartRef.current.setCrosshairPosition(detail.point?.x ?? 0, detail.point?.y ?? 0, seriesRef.current as any);
+        } catch {
+          // ignore if series not ready
+        }
+      }
+    };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    window.addEventListener(`chart-sync-${syncId}`, handleSync);
+
+    return () => {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      window.removeEventListener(`chart-sync-${syncId}`, handleSync);
+    };
+  }, [syncEnabled, syncId]);
 
   // ─── RSI sub-chart ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -487,6 +737,75 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     };
   }, [indicators.macd]);
 
+  // ─── Stochastic sub-chart (external indicator) ──────────────────────────────
+  const stochEnabled = externalIndicators?.stochastic?.enabled ?? false;
+  useEffect(() => {
+    if (!stochEnabled || !stochContainerRef.current) {
+      if (stochChartRef.current) {
+        stochChartRef.current.remove();
+        stochChartRef.current = null;
+        stochKRef.current = null;
+        stochDRef.current = null;
+      }
+      return;
+    }
+    const c = getCssVars();
+    const stochChart = createChart(stochContainerRef.current, {
+      width: stochContainerRef.current.clientWidth,
+      height: 100,
+      layout: { background: { type: ColorType.Solid, color: c.surface }, textColor: c.textMuted, fontSize: 10 },
+      grid: { vertLines: { color: c.border, style: 1 }, horzLines: { color: c.border, style: 1 } },
+      rightPriceScale: { borderColor: c.border },
+      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false, tickMarkFormatter: makeTickFormatter(interval) } as any,
+    });
+    stochChartRef.current = stochChart;
+    stochKRef.current = stochChart.addSeries(LineSeries, { color: "#ec4899", lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    stochDRef.current = stochChart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    stochKRef.current.createPriceLine({ price: 80, color: c.danger, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "OB" });
+    stochKRef.current.createPriceLine({ price: 20, color: c.success, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "OS" });
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && stochChartRef.current) stochChartRef.current.timeScale().setVisibleLogicalRange(range);
+      });
+    }
+    const handleResize = () => { if (stochContainerRef.current && stochChartRef.current) stochChartRef.current.applyOptions({ width: stochContainerRef.current.clientWidth }); };
+    window.addEventListener("resize", handleResize);
+    return () => { window.removeEventListener("resize", handleResize); stochChart.remove(); stochChartRef.current = null; stochKRef.current = null; stochDRef.current = null; };
+  }, [stochEnabled]);
+
+  // ─── ADX sub-chart (external indicator) ─────────────────────────────────────
+  const adxEnabled = externalIndicators?.adx?.enabled ?? false;
+  useEffect(() => {
+    if (!adxEnabled || !adxContainerRef.current) {
+      if (adxChartRef.current) {
+        adxChartRef.current.remove();
+        adxChartRef.current = null;
+        adxRef.current = null;
+      }
+      return;
+    }
+    const c = getCssVars();
+    const adxChart = createChart(adxContainerRef.current, {
+      width: adxContainerRef.current.clientWidth,
+      height: 100,
+      layout: { background: { type: ColorType.Solid, color: c.surface }, textColor: c.textMuted, fontSize: 10 },
+      grid: { vertLines: { color: c.border, style: 1 }, horzLines: { color: c.border, style: 1 } },
+      rightPriceScale: { borderColor: c.border },
+      timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false, tickMarkFormatter: makeTickFormatter(interval) } as any,
+    });
+    adxChartRef.current = adxChart;
+    adxRef.current = adxChart.addSeries(LineSeries, { color: "#a855f7", lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    adxRef.current.createPriceLine({ price: 25, color: c.warning, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "Trend" });
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && adxChartRef.current) adxChartRef.current.timeScale().setVisibleLogicalRange(range);
+      });
+    }
+    const handleResize = () => { if (adxContainerRef.current && adxChartRef.current) adxChartRef.current.applyOptions({ width: adxContainerRef.current.clientWidth }); };
+    window.addEventListener("resize", handleResize);
+    return () => { window.removeEventListener("resize", handleResize); adxChart.remove(); adxChartRef.current = null; adxRef.current = null; };
+  }, [adxEnabled]);
+
   // ─── Load data & compute indicators ────────────────────────────────────────
   useEffect(() => {
     if (!seriesRef.current || !volumeRef.current) return;
@@ -607,6 +926,150 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
           macdChartRef.current?.timeScale().fitContent();
         }
 
+        // ─── External indicators (from IndicatorPicker) ──────────────────────
+        const ext = externalIndicators || {};
+
+        // VWAP
+        if (ext.vwap?.enabled && vwapRef.current && candles.length > 0) {
+          const vwapData = VWAP.calculate({
+            high: candles.map(c => c.high),
+            low: candles.map(c => c.low),
+            close: candles.map(c => c.close),
+            volume: data.map(k => Number(k.volume)),
+          });
+          if (vwapData.length > 0) {
+            const offset = candles.length - vwapData.length;
+            vwapRef.current.setData(vwapData.map((v, i) => ({ time: candles[i + offset].time, value: v })));
+            vwapRef.current.applyOptions({ visible: true, color: ext.vwap.color || "#3b82f6" });
+          }
+        } else if (vwapRef.current) {
+          vwapRef.current.setData([]);
+          vwapRef.current.applyOptions({ visible: false });
+        }
+
+        // Ichimoku Cloud
+        if (ext.ichimoku?.enabled && ichimokuRefs.current.tenkan && candles.length > 52) {
+          const conv = ext.ichimoku.params.conversion as number || 9;
+          const base = ext.ichimoku.params.base as number || 26;
+          const span = ext.ichimoku.params.span as number || 52;
+          const highs = candles.map(c => c.high);
+          const lows = candles.map(c => c.low);
+          const tenkanData: { time: any; value: number }[] = [];
+          const kijunData: { time: any; value: number }[] = [];
+          for (let i = Math.max(conv, base) - 1; i < candles.length; i++) {
+            const tenkan = (Math.max(...highs.slice(i - conv + 1, i + 1)) + Math.min(...lows.slice(i - conv + 1, i + 1))) / 2;
+            const kijun = (Math.max(...highs.slice(i - base + 1, i + 1)) + Math.min(...lows.slice(i - base + 1, i + 1))) / 2;
+            tenkanData.push({ time: candles[i].time, value: tenkan });
+            kijunData.push({ time: candles[i].time, value: kijun });
+          }
+          ichimokuRefs.current.tenkan.setData(tenkanData);
+          ichimokuRefs.current.kijun?.setData(kijunData);
+          // Senkou A and B (shifted forward by base period)
+          const senkouAData: { time: any; value: number }[] = [];
+          const senkouBData: { time: any; value: number }[] = [];
+          for (let i = base - 1; i < candles.length; i++) {
+            const tenkan = tenkanData[i - base + 1]?.value || 0;
+            const kijun = kijunData[i - base + 1]?.value || 0;
+            const senkouB = (Math.max(...highs.slice(i - span + 1, i + 1)) + Math.min(...lows.slice(i - span + 1, i + 1))) / 2;
+            senkouAData.push({ time: candles[i].time, value: (tenkan + kijun) / 2 });
+            senkouBData.push({ time: candles[i].time, value: senkouB });
+          }
+          ichimokuRefs.current.senkouA?.setData(senkouAData);
+          ichimokuRefs.current.senkouB?.setData(senkouBData);
+          const ic = ext.ichimoku.color || "#22d39a";
+          ichimokuRefs.current.tenkan.applyOptions({ visible: true, color: ic });
+          ichimokuRefs.current.kijun?.applyOptions({ visible: true, color: "#ff5f6d" });
+          ichimokuRefs.current.senkouA?.applyOptions({ visible: true, color: "rgba(34, 211, 154, 0.3)" });
+          ichimokuRefs.current.senkouB?.applyOptions({ visible: true, color: "rgba(255, 95, 109, 0.3)" });
+        } else {
+          ichimokuRefs.current.tenkan?.setData([]);
+          ichimokuRefs.current.kijun?.setData([]);
+          ichimokuRefs.current.senkouA?.setData([]);
+          ichimokuRefs.current.senkouB?.setData([]);
+        }
+
+        // Stochastic (sub-chart)
+        if (ext.stochastic?.enabled && stochKRef.current && candles.length > 14) {
+          const kPeriod = ext.stochastic.params.kPeriod as number || 14;
+          const dPeriod = ext.stochastic.params.dPeriod as number || 3;
+          const smooth = ext.stochastic.params.smooth as number || 3;
+          const stochVals = Stochastic.calculate({
+            period: kPeriod,
+            signalPeriod: dPeriod,
+            smoothing: smooth,
+            values: candles.map(c => c.close),
+            highs: candles.map(c => c.high),
+            lows: candles.map(c => c.low),
+          } as any);
+          if (stochVals.length > 0) {
+            const offset = candles.length - stochVals.length;
+            stochKRef.current.setData(stochVals.map((s: any, i: number) => ({ time: candles[i + offset].time, value: s.k })));
+            stochDRef.current?.setData(stochVals.map((s: any, i: number) => ({ time: candles[i + offset].time, value: s.d })));
+            stochKRef.current.applyOptions({ visible: true, color: ext.stochastic.color || "#ec4899" });
+            stochDRef.current?.applyOptions({ visible: true, color: "#3b82f6" });
+          }
+        } else if (stochKRef.current) {
+          stochKRef.current.setData([]);
+          stochDRef.current?.setData([]);
+        }
+
+        // ADX (sub-chart)
+        if (ext.adx?.enabled && adxRef.current && candles.length > 14) {
+          const adxPeriod = ext.adx.params.period as number || 14;
+          const adxVals = ADX.calculate({
+            period: adxPeriod,
+            close: candles.map(c => c.close),
+            high: candles.map(c => c.high),
+            low: candles.map(c => c.low),
+          } as any);
+          if (adxVals.length > 0) {
+            const offset = candles.length - adxVals.length;
+            adxRef.current.setData(adxVals.map((a: any, i: number) => ({ time: candles[i + offset].time, value: a.adx })));
+            adxRef.current.applyOptions({ visible: true, color: ext.adx.color || "#a855f7" });
+          }
+        } else if (adxRef.current) {
+          adxRef.current.setData([]);
+        }
+
+        // ATR (overlay on main chart, secondary scale)
+        if (ext.atr?.enabled && atrRef.current && candles.length > 14) {
+          const atrPeriod = ext.atr.params.period as number || 14;
+          const atrVals = ATR.calculate({
+            period: atrPeriod,
+            high: candles.map(c => c.high),
+            low: candles.map(c => c.low),
+            close: candles.map(c => c.close),
+          });
+          if (atrVals.length > 0) {
+            const offset = candles.length - atrVals.length;
+            atrRef.current.setData(atrVals.map((v, i) => ({ time: candles[i + offset].time, value: v })));
+            atrRef.current.applyOptions({ visible: true, color: ext.atr.color || "#ff5f6d" });
+          }
+        } else if (atrRef.current) {
+          atrRef.current.setData([]);
+          atrRef.current.applyOptions({ visible: false });
+        }
+
+        // OBV (overlay as histogram on secondary scale)
+        if (ext.obv?.enabled && obvRef.current && candles.length > 0) {
+          const obvVals = OBV.calculate({
+            close: candles.map(c => c.close),
+            volume: data.map(k => Number(k.volume)),
+          });
+          if (obvVals.length > 0) {
+            const offset = candles.length - obvVals.length;
+            obvRef.current.setData(obvVals.map((v, i) => ({
+              time: candles[i + offset].time,
+              value: v,
+              color: v >= 0 ? volUp : volDown,
+            })));
+            obvRef.current.applyOptions({ visible: true, color: ext.obv.color || "#3b82f6" });
+          }
+        } else if (obvRef.current) {
+          obvRef.current.setData([]);
+          obvRef.current.applyOptions({ visible: false });
+        }
+
         // Set price scale range
         if (chartRef.current && seriesRef.current) {
           const dataMin = Math.min(...candles.map((c) => c.low));
@@ -635,7 +1098,7 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
     };
     load();
     return () => { alive = false; };
-  }, [symbol, interval, brokerId, indicators]);
+  }, [symbol, interval, brokerId, indicators, externalIndicators]);
 
   // ─── Real-time kline updates via WebSocket ─────────────────────────────────
   const { lastKline } = useKlineStream(symbol, interval);
@@ -879,6 +1342,22 @@ export function PriceChart({ symbol, interval: initialInterval = "1h", height = 
         <div className="mt-1">
           <div className="text-[9px] font-bold text-[var(--color-primary)] uppercase mb-0.5 px-1">MACD (12, 26, 9)</div>
           <div ref={macdContainerRef} style={{ height: 120 }} />
+        </div>
+      )}
+
+      {/* Stochastic sub-chart (external indicator) */}
+      {stochEnabled && !error && (
+        <div className="mt-1">
+          <div className="text-[9px] font-bold text-[#ec4899] uppercase mb-0.5 px-1">Stochastic</div>
+          <div ref={stochContainerRef} style={{ height: 100 }} />
+        </div>
+      )}
+
+      {/* ADX sub-chart (external indicator) */}
+      {adxEnabled && !error && (
+        <div className="mt-1">
+          <div className="text-[9px] font-bold text-[#a855f7] uppercase mb-0.5 px-1">ADX</div>
+          <div ref={adxContainerRef} style={{ height: 100 }} />
         </div>
       )}
     </div>

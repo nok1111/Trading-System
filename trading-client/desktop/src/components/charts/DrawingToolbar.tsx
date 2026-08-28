@@ -6,10 +6,14 @@ import {
   Eraser,
   Trash2,
   MousePointer2,
+  Minus,
+  ArrowUpRight,
+  Spline,
+  Pen,
 } from "lucide-react";
 import { useState } from "react";
 
-export type DrawingTool = "none" | "trendline" | "fibonacci" | "rectangle" | "text" | "eraser";
+export type DrawingTool = "none" | "trendline" | "fibonacci" | "rectangle" | "text" | "eraser" | "horizontal" | "ray" | "extended" | "brush";
 
 interface DrawingToolbarProps {
   activeTool: DrawingTool;
@@ -22,8 +26,12 @@ interface DrawingToolbarProps {
 const TOOLS: { tool: DrawingTool; label: string; icon: typeof TrendingUp }[] = [
   { tool: "none", label: "Cursor", icon: MousePointer2 },
   { tool: "trendline", label: "Trend Line", icon: TrendingUp },
+  { tool: "horizontal", label: "H-Line", icon: Minus },
+  { tool: "ray", label: "Ray", icon: ArrowUpRight },
+  { tool: "extended", label: "Extended", icon: Spline },
   { tool: "fibonacci", label: "Fibonacci", icon: Grid3x3 },
   { tool: "rectangle", label: "Rectangle", icon: Square },
+  { tool: "brush", label: "Brush", icon: Pen },
   { tool: "text", label: "Text", icon: Type },
   { tool: "eraser", label: "Eraser", icon: Eraser },
 ];

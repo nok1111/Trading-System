@@ -3,7 +3,7 @@ import { PriceChart } from "../components/charts/PriceChart";
 import { DrawingToolbar, type DrawingTool } from "../components/charts/DrawingToolbar";
 import { MultiChartLayout } from "../components/charts/MultiChartLayout";
 import { IndicatorPicker } from "../components/charts/IndicatorPicker";
-import { clearDrawings } from "../lib/chartStorage";
+import { clearDrawings, type DrawingObject } from "../lib/chartStorage";
 import { Layout, PanelsTopLeft, BarChart3 } from "lucide-react";
 
 type ViewMode = "single" | "multi";
@@ -15,21 +15,33 @@ export function ChartStudioPage() {
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [interval, setInterval] = useState("1h");
   const [showIndicatorPicker, setShowIndicatorPicker] = useState(false);
+  const [drawings, setDrawings] = useState<DrawingObject[]>([]);
+  // External indicator settings (from IndicatorPicker → PriceChart)
+  const [extIndicators, setExtIndicators] = useState<Record<string, { enabled: boolean; params: Record<string, number | string>; color?: string }>>({});
+  // Force chart re-render counter
+  const [renderKey, setRenderKey] = useState(0);
 
   // ─── Drawing management ─────────────────────────────────────────────────────
   const handleClearAll = useCallback(() => {
     clearDrawings(symbol);
-    // Force chart re-render by toggling a state
-    setSymbol((s) => s + " " ? s.trim() : s);
+    setDrawings([]);
+    // Dispatch event for PriceChart to clear its DrawingManager
+    window.dispatchEvent(new CustomEvent("chart-clear-drawings"));
+    // Force re-render
+    setRenderKey(k => k + 1);
   }, [symbol]);
 
-  // ─── Indicator toggle handler ───────────────────────────────────────────────
+  const handleDrawingsChange = useCallback((newDrawings: DrawingObject[]) => {
+    setDrawings(newDrawings);
+  }, []);
+
+  // ─── Indicator toggle handler (NOW CONNECTED to PriceChart) ──────────────────
   const handleIndicatorToggle = useCallback(
-    (name: string, enabled: boolean, _params: Record<string, number | string>, _color: string) => {
-      // In a full implementation, this would pass indicator settings to PriceChart
-      // For now, we just track the state. The PriceChart component has its own
-      // built-in indicator toggles that work independently.
-      console.log(`Indicator ${name} ${enabled ? "enabled" : "disabled"}`);
+    (name: string, enabled: boolean, params: Record<string, number | string>, color: string) => {
+      setExtIndicators((prev) => ({
+        ...prev,
+        [name]: { enabled, params, color },
+      }));
     },
     [],
   );
@@ -126,8 +138,22 @@ export function ChartStudioPage() {
                     {activeTool} active — click on chart to draw
                   </div>
                 )}
+                {drawings.length > 0 && (
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    {drawings.length} drawing{drawings.length !== 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
-              <PriceChart symbol={symbol} interval={interval} height={550} />
+              <PriceChart
+                key={`${symbol}-${renderKey}`}
+                symbol={symbol}
+                interval={interval}
+                height={550}
+                activeTool={activeTool}
+                drawColor={drawColor}
+                onDrawingsChange={handleDrawingsChange}
+                externalIndicators={extIndicators}
+              />
             </div>
           ) : (
             <MultiChartLayout defaultSymbol={symbol} defaultInterval={interval} />

@@ -184,6 +184,8 @@ export function MultiChartLayout({ defaultSymbol = "BTCUSDT", defaultInterval = 
                 symbol={panel.symbol}
                 interval={panel.interval}
                 height={layout === "1x1" ? 500 : layout === "2x2" ? 280 : 350}
+                syncCrosshair={syncCrosshair}
+                syncId="multi-chart-sync"
               />
             </div>
           </div>
