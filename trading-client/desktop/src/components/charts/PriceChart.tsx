@@ -527,17 +527,155 @@ export function PriceChart({
     });
   }, [interval]);
 
-  // ─── Drawing tool: connect activeTool → DrawingManager ─────────────────────
+  // ─── Drawing tool: interactive click-to-draw with pan disabled ─────────────
+  // The library's DrawingManager doesn't create drawings on click — it only
+  // manages existing ones. We implement the full draw flow here:
+  // 1. Disable chart pan/scale when a tool is active
+  // 2. First click → start drawing (place first anchor)
+  // 3. Mouse move → update preview (second anchor follows cursor)
+  // 4. Second click → finalize drawing and add to DrawingManager
+  const drawingStateRef = useRef<{
+    isDrawing: boolean;
+    toolType: string;
+    firstAnchor: { time: any; price: number } | null;
+    previewDrawing: IDrawing | null;
+    drawingIdCounter: number;
+  }>({ isDrawing: false, toolType: "", firstAnchor: null, previewDrawing: null, drawingIdCounter: 0 });
+
   useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
     const dm = drawingManagerRef.current;
-    if (!dm) return;
-    if (!activeTool || activeTool === "none" || activeTool === "eraser") {
+    const container = containerRef.current;
+    if (!chart || !series || !dm || !container) return;
+
+    const isToolActive = activeTool && activeTool !== "none" && activeTool !== "eraser";
+    const toolType = isToolActive ? (TOOL_TYPE_MAP[activeTool] || activeTool) : "";
+
+    // ─── Enable/disable chart pan based on tool state ──────────────────────
+    chart.applyOptions({
+      handleScroll: {
+        mouseWheel: !isToolActive,
+        pressedMouseMove: !isToolActive,  // disable pan-drag when drawing
+        horzTouchDrag: !isToolActive,
+        vertTouchDrag: !isToolActive,
+      },
+      handleScale: {
+        mouseWheel: !isToolActive,
+        pinch: !isToolActive,
+        axisPressedMouseMove: !isToolActive,
+        axisDoubleClickReset: !isToolActive,
+      },
+    });
+
+    if (!isToolActive) {
+      // Reset drawing state
+      const ds = drawingStateRef.current;
+      if (ds.previewDrawing) {
+        dm.removeDrawing(ds.previewDrawing.id);
+        ds.previewDrawing = null;
+      }
+      ds.isDrawing = false;
+      ds.firstAnchor = null;
       dm.setActiveTool(null);
-    } else {
-      const toolType = TOOL_TYPE_MAP[activeTool] || activeTool;
-      dm.setActiveTool(toolType);
+      return;
     }
-  }, [activeTool]);
+
+    dm.setActiveTool(toolType);
+    const ds = drawingStateRef.current;
+    ds.toolType = toolType;
+
+    // ─── Create a new drawing instance for the active tool ─────────────────
+    const createDrawing = (id: string, anchors: { time: any; price: number }[]): IDrawing | null => {
+      const style = { lineColor: drawColor, lineWidth: 2, fillOpacity: 0.1 };
+      switch (toolType) {
+        case "trend-line": return new TrendLine(id, anchors, style);
+        case "fib-retracement": return new FibRetracement(id, anchors, style);
+        case "rectangle": return new Rectangle(id, anchors, style);
+        case "brush": return new Brush(id, anchors, style);
+        case "horizontal-line": return new HorizontalLine(id, anchors, style);
+        case "ray": return new Ray(id, anchors, style);
+        case "extended-line": return new ExtendedLine(id, anchors, style);
+        case "anchored-text": return new AnchoredText(id, anchors, style);
+        default: return null;
+      }
+    };
+
+    // ─── Click handler: place anchors ──────────────────────────────────────
+    const clickHandler = (param: any) => {
+      if (!param.point || !param.time) return;
+      const price = series.coordinateToPrice(param.point.y);
+      if (price == null) return;
+      const anchor = { time: param.time, price };
+
+      // Single-anchor tools (horizontal-line)
+      if (toolType === "horizontal-line") {
+        const id = `draw-${Date.now()}`;
+        const drawing = createDrawing(id, [anchor]);
+        if (drawing) {
+          dm.addDrawing(drawing);
+          ds.isDrawing = false;
+        }
+        return;
+      }
+
+      if (!ds.isDrawing) {
+        // First click: start drawing
+        ds.isDrawing = true;
+        ds.firstAnchor = anchor;
+        // Create preview drawing with both anchors at the same point
+        const previewId = `preview-${Date.now()}`;
+        const preview = createDrawing(previewId, [anchor, anchor]);
+        if (preview) {
+          ds.previewDrawing = preview;
+          dm.addDrawing(preview);
+        }
+      } else {
+        // Second click: finalize
+        if (ds.previewDrawing) {
+          // Remove preview and create final
+          dm.removeDrawing(ds.previewDrawing.id);
+          const finalId = `draw-${Date.now()}`;
+          const finalDrawing = createDrawing(finalId, [ds.firstAnchor!, anchor]);
+          if (finalDrawing) {
+            dm.addDrawing(finalDrawing);
+          }
+          ds.previewDrawing = null;
+        }
+        ds.isDrawing = false;
+        ds.firstAnchor = null;
+      }
+    };
+
+    // ─── Mouse move handler: update preview's second anchor ────────────────
+    const mouseMoveHandler = (param: any) => {
+      if (!ds.isDrawing || !ds.previewDrawing || !param.point || !param.time) return;
+      const price = series.coordinateToPrice(param.point.y);
+      if (price == null) return;
+      // Update the second anchor of the preview drawing
+      ds.previewDrawing.setAnchors([ds.firstAnchor!, { time: param.time, price }]);
+    };
+
+    chart.subscribeClick(clickHandler);
+    chart.subscribeCrosshairMove(mouseMoveHandler);
+
+    return () => {
+      chart.unsubscribeClick(clickHandler);
+      chart.unsubscribeCrosshairMove(mouseMoveHandler);
+      // Re-enable pan/scale on cleanup
+      chart.applyOptions({
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+        handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
+      });
+      // Clean up preview if drawing was in progress
+      if (ds.previewDrawing) {
+        try { dm.removeDrawing(ds.previewDrawing.id); } catch {}
+        ds.previewDrawing = null;
+      }
+      ds.isDrawing = false;
+      ds.firstAnchor = null;
+    };
+  }, [activeTool, drawColor]);
 
   // ─── Drawing tool: clear all ────────────────────────────────────────────────
   const clearAllDrawings = useCallback(() => {
