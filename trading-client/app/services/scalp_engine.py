@@ -212,9 +212,14 @@ def _rank_universe(min_atr_pct: float, max_spread_bps: float = 8.0) -> list[dict
         atr_pct = (atr / price) * 100 if atr > 0 else 0.0
         if atr_pct < min_atr_pct:
             continue
-        ret5 = ((closes[-1] / closes[-2]) - 1) * 100 if closes[-2] else 0.0
-        avg_vol = sum(vols[-20:-1]) / max(len(vols[-20:-1]), 1)
-        vol_ratio = (vols[-1] / avg_vol) if avg_vol > 0 else 1.0
+        ret5 = ((closes[-2] / closes[-3]) - 1) * 100 if len(closes) > 3 and closes[-3] else 0.0
+        # Last CLOSED 5m candle vs average of previous closed bars (current bar is incomplete).
+        closed_vols = vols[:-1]
+        if len(closed_vols) >= 8:
+            avg_vol = sum(closed_vols[-20:-1] if len(closed_vols) > 1 else closed_vols) / max(len(closed_vols[-20:-1] or closed_vols), 1)
+            vol_ratio = (closed_vols[-1] / avg_vol) if avg_vol > 0 else 1.0
+        else:
+            vol_ratio = 1.0
         sc = score_symbol(atr_pct, row["volume"], ret5, vol_ratio)
         scored.append({
             **row,
@@ -290,22 +295,33 @@ def _ai_filter(bot: ScalpBot, top3: list[dict[str, Any]]) -> dict[str, Any] | No
     return result
 
 
-def _entry_signal(candidate: dict[str, Any], side: str) -> bool:
-    """1m breakout of last 5 highs/lows + volume spike on 5m."""
-    if candidate.get("vol_ratio", 0) < 1.5:
-        return False
+def _entry_signal(candidate: dict[str, Any], side: str) -> tuple[bool, str]:
+    """Closed-bar 5m volume + 1m Donchian-3 breakout (includes forming 1m close)."""
+    volx = float(candidate.get("vol_ratio") or 0)
+    if volx < 1.15:
+        return False, f"volumen 5m {volx:.2f}x < 1.15x"
     kl1 = _fetch_klines(candidate["symbol"], "1m", 12)
-    if len(kl1) < 7:
-        return False
+    if len(kl1) < 6:
+        return False, "klines 1m insuficientes"
     highs = [float(c[2]) for c in kl1]
     lows = [float(c[3]) for c in kl1]
     closes = [float(c[4]) for c in kl1]
+    opens = [float(c[1]) for c in kl1]
     last = closes[-1]
+    # Break last 3 CLOSED 1m extremes (exclude forming bar from the range)
+    range_high = max(highs[-4:-1])
+    range_low = min(lows[-4:-1])
+    body_up = last > opens[-1]
+    body_down = last < opens[-1]
     if side == "long":
-        return last > max(highs[-6:-1])
+        if last > range_high and body_up:
+            return True, f"breakout 1m high {range_high:.6g} vol={volx:.2f}x"
+        return False, f"sin breakout long close={last:.6g} high3={range_high:.6g} vol={volx:.2f}x"
     if side == "short":
-        return last < min(lows[-6:-1])
-    return False
+        if last < range_low and body_down:
+            return True, f"breakout 1m low {range_low:.6g} vol={volx:.2f}x"
+        return False, f"sin breakout short close={last:.6g} low3={range_low:.6g} vol={volx:.2f}x"
+    return False, "lado inválido"
 
 
 def _get_futures_adapter(bot: ScalpBot):
@@ -572,28 +588,47 @@ class ScalpEngine:
             return {"scan": 0}
 
         top3 = ranked[:3]
-        summary = ", ".join(f"{s['symbol']} atr={s['atr_pct']}" for s in top3)
-        _log(session, bot.id, "scan", f"Top volatilidad: {summary}")
+        summary = ", ".join(f"{s['symbol']} atr={s['atr_pct']} vol={s['vol_ratio']}x" for s in top3)
+        state = bot.state_json or {}
+        last_scan = state.get("last_scan_msg")
+        last_scan_ts = float(state.get("last_scan_ts") or 0)
+        if summary != last_scan or (time.time() - last_scan_ts) > 60:
+            _log(session, bot.id, "scan", f"Top volatilidad: {summary}")
+            state["last_scan_msg"] = summary
+            state["last_scan_ts"] = time.time()
+            bot.state_json = dict(state)
 
         preferred_side = "long" if top3[0]["return_5m"] >= 0 else "short"
         pick_sym = top3[0]["symbol"]
         if bot.use_ai_filter:
             ai = _ai_filter(bot, top3)
             if ai and ai["side"] != "skip" and ai["pick"]:
-                pick_sym = ai["pick"] if any(s["symbol"] == ai["pick"] or s["symbol"].startswith(ai["pick"]) for s in top3) else pick_sym
-                # map pick without slash
                 for s in top3:
                     if s["symbol"] == ai["pick"] or s["symbol"].replace("USDT", "") == ai["pick"].replace("USDT", ""):
                         pick_sym = s["symbol"]
                         break
                 preferred_side = ai["side"]
-                _log(session, bot.id, "ai_pick", f"IA eligió {pick_sym} {preferred_side} conf={ai.get('conf')}", symbol=pick_sym, side=preferred_side)
+                ai_msg = f"IA eligió {pick_sym} {preferred_side} conf={ai.get('conf')}"
             else:
-                _log(session, bot.id, "ai_pick", f"IA skip/fallback → {pick_sym} {preferred_side}", symbol=pick_sym, side=preferred_side)
+                ai_msg = f"IA skip/fallback → {pick_sym} {preferred_side}"
+            state = bot.state_json or {}
+            if state.get("last_ai_msg") != ai_msg:
+                _log(session, bot.id, "ai_pick", ai_msg, symbol=pick_sym, side=preferred_side)
+                state["last_ai_msg"] = ai_msg
+                bot.state_json = dict(state)
 
         candidate = next((s for s in ranked if s["symbol"] == pick_sym), top3[0])
-        if not _entry_signal(candidate, preferred_side):
-            _log(session, bot.id, "skip", f"Sin breakout 1m en {candidate['symbol']} {preferred_side}", symbol=candidate["symbol"], side=preferred_side)
+        ok, reason = _entry_signal(candidate, preferred_side)
+        if not ok:
+            skip_key = f"{candidate['symbol']}:{preferred_side}:{reason[:80]}"
+            state = bot.state_json or {}
+            last_skip = state.get("last_skip")
+            last_skip_ts = float(state.get("last_skip_ts") or 0)
+            if skip_key != last_skip or (time.time() - last_skip_ts) > 30:
+                _log(session, bot.id, "skip", f"{candidate['symbol']} {preferred_side}: {reason}", symbol=candidate["symbol"], side=preferred_side)
+                state["last_skip"] = skip_key
+                state["last_skip_ts"] = time.time()
+                bot.state_json = dict(state)
             return {"skipped": candidate["symbol"]}
 
         fill = _place_entry_and_exits(adapter, bot, candidate["symbol"], preferred_side, candidate["price"])

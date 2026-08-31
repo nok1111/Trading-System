@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.services.scalp_engine import atr_from_ohlc, heartbeat_expired, parse_ai_pick, score_symbol
+from app.services.scalp_engine import atr_from_ohlc, heartbeat_expired, parse_ai_pick, score_symbol, _entry_signal
 
 
 class TestAtrAndScore:
@@ -52,6 +52,13 @@ class TestParseAiPick:
     def test_garbage_returns_none(self):
         assert parse_ai_pick("no json here") is None
         assert parse_ai_pick("") is None
+
+
+class TestEntrySignal:
+    def test_rejects_low_volume(self):
+        ok, reason = _entry_signal({"vol_ratio": 0.8, "symbol": "BTCUSDT"}, "long")
+        assert ok is False
+        assert "volumen" in reason
 
 
 class TestHeartbeat:
