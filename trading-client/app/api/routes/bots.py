@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from app.services.auth import get_current_user
 from app.database.session import SessionLocal
-from app.database.models.grid_bot import DCABot, GridBot
+from app.database.models.grid_bot import DCABot, GridBot, ScalpBot, ScalpBotLog
 
 router = APIRouter(prefix="/api/bots", tags=["bots"])
 
@@ -51,6 +51,60 @@ class DCABotUpdate(BaseModel):
     interval_minutes: int | None = None
     max_buys: int | None = None
     take_profit_pct: float | None = None
+
+
+class ScalpBotCreate(BaseModel):
+    name: str
+    broker_id: str = "binance"
+    max_capital_usd: float = 100
+    risk_per_trade_pct: float = 20
+    leverage: int = 3
+    tp_pct: float = 0.50
+    sl_pct: float = 0.35
+    max_daily_loss_usd: float = 15
+    min_atr_pct: float = 0.80
+    max_hold_minutes: int = 20
+    ai_refresh_sec: int = 180
+    use_ai_filter: bool = True
+
+
+def _scalp_to_dict(b: ScalpBot) -> dict:
+    wins = b.wins or 0
+    losses = b.losses or 0
+    total = wins + losses
+    winrate = (wins / total * 100) if total else 0
+    return {
+        "id": b.id,
+        "name": b.name,
+        "broker_id": b.broker_id,
+        "max_capital_usd": str(b.max_capital_usd),
+        "risk_per_trade_pct": str(b.risk_per_trade_pct),
+        "leverage": b.leverage,
+        "tp_pct": str(b.tp_pct),
+        "sl_pct": str(b.sl_pct),
+        "max_daily_loss_usd": str(b.max_daily_loss_usd),
+        "min_atr_pct": str(b.min_atr_pct),
+        "max_hold_minutes": b.max_hold_minutes,
+        "ai_refresh_sec": b.ai_refresh_sec,
+        "use_ai_filter": b.use_ai_filter,
+        "is_active": b.is_active,
+        "status": b.status,
+        "last_heartbeat_at": b.last_heartbeat_at.isoformat() if b.last_heartbeat_at else None,
+        "last_run_at": b.last_run_at.isoformat() if b.last_run_at else None,
+        "trades_count": b.trades_count,
+        "wins": wins,
+        "losses": losses,
+        "winrate": round(winrate, 1),
+        "realized_pnl": str(b.realized_pnl),
+        "daily_pnl": str(b.daily_pnl),
+        "current_symbol": b.current_symbol,
+        "current_side": b.current_side,
+        "current_qty": str(b.current_qty) if b.current_qty is not None else None,
+        "current_entry": str(b.current_entry) if b.current_entry is not None else None,
+        "current_sl": str(b.current_sl) if b.current_sl is not None else None,
+        "current_tp": str(b.current_tp) if b.current_tp is not None else None,
+        "created_at": b.created_at.isoformat() if b.created_at else None,
+    }
 
 
 # ─── Grid Bot endpoints ───
@@ -338,6 +392,152 @@ def dca_bot_status(bot_id: int, user=Depends(get_current_user)):
         broker = get_shared_broker()
         engine = DCAEngine(broker, bot)
         return engine.get_status()
+    finally:
+        session.close()
+
+
+# ─── Scalp Bot endpoints ───
+
+@router.get("/scalp")
+def list_scalp_bots(user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bots = session.query(ScalpBot).filter_by(user_id=user.id).order_by(ScalpBot.created_at.desc()).all()
+        return [_scalp_to_dict(b) for b in bots]
+    finally:
+        session.close()
+
+
+@router.post("/scalp")
+def create_scalp_bot(req: ScalpBotCreate, user=Depends(get_current_user)):
+    if req.max_capital_usd <= 0:
+        raise HTTPException(400, "max_capital_usd debe ser > 0")
+    if req.leverage < 1 or req.leverage > 10:
+        raise HTTPException(400, "leverage debe estar entre 1 y 10")
+    if req.tp_pct <= 0 or req.sl_pct <= 0:
+        raise HTTPException(400, "tp_pct y sl_pct deben ser > 0")
+
+    session = SessionLocal()
+    try:
+        bot = ScalpBot(
+            user_id=user.id,
+            name=req.name,
+            broker_id=req.broker_id,
+            max_capital_usd=Decimal(str(req.max_capital_usd)),
+            risk_per_trade_pct=Decimal(str(req.risk_per_trade_pct)),
+            leverage=req.leverage,
+            tp_pct=Decimal(str(req.tp_pct)),
+            sl_pct=Decimal(str(req.sl_pct)),
+            max_daily_loss_usd=Decimal(str(req.max_daily_loss_usd)),
+            min_atr_pct=Decimal(str(req.min_atr_pct)),
+            max_hold_minutes=req.max_hold_minutes,
+            ai_refresh_sec=req.ai_refresh_sec,
+            use_ai_filter=req.use_ai_filter,
+            is_active=False,
+            status="stopped",
+        )
+        session.add(bot)
+        session.commit()
+        return {"id": bot.id, "status": "created", "name": bot.name}
+    finally:
+        session.close()
+
+
+@router.delete("/scalp/{bot_id}")
+def delete_scalp_bot(bot_id: int, user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bot = session.query(ScalpBot).filter_by(id=bot_id, user_id=user.id).first()
+        if not bot:
+            raise HTTPException(404, "Scalp bot no encontrado")
+        if bot.is_active:
+            raise HTTPException(400, "Detén el bot antes de eliminarlo")
+        session.query(ScalpBotLog).filter_by(bot_id=bot_id).delete()
+        session.delete(bot)
+        session.commit()
+        return {"status": "deleted", "id": bot_id}
+    finally:
+        session.close()
+
+
+@router.post("/scalp/{bot_id}/start")
+def start_scalp_bot(bot_id: int, user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bot = session.query(ScalpBot).filter_by(id=bot_id, user_id=user.id).first()
+        if not bot:
+            raise HTTPException(404, "Scalp bot no encontrado")
+        bot.is_active = True
+        bot.status = "running"
+        bot.last_heartbeat_at = datetime.now(tz=UTC)
+        session.commit()
+
+        from app.services.bot_scheduler import get_bot_scheduler
+        scheduler = get_bot_scheduler()
+        if not scheduler.is_running:
+            scheduler.start()
+
+        return {"status": "started", "id": bot_id, "name": bot.name}
+    finally:
+        session.close()
+
+
+@router.post("/scalp/{bot_id}/stop")
+def stop_scalp_bot(bot_id: int, user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bot = session.query(ScalpBot).filter_by(id=bot_id, user_id=user.id).first()
+        if not bot:
+            raise HTTPException(404, "Scalp bot no encontrado")
+        bot.is_active = False
+        bot.status = "stopped"
+        session.commit()
+        return {"status": "stopped", "id": bot_id}
+    finally:
+        session.close()
+
+
+@router.post("/scalp/{bot_id}/heartbeat")
+def scalp_heartbeat(bot_id: int, user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bot = session.query(ScalpBot).filter_by(id=bot_id, user_id=user.id).first()
+        if not bot:
+            raise HTTPException(404, "Scalp bot no encontrado")
+        bot.last_heartbeat_at = datetime.now(tz=UTC)
+        session.commit()
+        return {"ok": True, "status": bot.status}
+    finally:
+        session.close()
+
+
+@router.get("/scalp/{bot_id}/logs")
+def scalp_logs(bot_id: int, since_id: int = 0, limit: int = 100, user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bot = session.query(ScalpBot).filter_by(id=bot_id, user_id=user.id).first()
+        if not bot:
+            raise HTTPException(404, "Scalp bot no encontrado")
+        q = session.query(ScalpBotLog).filter(ScalpBotLog.bot_id == bot_id)
+        if since_id:
+            q = q.filter(ScalpBotLog.id > since_id)
+        logs = q.order_by(ScalpBotLog.id.desc()).limit(min(limit, 200)).all()
+        logs = list(reversed(logs))
+        return [
+            {
+                "id": e.id,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "level": e.level,
+                "event": e.event,
+                "symbol": e.symbol,
+                "side": e.side,
+                "price": str(e.price) if e.price is not None else None,
+                "quantity": str(e.quantity) if e.quantity is not None else None,
+                "pnl": str(e.pnl) if e.pnl is not None else None,
+                "message": e.message,
+            }
+            for e in logs
+        ]
     finally:
         session.close()
 

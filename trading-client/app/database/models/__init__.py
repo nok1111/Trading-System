@@ -9,7 +9,7 @@ from app.database.models.agent_session import AgentSession
 from app.database.models.ai_recommendation import AIRecommendation
 from app.database.models.backtest_run import BacktestRun
 from app.database.models.broker_account import BrokerAccount
-from app.database.models.grid_bot import DCABot, GridBot
+from app.database.models.grid_bot import DCABot, GridBot, ScalpBot, ScalpBotLog
 from app.database.models.market_bar import MarketBar
 from app.database.models.model_version import ModelVersion
 from app.database.models.intelligence_analysis import IntelligenceAnalysis
@@ -58,6 +58,8 @@ __all__ = [
     "BrokerAccount",
     "DCABot",
     "GridBot",
+    "ScalpBot",
+    "ScalpBotLog",
     "MarketBar",
     "ModelVersion",
     "IntelligenceAnalysis",

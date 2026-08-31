@@ -1,11 +1,14 @@
-"""Bot Scheduler — loop que ejecuta Grid y DCA bots cada 30 segundos.
+"""Bot Scheduler — loop que ejecuta Grid, DCA y Scalp bots.
 
 Mantiene una instancia singleton que corre en background thread.
 Cada ciclo:
 1. Carga bots activos desde DB
 2. Para cada GridBot activo: llama check_and_rebalance()
 3. Para cada DCABot activo: llama run_cycle()
-4. Guarda cambios en DB
+4. Para cada ScalpBot running: llama ScalpEngine.run_cycle() (heartbeat 20s)
+5. Guarda cambios en DB
+
+Intervalo: 5s si hay scalp activo, 30s en caso contrario.
 """
 
 from __future__ import annotations
@@ -71,15 +74,31 @@ class BotScheduler:
         except Exception:
             return None
 
+    def _has_active_scalp(self) -> bool:
+        try:
+            from app.database.session import SessionLocal
+            from app.database.models.grid_bot import ScalpBot
+            session = SessionLocal()
+            try:
+                return session.query(ScalpBot).filter(
+                    ScalpBot.is_active == True,  # noqa: E712
+                    ScalpBot.status == "running",
+                ).count() > 0
+            finally:
+                session.close()
+        except Exception:
+            return False
+
     def _run_loop(self) -> None:
-        """Main loop — runs every 30 seconds."""
+        """Main loop — 5s when a scalp bot is running, else 30s."""
         while not self._stop_event.is_set():
             try:
                 self._run_cycle()
             except Exception as exc:
                 logger.error(f"BotScheduler cycle error: {exc}")
 
-            self._stop_event.wait(30)  # 30 second interval
+            wait = 5 if self._has_active_scalp() else 30
+            self._stop_event.wait(wait)
 
     def _run_cycle(self) -> None:
         """Execute one scheduler cycle."""
@@ -92,50 +111,65 @@ class BotScheduler:
         session = SessionLocal()
         try:
             broker = self._get_broker()
-            if broker is None:
-                return
 
-            # Process Grid bots
-            grid_bots = session.query(GridBot).filter(
-                GridBot.is_active == True,  # noqa: E712
-                GridBot.status == "running",
+            if broker is not None:
+                grid_bots = session.query(GridBot).filter(
+                    GridBot.is_active == True,  # noqa: E712
+                    GridBot.status == "running",
+                ).all()
+
+                for bot in grid_bots:
+                    try:
+                        from app.services.grid_engine import GridEngine
+                        engine = GridEngine(broker, bot)
+
+                        if not bot.grid_state:
+                            result = engine.initialize_grid()
+                            logger.info(f"GridBot {bot.name} initialized: {result}")
+                        else:
+                            result = engine.check_and_rebalance()
+                            if result.get("fills_detected", 0) > 0:
+                                logger.info(f"GridBot {bot.name}: {result}")
+
+                    except Exception as exc:
+                        logger.error(f"GridBot {bot.name} error: {exc}")
+                        bot.status = "error"
+
+                dca_bots = session.query(DCABot).filter(
+                    DCABot.is_active == True,  # noqa: E712
+                    DCABot.status == "running",
+                ).all()
+
+                for bot in dca_bots:
+                    try:
+                        from app.services.dca_engine import DCAEngine
+                        engine = DCAEngine(broker, bot)
+                        result = engine.run_cycle()
+                        if result.get("buy", {}).get("executed"):
+                            logger.info(f"DCABot {bot.name} buy executed: {result['buy']}")
+                        elif result.get("take_profit", {}).get("take_profit"):
+                            logger.info(f"DCABot {bot.name} TP hit: {result['take_profit']}")
+                    except Exception as exc:
+                        logger.error(f"DCABot {bot.name} error: {exc}")
+                        bot.status = "error"
+
+            from app.database.models.grid_bot import ScalpBot
+            scalp_bots = session.query(ScalpBot).filter(
+                ScalpBot.status.in_(("running", "error")),
             ).all()
-
-            for bot in grid_bots:
+            for bot in scalp_bots:
+                if not bot.is_active and bot.status != "running":
+                    continue
                 try:
-                    from app.services.grid_engine import GridEngine
-                    engine = GridEngine(broker, bot)
-
-                    # Initialize grid if first run
-                    if not bot.grid_state:
-                        result = engine.initialize_grid()
-                        logger.info(f"GridBot {bot.name} initialized: {result}")
-                    else:
-                        result = engine.check_and_rebalance()
-                        if result.get("fills_detected", 0) > 0:
-                            logger.info(f"GridBot {bot.name}: {result}")
-
-                except Exception as exc:
-                    logger.error(f"GridBot {bot.name} error: {exc}")
-                    bot.status = "error"
-
-            # Process DCA bots
-            dca_bots = session.query(DCABot).filter(
-                DCABot.is_active == True,  # noqa: E712
-                DCABot.status == "running",
-            ).all()
-
-            for bot in dca_bots:
-                try:
-                    from app.services.dca_engine import DCAEngine
-                    engine = DCAEngine(broker, bot)
+                    from app.services.scalp_engine import ScalpEngine
+                    engine = ScalpEngine(bot, session)
                     result = engine.run_cycle()
-                    if result.get("buy", {}).get("executed"):
-                        logger.info(f"DCABot {bot.name} buy executed: {result['buy']}")
-                    elif result.get("take_profit", {}).get("take_profit"):
-                        logger.info(f"DCABot {bot.name} TP hit: {result['take_profit']}")
-                except Exception as exc:
-                    logger.error(f"DCABot {bot.name} error: {exc}")
+                    if result.get("entered"):
+                        logger.info(f"ScalpBot {bot.name} entered: {result}")
+                    elif result.get("killed") or result.get("stopped"):
+                        logger.info(f"ScalpBot {bot.name}: {result}")
+                except Exception as extra:
+                    logger.error(f"ScalpBot {bot.name} error: {extra}")
                     bot.status = "error"
 
             session.commit()
@@ -149,7 +183,7 @@ class BotScheduler:
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status."""
         from app.database.session import SessionLocal
-        from app.database.models.grid_bot import DCABot, GridBot
+        from app.database.models.grid_bot import DCABot, GridBot, ScalpBot
 
         session = SessionLocal()
         try:
@@ -161,8 +195,13 @@ class BotScheduler:
                 DCABot.is_active == True,  # noqa: E712
                 DCABot.status == "running",
             ).count()
+            scalp_count = session.query(ScalpBot).filter(
+                ScalpBot.is_active == True,  # noqa: E712
+                ScalpBot.status == "running",
+            ).count()
             grid_total = session.query(GridBot).count()
             dca_total = session.query(DCABot).count()
+            scalp_total = session.query(ScalpBot).count()
         finally:
             session.close()
 
@@ -172,8 +211,10 @@ class BotScheduler:
             "last_cycle_at": self._last_cycle_at.isoformat() if self._last_cycle_at else None,
             "active_grid_bots": grid_count,
             "active_dca_bots": dca_count,
+            "active_scalp_bots": scalp_count,
             "total_grid_bots": grid_total,
             "total_dca_bots": dca_total,
+            "total_scalp_bots": scalp_total,
         }
 
 
