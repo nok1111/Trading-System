@@ -890,6 +890,138 @@ def place_order(
                 # Don't fail the order response if DB save fails
                 resp["db_warning"] = safe_error(exc)
 
+        # ─── Close Position + create Trade record for SELL orders ─────────
+        if side_str == "sell" and order.filled_quantity and order.filled_quantity > 0:
+            try:
+                from app.database.session import SessionLocal
+                from app.database.models.position import Position
+                from app.database.models.trade import Trade
+                from datetime import datetime, UTC
+
+                db = SessionLocal()
+                try:
+                    uid = getattr(current_user, "id", 0)
+                    # Find open LONG position for this symbol (include user_id=0)
+                    pos = db.query(Position).filter(
+                        Position.symbol == symbol,
+                        Position.status == "open",
+                        (Position.user_id == uid) | (Position.user_id == 0),
+                    ).first()
+
+                    if pos:
+                        fill_price = order.price or Decimal("0")
+                        sell_qty = order.filled_quantity
+                        entry_price = pos.entry_price or Decimal("0")
+
+                        # Calculate realized PnL
+                        realized = (fill_price - entry_price) * sell_qty
+
+                        # Full or partial close
+                        if sell_qty >= pos.quantity:
+                            # Full close
+                            pos.status = "closed"
+                            pos.closed_at = datetime.now(UTC)
+                            pos.realized_pnl = (pos.realized_pnl or Decimal("0")) + realized
+                            pos.current_price = fill_price
+                        else:
+                            # Partial close: reduce quantity
+                            pos.quantity = pos.quantity - sell_qty
+                            pos.realized_pnl = (pos.realized_pnl or Decimal("0")) + realized
+                            pos.current_price = fill_price
+
+                        # Create Trade record
+                        trade = Trade(
+                            user_id=uid,
+                            broker_id=broker_id,
+                            timestamp=datetime.now(UTC),
+                            symbol=symbol,
+                            side="SELL",
+                            quantity=sell_qty,
+                            price=fill_price,
+                            commission=Decimal("0"),
+                            slippage=Decimal("0"),
+                            realized_pnl=realized,
+                            strategy_name=pos.strategy_name or "manual",
+                            order_id=None,
+                            position_id=pos.id,
+                            metadata_json={"exit": True, "source": "manual_trade", "order_id": order.broker_order_id},
+                        )
+                        db.add(trade)
+                        db.commit()
+                        resp["position_closed"] = pos.status == "closed"
+                        resp["realized_pnl"] = float(realized)
+                    else:
+                        db.rollback()
+                finally:
+                    db.close()
+            except Exception as exc:
+                resp["db_warning"] = safe_error(exc)
+
+        # ─── Close SHORT position + create Trade record for BUY orders (cover) ──
+        if side_str == "buy" and order.filled_quantity and order.filled_quantity > 0:
+            try:
+                from app.database.session import SessionLocal
+                from app.database.models.position import Position
+                from app.database.models.trade import Trade
+                from datetime import datetime, UTC
+
+                db = SessionLocal()
+                try:
+                    uid = getattr(current_user, "id", 0)
+                    # Find open SHORT position for this symbol (include user_id=0)
+                    pos = db.query(Position).filter(
+                        Position.symbol == symbol,
+                        Position.status == "open",
+                        Position.side == "short",
+                        (Position.user_id == uid) | (Position.user_id == 0),
+                    ).first()
+
+                    if pos:
+                        fill_price = order.price or Decimal("0")
+                        cover_qty = order.filled_quantity
+                        entry_price = pos.entry_price or Decimal("0")
+
+                        # For shorts: PnL = (entry - exit) * qty
+                        realized = (entry_price - fill_price) * cover_qty
+
+                        if cover_qty >= pos.quantity:
+                            pos.status = "closed"
+                            pos.closed_at = datetime.now(UTC)
+                            pos.realized_pnl = (pos.realized_pnl or Decimal("0")) + realized
+                            pos.current_price = fill_price
+                        else:
+                            pos.quantity = pos.quantity - cover_qty
+                            pos.realized_pnl = (pos.realized_pnl or Decimal("0")) + realized
+                            pos.current_price = fill_price
+
+                        trade = Trade(
+                            user_id=uid,
+                            broker_id=broker_id,
+                            timestamp=datetime.now(UTC),
+                            symbol=symbol,
+                            side="BUY",
+                            quantity=cover_qty,
+                            price=fill_price,
+                            commission=Decimal("0"),
+                            slippage=Decimal("0"),
+                            realized_pnl=realized,
+                            strategy_name=pos.strategy_name or "manual",
+                            order_id=None,
+                            position_id=pos.id,
+                            metadata_json={"exit": True, "source": "manual_cover", "order_id": order.broker_order_id},
+                        )
+                        db.add(trade)
+                        db.commit()
+                        resp["short_closed"] = pos.status == "closed"
+                        resp["realized_pnl"] = float(realized)
+                    else:
+                        db.rollback()
+                finally:
+                    db.close()
+            except Exception as exc:
+                # Don't fail the order response if DB save fails
+                pass  # Already handled by the buy-position-creation block above
+
         return resp
     except BrokerError as exc:
         return {"status": "error", "error": safe_error(exc)}

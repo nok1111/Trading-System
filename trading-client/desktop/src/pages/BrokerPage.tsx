@@ -1818,14 +1818,53 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
     }
   };
 
-  const handleClosePosition = async (positionId: number, symbol: string, quantity: number) => {
+  const handleClosePosition = async (positionId: number, symbol: string, quantity: number, positionSide: string = "long") => {
     if (!brokerId) return;
-    // Check available balance before attempting to sell
+    const isShort = positionSide === "short";
+    // For shorts: close = BUY (cover), check USDT balance
+    // For longs: close = SELL, check base asset balance
     const baseAsset = symbol.includes("/") ? symbol.split("/")[0] : symbol.replace("USDT", "");
 
-    // Fetch fresh balance from broker (don't rely on cached balanceData)
+    // For short positions, we don't need base asset balance — we buy to cover
     let freeBal = 0;
     let lockedBal = 0;
+    if (isShort) {
+      // Short close: buy to cover — check USDT balance instead
+      try {
+        const freshBal = await brokerApi.getBalance(brokerId);
+        const usdtInfo = freshBal?.assets?.find((a: any) => a.asset === "USDT");
+        freeBal = usdtInfo?.free || 0;
+      } catch {
+        const usdtBal = balanceData?.assets?.find((a: any) => a.asset === "USDT");
+        freeBal = usdtBal?.free || 0;
+      }
+      // For shorts, use the position quantity directly (not limited by base asset balance)
+      const sellQty = quantity;
+      if (sellQty <= 0) {
+        toast(`Cantidad inválida para cerrar short`, false);
+        return;
+      }
+      if (!confirm(`¿Cerrar SHORT de ${sellQty} ${baseAsset} comprando a precio de mercado?`)) return;
+      try {
+        const resp = await brokerApi.placeOrder(brokerId, {
+          symbol,
+          side: "buy",
+          order_type: "market",
+          quantity: sellQty,
+        });
+        if (resp.error) {
+          toast(`Error: ${resp.error}`, false);
+          return;
+        }
+        toast(`Short de ${baseAsset} cerrado`, true);
+        await loadLivePositions();
+      } catch (e: any) {
+        toast(`Error: ${e?.message || e}`, false);
+      }
+      return;
+    }
+
+    // ─── Long position close (sell base asset) ───
     try {
       const freshBal = await brokerApi.getBalance(brokerId);
       const assetInfo = freshBal?.assets?.find((a: any) => a.asset === baseAsset);
@@ -2452,7 +2491,7 @@ function PositionsModule({ positions: propPositions, brokerId, balanceData }: { 
 
                           {/* Close position at market price */}
                           <button
-                            onClick={() => handleClosePosition(p.id, p.symbol, qty)}
+                            onClick={() => handleClosePosition(p.id, p.symbol, qty, p.side || (p.metadata_json?.position_side?.toLowerCase() || "long"))}
                             className="h-7 px-3 rounded-[6px] text-[11px] font-bold bg-[var(--color-danger)] text-white hover:opacity-90 transition-opacity ml-auto"
                           >
                             Cerrar posición
