@@ -56,7 +56,7 @@ class TestParseAiPick:
 
 class TestEntrySignal:
     def test_rejects_low_volume(self):
-        ok, reason = _entry_signal({"vol_ratio": 0.8, "symbol": "BTCUSDT"}, "long")
+        ok, reason = _entry_signal({"vol_ratio": 0.5, "symbol": "BTCUSDT"}, "long")
         assert ok is False
         assert "volumen" in reason
 

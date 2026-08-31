@@ -301,19 +301,19 @@ def _ai_filter(bot: ScalpBot, top3: list[dict[str, Any]]) -> dict[str, Any] | No
 def _entry_signal(candidate: dict[str, Any], side: str) -> tuple[bool, str]:
     """Closed-bar 5m volume + 1m Donchian-3 breakout (includes forming 1m close)."""
     volx = float(candidate.get("vol_ratio") or 0)
-    if volx < 1.15:
-        return False, f"volumen 5m {volx:.2f}x < 1.15x"
+    if volx < 0.85:
+        return False, f"volumen 5m {volx:.2f}x < 0.85x"
     kl1 = _fetch_klines(candidate["symbol"], "1m", 12)
-    if len(kl1) < 6:
+    if len(kl1) < 5:
         return False, "klines 1m insuficientes"
     highs = [float(c[2]) for c in kl1]
     lows = [float(c[3]) for c in kl1]
     closes = [float(c[4]) for c in kl1]
     opens = [float(c[1]) for c in kl1]
     last = closes[-1]
-    # Break last 3 CLOSED 1m extremes (exclude forming bar from the range)
-    range_high = max(highs[-4:-1])
-    range_low = min(lows[-4:-1])
+    # Break last 2 CLOSED 1m extremes (exclude forming bar)
+    range_high = max(highs[-3:-1])
+    range_low = min(lows[-3:-1])
     body_up = last > opens[-1]
     body_down = last < opens[-1]
     if side == "long":
@@ -375,20 +375,49 @@ def _ccxt_symbol(binance_symbol: str) -> str:
     return binance_symbol
 
 
+def _free_usdt(adapter) -> float | None:
+    """USDT libre en la wallet de futuros (CCXT swap)."""
+    try:
+        ex = getattr(adapter, "_exchange", None)
+        if ex is None:
+            return None
+        bal = ex.fetch_balance()
+        usdt = (bal.get("USDT") or {}) if isinstance(bal, dict) else {}
+        free = usdt.get("free")
+        if free is None:
+            info = bal.get("info") or {}
+            for row in info.get("assets") or []:
+                if str(row.get("asset")) == "USDT":
+                    free = row.get("availableBalance") or row.get("maxWithdrawAmount")
+                    break
+        return float(free) if free is not None else None
+    except Exception as exc:
+        logger.warning("scalp free USDT failed: %s", exc)
+        return None
+
+
 def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price: float) -> dict[str, Any]:
     from app.brokers.models import OrderRequest, OrderSide, OrderType
 
     capital = float(bot.max_capital_usd)
     risk_pct = float(bot.risk_per_trade_pct) / 100.0
-    notional = min(capital, capital * risk_pct * int(bot.leverage))
-    if notional < 10:
-        return {"error": f"Notional ${notional:.2f} demasiado pequeño (mín ~$10)"}
+    lev = max(int(bot.leverage), 1)
+    # Margin we intend to lock = min(max_capital * risk%, max_capital)
+    margin_budget = min(capital, capital * risk_pct)
+    free = _free_usdt(adapter)
+    if free is not None:
+        if free < 6:
+            return {"error": f"Margen USDT insuf. en futuros: ${free:.2f} libre (mín ~$6). Transfiere USDT a Futures."}
+        margin_budget = min(margin_budget, free * 0.80)
+    notional = margin_budget * lev
+    if notional < 6:
+        return {"error": f"Notional ${notional:.2f} demasiado pequeño (mín ~$6)"}
     qty = notional / price
     ccxt_sym = _ccxt_symbol(symbol)
     order_side = OrderSide.BUY if side == "long" else OrderSide.SELL
     pos_side = "LONG" if side == "long" else "SHORT"
     hedge = _is_hedge_mode(adapter, bot.user_id)
-    meta: dict[str, Any] = {"leverage": int(bot.leverage), "source": "scalp_bot"}
+    meta: dict[str, Any] = {"leverage": lev, "source": "scalp_bot"}
     if hedge:
         meta["position_side"] = pos_side
 
@@ -416,6 +445,21 @@ def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price
         )
         result = adapter.place_order(req)
         hedge = bool(meta.get("position_side"))
+    err_text = str(getattr(result, "error", "") or "")
+    if (not getattr(result, "success", False)) and "-2019" in err_text:
+        qty = qty * 0.45
+        if qty * price >= 6:
+            req = OrderRequest(
+                symbol=ccxt_sym,
+                side=order_side,
+                order_type=OrderType.MARKET,
+                quantity=Decimal(str(qty)),
+                metadata=meta,
+            )
+            result = adapter.place_order(req)
+            err_text = str(getattr(result, "error", "") or "")
+        if not getattr(result, "success", False):
+            return {"error": f"Margen insuficiente (USDT futuros ${free if free is not None else '?'}). Baja capital o transfiere a Futures. {err_text}"}
     if not getattr(result, "success", False) or not getattr(result, "order", None):
         return {"error": getattr(result, "error", None) or "Orden de entrada falló"}
     order = result.order
@@ -682,7 +726,15 @@ class ScalpEngine:
 
         fill = _place_entry_and_exits(adapter, bot, candidate["symbol"], preferred_side, candidate["price"])
         if fill.get("error"):
-            _log(session, bot.id, "error", f"Entrada falló: {fill['error']}", level="error", symbol=candidate["symbol"])
+            state = bot.state_json or {}
+            err_key = str(fill["error"])[:120]
+            last_err = state.get("last_err")
+            last_err_ts = float(state.get("last_err_ts") or 0)
+            if err_key != last_err or (time.time() - last_err_ts) > 90:
+                _log(session, bot.id, "error", f"Entrada falló: {fill['error']}", level="error", symbol=candidate["symbol"])
+                state["last_err"] = err_key
+                state["last_err_ts"] = time.time()
+                bot.state_json = dict(state)
             return {"error": fill["error"]}
 
         bot.current_symbol = candidate["symbol"]
