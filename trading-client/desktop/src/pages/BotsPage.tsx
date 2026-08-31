@@ -238,6 +238,7 @@ export function BotsPage() {
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   // Symbols from CCXT
   const [symbols, setSymbols] = useState<TradingSymbol[]>([]);
@@ -436,22 +437,42 @@ export function BotsPage() {
     }
   };
 
+  const patchBot = (type: "grid" | "dca" | "scalp", id: number, patch: Record<string, any>) => {
+    if (type === "grid") setGridBots((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+    if (type === "dca") setDCABots((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+    if (type === "scalp") setScalpBots((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  };
+
   const startBot = async (type: "grid" | "dca" | "scalp", id: number) => {
+    const key = `${type}-${id}`;
+    if (busyKey) return;
+    setBusyKey(key);
+    if (type === "scalp") setSelectedScalpId(id);
+    patchBot(type, id, { is_active: true, status: "running" });
     try {
       await api(`/api/bots/${type}/${id}/start`, { method: "POST" });
-      if (type === "scalp") setSelectedScalpId(id);
-      loadData();
     } catch (e: any) {
+      patchBot(type, id, { is_active: false, status: "stopped" });
       alert(e.message || "Error iniciando bot");
+    } finally {
+      setBusyKey(null);
+      loadData();
     }
   };
 
   const stopBot = async (type: "grid" | "dca" | "scalp", id: number) => {
+    const key = `${type}-${id}`;
+    if (busyKey) return;
+    setBusyKey(key);
+    patchBot(type, id, { is_active: false, status: "stopped" });
     try {
       await api(`/api/bots/${type}/${id}/stop`, { method: "POST" });
-      loadData();
     } catch (e: any) {
+      patchBot(type, id, { is_active: true, status: "running" });
       alert(e.message || "Error deteniendo bot");
+    } finally {
+      setBusyKey(null);
+      loadData();
     }
   };
 
@@ -984,13 +1005,15 @@ export function BotsPage() {
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     {!bot.is_active ? (
                       <button onClick={() => startBot("scalp", bot.id)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-[var(--color-success)]/10 text-[var(--color-success)] text-[10px] font-bold hover:opacity-80">
-                        <Play size={12} /> Iniciar
+                        disabled={busyKey === `scalp-${bot.id}`}
+                        className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-[var(--color-success)]/10 text-[var(--color-success)] text-[10px] font-bold hover:opacity-80 disabled:opacity-50">
+                        <Play size={12} /> {busyKey === `scalp-${bot.id}` ? "…" : "Iniciar"}
                       </button>
                     ) : (
                       <button onClick={() => stopBot("scalp", bot.id)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-[var(--color-danger)]/10 text-[var(--color-danger)] text-[10px] font-bold hover:opacity-80">
-                        <Square size={12} /> Detener
+                        disabled={busyKey === `scalp-${bot.id}`}
+                        className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-[var(--color-danger)]/10 text-[var(--color-danger)] text-[10px] font-bold hover:opacity-80 disabled:opacity-50">
+                        <Square size={12} /> {busyKey === `scalp-${bot.id}` ? "…" : "Detener"}
                       </button>
                     )}
                     <button onClick={() => deleteBot("scalp", bot.id)}

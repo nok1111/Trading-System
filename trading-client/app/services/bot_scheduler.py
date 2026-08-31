@@ -109,6 +109,7 @@ class BotScheduler:
         from app.database.models.grid_bot import DCABot, GridBot
 
         session = SessionLocal()
+        scalp_ids: list[int] = []
         try:
             broker = self._get_broker()
 
@@ -154,31 +155,34 @@ class BotScheduler:
                         bot.status = "error"
 
             from app.database.models.grid_bot import ScalpBot
-            scalp_bots = session.query(ScalpBot).filter(
-                ScalpBot.status.in_(("running", "error")),
-            ).all()
-            for bot in scalp_bots:
-                if not bot.is_active and bot.status != "running":
-                    continue
-                try:
-                    from app.services.scalp_engine import ScalpEngine
-                    engine = ScalpEngine(bot, session)
-                    result = engine.run_cycle()
-                    if result.get("entered"):
-                        logger.info(f"ScalpBot {bot.name} entered: {result}")
-                    elif result.get("killed") or result.get("stopped"):
-                        logger.info(f"ScalpBot {bot.name}: {result}")
-                except Exception as extra:
-                    logger.error(f"ScalpBot {bot.name} error: {extra}")
-                    bot.status = "error"
+            scalp_ids = [
+                bot.id
+                for bot in session.query(ScalpBot)
+                .filter(ScalpBot.is_active == True, ScalpBot.status.in_(("running", "error")))  # noqa: E712
+                .all()
+            ]
 
             session.commit()
 
-        except Exception as exc:
-            logger.error(f"BotScheduler DB error: {exc}")
+        except Exception as extra:
+            logger.error(f"BotScheduler DB error: {extra}")
             session.rollback()
         finally:
             session.close()
+
+        # Scalp cycles hold the HTTP calls (Binance/Ollama). Run them AFTER
+        # releasing SQLite so Start/Stop API is not blocked for seconds.
+        from types import SimpleNamespace
+        from app.services.scalp_engine import ScalpEngine
+        for bid in scalp_ids:
+            try:
+                result = ScalpEngine(SimpleNamespace(id=bid), None).run_cycle()
+                if result.get("entered"):
+                    logger.info(f"ScalpBot {bid} entered: {result}")
+                elif result.get("killed") or result.get("stopped"):
+                    logger.info(f"ScalpBot {bid}: {result}")
+            except Exception as extra:
+                logger.error(f"ScalpBot {bid} error: {extra}")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status."""
