@@ -32,6 +32,7 @@ _AI_SYSTEM = (
 _universe_cache: dict[str, Any] = {"ts": 0.0, "rows": []}
 _kline_cache: dict[str, tuple[float, list]] = {}
 _ai_cache: dict[int, dict[str, Any]] = {}  # bot_id -> {ts, pick, side, conf}
+_hedge_cache: dict[int, bool] = {}  # user_id -> dual-side (hedge) mode
 
 
 def atr_from_ohlc(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> float:
@@ -156,6 +157,8 @@ def _fetch_universe(limit: int = 30) -> list[dict[str, Any]]:
     for t in data:
         sym = t.get("symbol") or ""
         if not sym.endswith("USDT") or "_" in sym:
+            continue
+        if not sym.isascii():
             continue
         try:
             vol = float(t.get("quoteVolume") or 0)
@@ -345,6 +348,25 @@ def _get_futures_adapter(bot: ScalpBot):
             return None
 
 
+def _is_hedge_mode(adapter, user_id: int) -> bool:
+    """Binance USDT-M: True if dual-side (hedge). Default False = one-way."""
+    cached = _hedge_cache.get(user_id)
+    if cached is not None:
+        return cached
+    dual = False
+    try:
+        ex = getattr(adapter, "_exchange", None)
+        if ex is not None and hasattr(ex, "fapiPrivateGetPositionSideDual"):
+            r = ex.fapiPrivateGetPositionSideDual()
+            val = (r or {}).get("dualSidePosition")
+            dual = val in (True, "true", "True")
+    except Exception as exc:
+        logger.warning("scalp hedge-mode detect failed (assume one-way): %s", exc)
+        dual = False
+    _hedge_cache[user_id] = dual
+    return dual
+
+
 def _ccxt_symbol(binance_symbol: str) -> str:
     if "/" in binance_symbol:
         return binance_symbol if ":" in binance_symbol else binance_symbol
@@ -365,15 +387,35 @@ def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price
     ccxt_sym = _ccxt_symbol(symbol)
     order_side = OrderSide.BUY if side == "long" else OrderSide.SELL
     pos_side = "LONG" if side == "long" else "SHORT"
+    hedge = _is_hedge_mode(adapter, bot.user_id)
+    meta: dict[str, Any] = {"leverage": int(bot.leverage), "source": "scalp_bot"}
+    if hedge:
+        meta["position_side"] = pos_side
 
     req = OrderRequest(
         symbol=ccxt_sym,
         side=order_side,
         order_type=OrderType.MARKET,
         quantity=Decimal(str(qty)),
-        metadata={"leverage": int(bot.leverage), "position_side": pos_side, "source": "scalp_bot"},
+        metadata=meta,
     )
     result = adapter.place_order(req)
+    err_text = str(getattr(result, "error", "") or "")
+    # -4061: we sent hedge positionSide on a one-way account (or vice versa)
+    if (not getattr(result, "success", False)) and "-4061" in err_text:
+        _hedge_cache[bot.user_id] = not hedge
+        meta.pop("position_side", None)
+        if not hedge:
+            meta["position_side"] = pos_side
+        req = OrderRequest(
+            symbol=ccxt_sym,
+            side=order_side,
+            order_type=OrderType.MARKET,
+            quantity=Decimal(str(qty)),
+            metadata=meta,
+        )
+        result = adapter.place_order(req)
+        hedge = bool(meta.get("position_side"))
     if not getattr(result, "success", False) or not getattr(result, "order", None):
         return {"error": getattr(result, "error", None) or "Orden de entrada falló"}
     order = result.order
@@ -403,6 +445,10 @@ def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price
 
     if not oco.get("success"):
         # Fallback: separate reduce-only TP + SL
+        exit_meta: dict[str, Any] = {"reduce_only": True, "source": "scalp_bot_tp"}
+        if hedge:
+            exit_meta["position_side"] = pos_side
+        sl_meta = {**exit_meta, "source": "scalp_bot_sl"}
         try:
             adapter.place_order(OrderRequest(
                 symbol=ccxt_sym,
@@ -410,7 +456,7 @@ def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price
                 order_type=OrderType.TAKE_PROFIT,
                 quantity=Decimal(str(fill_qty)),
                 stop_price=Decimal(str(tp)),
-                metadata={"reduce_only": True, "position_side": pos_side, "source": "scalp_bot_tp"},
+                metadata=exit_meta,
             ))
             adapter.place_order(OrderRequest(
                 symbol=ccxt_sym,
@@ -418,7 +464,7 @@ def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price
                 order_type=OrderType.STOP,
                 quantity=Decimal(str(fill_qty)),
                 stop_price=Decimal(str(sl)),
-                metadata={"reduce_only": True, "position_side": pos_side, "source": "scalp_bot_sl"},
+                metadata=sl_meta,
             ))
             oco = {"success": True, "fallback": "separate_sl_tp"}
         except Exception as exc:
@@ -501,12 +547,15 @@ def _maybe_close_open(session, bot: ScalpBot, adapter) -> None:
             return
         ccxt_sym = _ccxt_symbol(bot.current_symbol.replace("/", ""))
         close_side = OrderSide.SELL if side == "long" else OrderSide.BUY
+        close_meta: dict[str, Any] = {"reduce_only": True, "source": "scalp_bot_timestop"}
+        if _is_hedge_mode(adapter, bot.user_id):
+            close_meta["position_side"] = "LONG" if side == "long" else "SHORT"
         adapter.place_order(OrderRequest(
             symbol=ccxt_sym,
             side=close_side,
             order_type=OrderType.MARKET,
             quantity=Decimal(str(qty)),
-            metadata={"reduce_only": True, "position_side": "LONG" if side == "long" else "SHORT", "source": "scalp_bot_timestop"},
+            metadata=close_meta,
         ))
         _log(session, bot.id, "sell" if side == "long" else "buy", f"Time-stop {bot.current_symbol} a {int(bot.max_hold_minutes)}m",
              level="warn", symbol=bot.current_symbol, side=side)
