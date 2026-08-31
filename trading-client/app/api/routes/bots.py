@@ -103,6 +103,7 @@ def _scalp_to_dict(b: ScalpBot) -> dict:
         "current_entry": str(b.current_entry) if b.current_entry is not None else None,
         "current_sl": str(b.current_sl) if b.current_sl is not None else None,
         "current_tp": str(b.current_tp) if b.current_tp is not None else None,
+        "watch_symbol": (b.state_json or {}).get("watch_symbol") or b.current_symbol,
         "created_at": b.created_at.isoformat() if b.created_at else None,
     }
 

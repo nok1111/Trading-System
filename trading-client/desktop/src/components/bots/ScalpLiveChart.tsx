@@ -22,8 +22,10 @@ export function ScalpLiveChart({ symbol, height = 260, markers = [] }: Props) {
   const linesRef = useRef<IPriceLine[]>([]);
 
   useEffect(() => {
-    if (!wrapRef.current) return;
-    const chart = createChart(wrapRef.current, {
+    const el = wrapRef.current;
+    if (!el) return;
+    const chart = createChart(el, {
+      width: Math.max(el.clientWidth, 200),
       height,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
@@ -48,14 +50,17 @@ export function ScalpLiveChart({ symbol, height = 260, markers = [] }: Props) {
     chartRef.current = chart;
     seriesRef.current = series;
     const ro = new ResizeObserver(() => {
-      if (wrapRef.current) chart.applyOptions({ width: wrapRef.current.clientWidth });
+      if (wrapRef.current) {
+        chart.applyOptions({ width: Math.max(wrapRef.current.clientWidth, 200) });
+      }
     });
-    ro.observe(wrapRef.current);
+    ro.observe(el);
     return () => {
       ro.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      linesRef.current = [];
     };
   }, [height]);
 
@@ -66,7 +71,7 @@ export function ScalpLiveChart({ symbol, height = 260, markers = [] }: Props) {
     if (!symbol || !seriesRef.current) return;
     try {
       const rows = await api<any[]>(`/api/bots/scalp/klines?symbol=${encodeURIComponent(symbol)}&interval=1m&limit=180`);
-      if (!Array.isArray(rows) || !rows.length) return;
+      if (!Array.isArray(rows) || !rows.length || !seriesRef.current) return;
       seriesRef.current.setData(rows.map((k) => ({
         time: (Math.floor(Number(k.time) / 1000) as UTCTimestamp),
         open: Number(k.open),
@@ -95,27 +100,22 @@ export function ScalpLiveChart({ symbol, height = 260, markers = [] }: Props) {
   }, [symbol, lastBuy?.price, lastSell?.price]);
 
   useEffect(() => {
-    load();
     if (!symbol) return;
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
+    const t = window.setTimeout(() => { void load(); }, 50);
+    const id = window.setInterval(() => { void load(); }, 5000);
+    return () => {
+      window.clearTimeout(t);
+      window.clearInterval(id);
+    };
   }, [load, symbol]);
-
-  if (!symbol) {
-    return (
-      <div className="h-[260px] flex items-center justify-center text-[11px] text-[var(--color-text-muted)]">
-        Esperando símbolo del bot…
-      </div>
-    );
-  }
 
   return (
     <div>
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--color-border)]">
-        <span className="text-[11px] font-bold text-[var(--color-text)]">{symbol} · 1m futuros</span>
+        <span className="text-[11px] font-bold text-[var(--color-text)]">{symbol || "—"} · 1m futuros</span>
         <span className="text-[10px] text-[var(--color-text-muted)]">se actualiza al cambiar de par</span>
       </div>
-      <div ref={wrapRef} />
+      <div ref={wrapRef} className="w-full" style={{ height }} />
     </div>
   );
 }

@@ -714,6 +714,8 @@ class ScalpEngine:
 
         preferred_side = "long" if top3[0]["return_5m"] >= 0 else "short"
         pick_sym = top3[0]["symbol"]
+        state["watch_symbol"] = pick_sym
+        bot.state_json = dict(state)
         if bot.use_ai_filter:
             ai = _ai_filter(bot, top3)
             if ai and ai["side"] != "skip" and ai["pick"]:
@@ -729,6 +731,7 @@ class ScalpEngine:
             if state.get("last_ai_msg") != ai_msg:
                 _log(session, bot.id, "ai_pick", ai_msg, symbol=pick_sym, side=preferred_side)
                 state["last_ai_msg"] = ai_msg
+                state["watch_symbol"] = pick_sym
                 bot.state_json = dict(state)
 
         candidate = next((s for s in ranked if s["symbol"] == pick_sym), top3[0])

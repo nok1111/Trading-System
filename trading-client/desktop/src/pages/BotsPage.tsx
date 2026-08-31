@@ -77,6 +77,7 @@ interface ScalpBot {
   current_entry: string | null;
   current_sl: string | null;
   current_tp: string | null;
+  watch_symbol?: string | null;
   created_at: string;
 }
 
@@ -335,6 +336,7 @@ export function BotsPage() {
   // Live logs for selected scalp bot
   useEffect(() => {
     if (tab !== "scalp" || !selectedScalpId) return;
+    setScalpLogs([]);
     let lastId = 0;
     let cancelled = false;
     const pull = async () => {
@@ -989,7 +991,12 @@ export function BotsPage() {
             scalpBots.map((bot) => (
               <div
                 key={bot.id}
-                onClick={() => { setSelectedScalpId(bot.id); setScalpLogs([]); }}
+                onClick={() => {
+                  if (bot.id !== selectedScalpId) {
+                    setSelectedScalpId(bot.id);
+                    setLogEpoch((n) => n + 1);
+                  }
+                }}
                 className={cn(
                   "rounded-[16px] bg-[var(--color-surface)] border p-4 cursor-pointer",
                   selectedScalpId === bot.id ? "border-[var(--color-primary)]" : "border-[var(--color-border)]"
@@ -1057,7 +1064,7 @@ export function BotsPage() {
           {(() => {
             const sel = scalpBots.find((b) => b.id === selectedScalpId);
             const lastSym = [...scalpLogs].reverse().find((l) => l.symbol)?.symbol;
-            const chartSym = sel?.current_symbol || lastSym || null;
+            const chartSym = sel?.current_symbol || sel?.watch_symbol || lastSym || "BTCUSDT";
             const marks = scalpLogs
               .filter((l) => (l.event === "buy" || l.event === "sell") && l.price && (l.symbol === chartSym || !chartSym))
               .map((l) => ({
