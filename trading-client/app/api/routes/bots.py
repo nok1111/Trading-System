@@ -511,6 +511,20 @@ def scalp_heartbeat(bot_id: int, user=Depends(get_current_user)):
         session.close()
 
 
+@router.delete("/scalp/{bot_id}/logs")
+def clear_scalp_logs(bot_id: int, user=Depends(get_current_user)):
+    session = SessionLocal()
+    try:
+        bot = session.query(ScalpBot).filter_by(id=bot_id, user_id=user.id).first()
+        if not bot:
+            raise HTTPException(404, "Scalp bot no encontrado")
+        deleted = session.query(ScalpBotLog).filter_by(bot_id=bot_id).delete()
+        session.commit()
+        return {"ok": True, "deleted": deleted}
+    finally:
+        session.close()
+
+
 @router.get("/scalp/{bot_id}/logs")
 def scalp_logs(bot_id: int, since_id: int = 0, limit: int = 100, user=Depends(get_current_user)):
     session = SessionLocal()
@@ -540,6 +554,38 @@ def scalp_logs(bot_id: int, since_id: int = 0, limit: int = 100, user=Depends(ge
         ]
     finally:
         session.close()
+
+
+@router.get("/scalp/klines")
+def scalp_klines(symbol: str, interval: str = "1m", limit: int = 180, user=Depends(get_current_user)):
+    """USDT-M futures klines for the scalp live chart."""
+    import httpx
+    raw_sym = (symbol or "").upper().replace("/", "").replace(":USDT", "")
+    if not raw_sym.endswith("USDT"):
+        raw_sym += "USDT"
+    allowed = {"1m", "3m", "5m", "15m", "1h"}
+    if interval not in allowed:
+        interval = "1m"
+    try:
+        resp = httpx.get(
+            "https://fapi.binance.com/fapi/v1/klines",
+            params={"symbol": raw_sym, "interval": interval, "limit": min(limit, 500)},
+            timeout=8.0,
+        )
+        resp.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(502, f"No se pudieron cargar klines de {raw_sym}: {exc}")
+    return [
+        {
+            "time": int(k[0]),
+            "open": float(k[1]),
+            "high": float(k[2]),
+            "low": float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        }
+        for k in resp.json()
+    ]
 
 
 # ─── Scheduler status ───

@@ -168,6 +168,9 @@ def _fetch_universe(limit: int = 30) -> list[dict[str, Any]]:
             continue
         if vol <= 0 or last <= 0:
             continue
+        # Skip illiquid micros (SKR/BTR/ZORA-class) — min $20M quote volume 24h
+        if vol < 20_000_000:
+            continue
         rows.append({"symbol": sym, "volume": vol, "price": last, "change_pct": pct})
     rows.sort(key=lambda x: x["volume"], reverse=True)
     rows = rows[:limit]
@@ -316,6 +319,18 @@ def _entry_signal(candidate: dict[str, Any], side: str) -> tuple[bool, str]:
     range_low = min(lows[-3:-1])
     body_up = last > opens[-1]
     body_down = last < opens[-1]
+    # HTF filter (github Janis/gmchun style): 15m EMA20 must agree
+    kl15 = _fetch_klines(candidate["symbol"], "15m", 25)
+    if len(kl15) >= 20:
+        c15 = [float(c[4]) for c in kl15]
+        ema = c15[0]
+        k = 2 / 21
+        for v in c15[1:]:
+            ema = v * k + ema * (1 - k)
+        if side == "long" and c15[-1] < ema:
+            return False, f"contra tendencia 15m (precio {c15[-1]:.6g} < EMA20 {ema:.6g})"
+        if side == "short" and c15[-1] > ema:
+            return False, f"contra tendencia 15m (precio {c15[-1]:.6g} > EMA20 {ema:.6g})"
     if side == "long":
         if last > range_high and body_up:
             return True, f"breakout 1m high {range_high:.6g} vol={volx:.2f}x"
@@ -396,7 +411,7 @@ def _free_usdt(adapter) -> float | None:
         return None
 
 
-def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price: float) -> dict[str, Any]:
+def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price: float, atr_pct: float = 0.0) -> dict[str, Any]:
     from app.brokers.models import OrderRequest, OrderSide, OrderType
 
     capital = float(bot.max_capital_usd)
@@ -466,13 +481,19 @@ def _place_entry_and_exits(adapter, bot: ScalpBot, symbol: str, side: str, price
     fill_price = float(order.price or price)
     fill_qty = float(order.filled_quantity or qty)
 
+    sl_pct = float(bot.sl_pct)
+    tp_pct = float(bot.tp_pct)
+    # ATR floor (Janis bot): SL at least 0.6× ATR% so we don't get wicked out
+    if atr_pct > 0:
+        sl_pct = max(sl_pct, atr_pct * 0.6)
+        tp_pct = max(tp_pct, sl_pct * 1.4)
     if side == "long":
-        sl = fill_price * (1 - float(bot.sl_pct) / 100)
-        tp = fill_price * (1 + float(bot.tp_pct) / 100)
+        sl = fill_price * (1 - sl_pct / 100)
+        tp = fill_price * (1 + tp_pct / 100)
         exit_side = "sell"
     else:
-        sl = fill_price * (1 + float(bot.sl_pct) / 100)
-        tp = fill_price * (1 - float(bot.tp_pct) / 100)
+        sl = fill_price * (1 + sl_pct / 100)
+        tp = fill_price * (1 - tp_pct / 100)
         exit_side = "buy"
 
     oco = {"success": False}
@@ -724,7 +745,10 @@ class ScalpEngine:
                 bot.state_json = dict(state)
             return {"skipped": candidate["symbol"]}
 
-        fill = _place_entry_and_exits(adapter, bot, candidate["symbol"], preferred_side, candidate["price"])
+        fill = _place_entry_and_exits(
+            adapter, bot, candidate["symbol"], preferred_side, candidate["price"],
+            atr_pct=float(candidate.get("atr_pct") or 0),
+        )
         if fill.get("error"):
             state = bot.state_json or {}
             err_key = str(fill["error"])[:120]

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
 import { cn, fmtDate, fmtTime } from "../lib/utils";
 import { Tooltip, InfoPanel } from "../components/common/Tooltip";
-import { Play, Square, Trash2, Plus, Grid3x3, DollarSign, Activity, TrendingUp, Clock, Target, Info, Zap } from "lucide-react";
+import { Play, Square, Trash2, Plus, Grid3x3, DollarSign, Activity, TrendingUp, Clock, Target, Info, Zap, Eraser } from "lucide-react";
+import { ScalpLiveChart } from "../components/bots/ScalpLiveChart";
 
 // ─── Types ───
 
@@ -234,6 +235,7 @@ export function BotsPage() {
   const [dcaBots, setDCABots] = useState<DCABot[]>([]);
   const [scalpBots, setScalpBots] = useState<ScalpBot[]>([]);
   const [scalpLogs, setScalpLogs] = useState<ScalpLog[]>([]);
+  const [logEpoch, setLogEpoch] = useState(0);
   const [selectedScalpId, setSelectedScalpId] = useState<number | null>(null);
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -357,7 +359,7 @@ export function BotsPage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [tab, selectedScalpId]);
+  }, [tab, selectedScalpId, logEpoch]);
 
   // Load symbols when create form opens or quote asset changes
   useEffect(() => {
@@ -1052,22 +1054,58 @@ export function BotsPage() {
             ))
           )}
 
+          {(() => {
+            const sel = scalpBots.find((b) => b.id === selectedScalpId);
+            const lastSym = [...scalpLogs].reverse().find((l) => l.symbol)?.symbol;
+            const chartSym = sel?.current_symbol || lastSym || null;
+            const marks = scalpLogs
+              .filter((l) => (l.event === "buy" || l.event === "sell") && l.price && (l.symbol === chartSym || !chartSym))
+              .map((l) => ({
+                time: l.timestamp ? Date.parse(l.timestamp) : 0,
+                price: parseFloat(l.price || "0"),
+                side: l.side || (l.event === "buy" ? "long" : "short"),
+                event: l.event,
+              }));
+            return (
+              <div className="rounded-[12px] bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden">
+                <ScalpLiveChart symbol={chartSym} markers={marks} />
+              </div>
+            );
+          })()}
+
           <div className="rounded-[12px] bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
               <span className="text-[11px] font-bold text-[var(--color-text)]">Log en vivo</span>
-              {selectedScalpId && (
-                <span className="text-[10px] text-[var(--color-text-muted)]">
-                  bot #{selectedScalpId} · heartbeat cada 8s mientras esta página está abierta
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {selectedScalpId && (
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    bot #{selectedScalpId} · heartbeat 8s
+                  </span>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!selectedScalpId) { setScalpLogs([]); return; }
+                    try {
+                      await api(`/api/bots/scalp/${selectedScalpId}/logs`, { method: "DELETE" });
+                    } catch { /* local clear anyway */ }
+                    setScalpLogs([]);
+                    setLogEpoch((n) => n + 1);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-[6px] text-[10px] font-bold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                >
+                  <Eraser size={12} /> Clear log
+                </button>
+              </div>
             </div>
             <div className="h-[220px] overflow-y-auto font-mono text-[10px] p-2 space-y-0.5">
               {scalpLogs.length === 0 ? (
                 <p className="text-[var(--color-text-muted)] px-1">Sin eventos todavía. Inicia el bot y deja esta página abierta.</p>
               ) : (
                 scalpLogs.map((e) => {
-                  const color = e.event === "buy" ? "text-[var(--color-success)]"
-                    : e.event === "sell" ? "text-[var(--color-danger)]"
+                  const color = e.event === "buy"
+                    ? "text-[var(--color-success)] font-bold"
+                    : e.event === "sell"
+                    ? "text-[var(--color-danger)] font-bold"
                     : e.level === "error" ? "text-[var(--color-danger)]"
                     : e.event === "skip" ? "text-[var(--color-text-muted)]"
                     : "text-[var(--color-text)]";
